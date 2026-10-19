@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <defs>
+    <linearGradient id="bgGrad192" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e3a8a"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="192" height="192" rx="42" fill="url(#bgGrad192)"/>
+
+  <!-- Construction Building Symbol -->
+  <g transform="translate(38, 40)" fill="#ffffff">
+    <path d="M15 105 L15 35 L60 35 L60 105 Z" fill="rgba(255,255,255,0.25)"/>
+    <path d="M60 105 L60 15 L98 15 L98 105 Z" fill="rgba(255,255,255,0.35)"/>
+    <rect x="25" y="45" width="10" height="14" rx="2" fill="#ffffff"/>
+    <rect x="42" y="45" width="10" height="14" rx="2" fill="#ffffff"/>
+    <rect x="70" y="28" width="10" height="16" rx="2" fill="#ffffff"/>
+    <rect x="70" y="52" width="10" height="16" rx="2" fill="#ffffff"/>
+    <rect x="5" y="102" width="105" height="6" rx="3" fill="#ffffff"/>
+  </g>
+
+  <!-- Green Checkmark Circle -->
+  <circle cx="140" cy="140" r="32" fill="#10b981" stroke="#ffffff" stroke-width="4"/>
+  <path d="M125 140 L135 150 L155 130" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

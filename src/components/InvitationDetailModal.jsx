@@ -1,0 +1,324 @@
+import React from 'react';
+import { X, MapPin, FileText, Calendar, Award, Building, UserCheck, Camera, Clock, AlertTriangle, RotateCcw, CheckCircle2 } from 'lucide-react';
+
+export default function InvitationDetailModal({ 
+  isOpen, 
+  onClose, 
+  request, 
+  currentRole, 
+  currentUser, 
+  onOpenReport 
+}) {
+  if (!isOpen || !request) return null;
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content" style={{ maxWidth: '780px' }}>
+        <div className="modal-header" style={{ background: '#f8fafc' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ background: '#eff6ff', padding: '8px', borderRadius: '10px', color: '#2563eb' }}>
+              <FileText size={20} />
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.2rem' }}>Phiếu Yêu Cầu Nghiệm Thu</h3>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>
+                Mã số: <strong>{request.requestNumber}</strong> • Ngày gửi: {new Date(request.createdAt).toLocaleDateString('vi-VN')}
+              </p>
+            </div>
+          </div>
+          <button className="modal-close-btn" onClick={onClose}><X size={20} /></button>
+        </div>
+
+        <div className="modal-body" style={{ padding: '20px 24px' }}>
+          {/* BANNER CẢNH BÁO TRẠNG THÁI NGHIỆM THU */}
+          {request.status === 'HAS_REJECTIONS' && (
+            <div style={{
+              background: '#fef2f2',
+              border: '1.5px solid #fca5a5',
+              borderRadius: '10px',
+              padding: '12px 16px',
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '10px',
+              color: '#991b1b'
+            }}>
+              <AlertTriangle size={20} color="#dc2626" style={{ flexShrink: 0, marginTop: '2px' }} />
+              <div>
+                <strong>⚠️ KẾT QUẢ KIỂM TRA: CHƯA ĐẠT (KHÔNG ĐỒNG Ý NGHIỆM THU)</strong>
+                <div style={{ fontSize: '0.84rem', marginTop: '3px', color: '#b91c1c' }}>
+                  Lý do: "{request.rejectionNotes || 'Có khiếm khuyết kỹ thuật hiện trường cần khắc phục sửa chữa.'}"
+                </div>
+              </div>
+            </div>
+          )}
+
+          {request.status === 'RECTIFIED' && (
+            <div style={{
+              background: '#f5f3ff',
+              border: '1.5px solid #d8b4fe',
+              borderRadius: '10px',
+              padding: '12px 16px',
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '10px',
+              color: '#6b21a8'
+            }}>
+              <RotateCcw size={20} color="#7c3aed" style={{ flexShrink: 0, marginTop: '2px' }} />
+              <div>
+                <strong>🔄 ĐÃ BÁO CÁO KHẮC PHỤC SỬA CHỮA (CHỜ DUYỆT LẠI)</strong>
+                <div style={{ fontSize: '0.84rem', marginTop: '3px', color: '#581c87' }}>
+                  Biện pháp xử lý: "{request.rectificationNotes || 'ĐVTC đã nắn chỉnh và hoàn thiện theo yêu cầu.'}"
+                </div>
+              </div>
+            </div>
+          )}
+
+          {request.status === 'WAITING_INVESTOR' && (
+            <div style={{
+              background: '#eff6ff',
+              border: '1.5px solid #bfdbfe',
+              borderRadius: '10px',
+              padding: '12px 16px',
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              color: '#1e40af'
+            }}>
+              <Clock size={20} color="#2563eb" style={{ flexShrink: 0 }} />
+              <div>
+                <strong>⏳ CHỜ CHỦ ĐẦU TƯ PHÊ DUYỆT & KÝ SỐ</strong>
+                <div style={{ fontSize: '0.84rem', marginTop: '2px', color: '#1d4ed8' }}>
+                  TVGS đã kiểm tra và nghiệm thu đạt. Đang chờ đại diện Chủ đầu tư vào xem xét và ký số.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {request.status === 'COMPLETED' && (
+            <div style={{
+              background: '#f0fdf4',
+              border: '1.5px solid #bbf7d0',
+              borderRadius: '10px',
+              padding: '12px 16px',
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              color: '#166534'
+            }}>
+              <CheckCircle2 size={20} color="#16a34a" style={{ flexShrink: 0 }} />
+              <div>
+                <strong>✅ ĐÃ HOÀN TẤT NGHIỆM THU ĐẠT</strong>
+                <div style={{ fontSize: '0.84rem', marginTop: '2px', color: '#15803d' }}>
+                  Công tác đã được CĐT, TVGS và ĐVTC ký duyệt hoàn tất theo quy định.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* VĂN BẢN NỘI DUNG PHIẾU YÊU CẦU THEO CHUẨN MẪU */}
+          <div style={{ 
+            background: '#ffffff', 
+            border: '1px solid #e2e8f0', 
+            borderRadius: '12px', 
+            padding: '20px', 
+            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+            marginBottom: '20px'
+          }}>
+            <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+              <div style={{ fontSize: '0.78rem', color: '#64748b', fontStyle: 'italic' }}>Cần Thơ, ngày ... tháng ... năm 20...</div>
+              <h2 style={{ fontSize: '1.25rem', color: '#0f172a', margin: '4px 0', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                PHIẾU YÊU CẦU NGHIỆM THU
+              </h2>
+              <div style={{ fontFamily: 'monospace', fontWeight: 'bold', color: '#2563eb' }}>{request.requestNumber}</div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.9rem' }}>
+              <div><strong>Dự án:</strong> {request.projectName}</div>
+              <div><strong>Công trình:</strong> {request.buildingName}</div>
+              <div><strong>Hạng mục:</strong> {request.itemName}</div>
+              <div><strong>Địa điểm xây dựng:</strong> {request.location}</div>
+              <div><strong>Đơn vị yêu cầu nghiệm thu:</strong> {request.contractorCompany}</div>
+              
+              <div style={{ background: '#f1f5f9', padding: '12px', borderRadius: '8px', margin: '8px 0', borderLeft: '4px solid #2563eb' }}>
+                <strong style={{ color: '#1e40af' }}>Công tác xây dựng yêu cầu nghiệm thu:</strong>
+                <div style={{ fontSize: '1rem', fontWeight: '700', color: '#0f172a', marginTop: '4px' }}>
+                  {request.taskContent}
+                </div>
+                <p style={{ fontSize: '0.83rem', color: '#475569', margin: '6px 0 0 0', fontStyle: 'italic' }}>
+                  Sau khi kiểm tra chất lượng, đối chiếu với bản vẽ thiết kế và các tiêu chuẩn kỹ thuật được áp dụng, chúng tôi đã nghiệm thu nội bộ. Đơn vị thi công kính mời Chủ đầu tư và Tư vấn giám sát tiến hành nghiệm thu.
+                </p>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginTop: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Calendar size={16} color="#2563eb" />
+                  <span><strong>Thời gian hẹn:</strong> {request.scheduledTime}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <MapPin size={16} color="#2563eb" />
+                  <span><strong>Tại:</strong> {request.inspectionPlace}</span>
+                </div>
+              </div>
+
+              <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px dashed #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem', color: '#64748b' }}>
+                <div>Người lập phiếu: <strong>{request.createdByName || 'KS. Lê Văn Kỹ Thuật'}</strong> ({request.createdByRole || 'Kỹ thuật hiện trường'})</div>
+                <span style={{ color: '#059669', fontWeight: 600 }}>✓ ĐVTC đã ký xác nhận gửi</span>
+              </div>
+            </div>
+          </div>
+
+          {/* ẢNH THI CÔNG HIỆN TRƯỜNG ĐÍNH KÈM (NẾU CÓ) */}
+          {request.evidencePhotos && request.evidencePhotos.length > 0 && (
+            <div style={{ 
+              background: '#f8fafc', 
+              border: '1px solid #e2e8f0', 
+              borderRadius: '12px', 
+              padding: '16px', 
+              marginBottom: '18px' 
+            }}>
+              <h4 style={{ margin: '0 0 12px 0', fontSize: '0.88rem', color: '#1e293b', textTransform: 'uppercase', letterSpacing: '0.03em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Camera size={16} color="#2563eb" />
+                <span>Ảnh chụp thi công do ĐVTC đính kèm ({request.evidencePhotos.length} ảnh):</span>
+              </h4>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
+                {request.evidencePhotos.map((photo, i) => (
+                  <div key={photo.id || i} style={{ 
+                    background: '#ffffff', 
+                    borderRadius: '8px', 
+                    overflow: 'hidden', 
+                    border: '1px solid #e2e8f0',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                  }}>
+                    <div style={{ position: 'relative' }}>
+                      <img 
+                        src={photo.url} 
+                        alt={photo.caption || `Ảnh ${i + 1}`} 
+                        style={{ width: '100%', height: '130px', objectFit: 'cover', display: 'block' }}
+                      />
+                      <div style={{ 
+                        position: 'absolute', 
+                        bottom: '4px', 
+                        left: '4px', 
+                        right: '4px', 
+                        background: 'rgba(15, 23, 42, 0.85)', 
+                        color: '#ffffff', 
+                        padding: '4px 6px', 
+                        borderRadius: '4px', 
+                        fontSize: '0.66rem' 
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                          <Clock size={10} color="#34d399" />
+                          <span>{photo.time}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ padding: '8px', fontSize: '0.78rem', color: '#334155', fontWeight: 600 }}>
+                      {photo.caption || 'Hiện trường thi công thực tế'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* DANH SÁCH CÁN BỘ ĐƯỢC MỜI TIẾP NHẬN PHIẾU */}
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', marginBottom: '18px' }}>
+            <h4 style={{ margin: '0 0 12px 0', fontSize: '0.88rem', color: '#1e293b', textTransform: 'uppercase', letterSpacing: '0.03em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <UserCheck size={16} color="#2563eb" />
+              <span>Thành phần tiếp nhận phiếu yêu cầu ({request.assignedRecipients?.length || 0}):</span>
+            </h4>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {request.assignedRecipients?.map((rec, i) => (
+                <div key={i} style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'space-between', 
+                  padding: '9px 14px', 
+                  background: '#ffffff', 
+                  borderRadius: '8px', 
+                  border: '1px solid #e2e8f0' 
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div className="avatar-circle" style={{ 
+                      width: '32px', 
+                      height: '32px', 
+                      fontSize: '0.75rem',
+                      background: rec.role === 'SUPERVISOR' ? '#059669' : '#d97706' 
+                    }}>
+                      {rec.role === 'SUPERVISOR' ? 'TV' : 'ĐT'}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: '700', fontSize: '0.88rem', color: '#0f172a' }}>
+                        {rec.fullName}
+                        {rec.uid === currentUser?.uid && (
+                          <span style={{ marginLeft: '6px', fontSize: '0.72rem', background: '#e0e7ff', color: '#3730a3', padding: '2px 6px', borderRadius: '4px' }}>
+                            (Bạn)
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                        {rec.position} • {rec.company}
+                      </div>
+                    </div>
+                  </div>
+
+                  <span className="badge-status badge-confirmed" style={{ fontSize: '0.75rem', padding: '3px 8px' }}>
+                    {rec.role === 'SUPERVISOR' ? 'Đại diện TVGS' : 'Đại diện CĐT'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* HƯỚNG DẪN ĐỒNG BỘ VỚI BIÊN BẢN */}
+          <div style={{ 
+            background: '#f0fdf4', 
+            border: '1px solid #bbf7d0', 
+            borderRadius: '10px', 
+            padding: '12px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            color: '#166534',
+            fontSize: '0.85rem'
+          }}>
+            <Award size={20} color="#16a34a" style={{ flexShrink: 0 }} />
+            <div>
+              <strong>Biên bản nghiệm thu công việc xây dựng tương ứng đã được khởi tạo sẵn.</strong>
+              <div style={{ fontSize: '0.8rem', color: '#15803d', marginTop: '2px' }}>
+                TVGS và CĐT trực tiếp kiểm tra tại hiện trường và tiến hành nghiệm thu (Đồng ý hoặc Không đồng ý) trên biên bản.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* FOOTER ACTIONS */}
+        <div className="modal-footer">
+          <button className="btn-secondary" onClick={onClose}>
+            Đóng
+          </button>
+
+          <button 
+            className="btn-primary" 
+            style={{ background: '#059669' }}
+            onClick={() => {
+              onClose();
+              if (onOpenReport) {
+                onOpenReport(request.reportId || request.id, false);
+              }
+            }}
+          >
+            <Award size={16} />
+            <span>Mở Biên Bản Nghiệm Thu Để Đánh Giá</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

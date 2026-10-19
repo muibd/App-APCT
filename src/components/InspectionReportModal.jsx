@@ -1,0 +1,2936 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { 
+  X, Printer, CheckCircle2, ShieldCheck, Camera, MapPin, Clock, 
+  Download, PenTool, AlertCircle, AlertTriangle, Trash2, ImagePlus, 
+  Zap, RotateCcw, FileWarning, Eye, User, Wrench, Send, ChevronRight, XCircle
+} from 'lucide-react';
+import { STANDARD_CRITERIA_LIST } from '../data/mockData';
+import { triggerSafeConfetti } from '../utils/confettiHelper';
+import { compressImageFile } from '../utils/storageHelper';
+
+const SAMPLE_DEFECT_IMAGES = [
+  {
+    url: 'https://images.unsplash.com/photo-1590069261209-f8e9b8642343?auto=format&fit=crop&w=800&q=80',
+    caption: 'Cốt thép đai dầm bị xô lệch khoảng cách a220mm (yêu cầu thiết kế a150mm)',
+    gps: '10.0076° N, 105.7823° E (Tầng 2 Tháp A - Trục 1-13/A-D)',
+  },
+  {
+    url: 'https://images.unsplash.com/photo-1541888946425-d0fbb18615b3?auto=format&fit=crop&w=800&q=80',
+    caption: 'Mép cốp pha đáy dầm bị hở 15mm, chưa dọn sạch mạt sắt & rác hộc cốp pha',
+    gps: '10.0078° N, 105.7825° E (Đáy dầm trục D Tòa A)',
+  },
+  {
+    url: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=800&q=80',
+    caption: 'Thiếu con kê bảo vệ dầm sàn, cốt thép chạm ván khuôn không đảm bảo 25mm',
+    gps: '10.0075° N, 105.7821° E (Khu vực ô sàn S2 Tòa A)',
+  }
+];
+
+const SAMPLE_RECTIFIED_IMAGES = [
+  {
+    url: 'https://images.unsplash.com/photo-1541888946425-d0fbb18615b3?auto=format&fit=crop&w=800&q=80',
+    caption: 'Đã nắn chỉnh đai thép dầm D1 về đúng khoảng cách a150 theo bản vẽ BVTC-KC-12',
+    gps: '10.0076° N, 105.7823° E (Tầng 2 Tháp A - Trục 1-13/A-D)',
+  },
+  {
+    url: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=800&q=80',
+    caption: 'Đã kê bổ sung con kê bê tông bảo vệ dày 25mm và vệ sinh sạch đáy cốp pha',
+    gps: '10.0078° N, 105.7825° E (Khu vực đáy dầm sàn Tòa A)',
+  }
+];
+
+const COMMON_DEFECT_CHIPS = [
+  'Cốt thép sai khoảng cách, đai dầm a200 thay vì a150',
+  'Thiếu con kê lớp bê tông bảo vệ (dưới 25mm)',
+  'Sai lệch tim trục định vị dầm/cột vượt dung sai cho phép',
+  'Cốp pha hở mép, rò rỉ nước xi măng, chưa vệ sinh sạch',
+  'Thiếu thép tăng cường vị trí gối dầm và lỗ mở sàn',
+  'Chưa có kết quả thí nghiệm nén mẫu / chứng chỉ xuất xưởng'
+];
+
+const COMMON_RECTIFIED_CHIPS = [
+  'Đã nắn chỉnh lại khoảng cách đai thép đúng a150 theo thiết kế',
+  'Đã kê bổ sung đầy đủ con kê bê tông bảo vệ đạt độ dày 25mm',
+  'Đã kiểm tra lại tim trục định vị dầm cột bằng máy toàn đạc Leica đạt dung sai',
+  'Đã bịt kín các khe hở cốp pha và dọn sạch mạt sắt, rác trước khi đổ bê tông',
+  'Đã bổ sung chứng chỉ xuất xưởng và kết quả thí nghiệm nén mẫu bê tông'
+];
+
+export default function InspectionReportModal({ 
+  isOpen, 
+  onClose, 
+  report, 
+  currentRole, 
+  currentUser,
+  onSaveReport,
+  onRejectReport,
+  onReinspectReport,
+  onResubmitReport,
+  initialOpenRectify = false
+}) {
+  // Tabs: 'DOCUMENT' | 'EVIDENCE' | 'DEFECTS' | 'RECTIFIED'
+  const isInitiallyRectified = report?.status === 'RECTIFIED';
+  const [activeTab, setActiveTab] = useState(
+    isInitiallyRectified ? 'RECTIFIED' : 'DOCUMENT'
+  );
+  const [reportState, setReportState] = useState(report || {});
+
+  // Digital Signatures state for 3 parties
+  const [signatures, setSignatures] = useState({
+    investor: report?.attendees?.investor?.signed || false,
+    supervisor: report?.attendees?.supervisor?.signed || false,
+    contractor: report?.attendees?.contractor?.signed || true
+  });
+
+  const [selectedStandards, setSelectedStandards] = useState(
+    report?.standardsApplied || STANDARD_CRITERIA_LIST.map(s => `${s.code} ${s.title}`)
+  );
+
+  // Modal Từ chối nghiệm thu state
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState(reportState?.conclusion?.rejectionReason || '');
+  const [repairRequired, setRepairRequired] = useState(reportState?.conclusion?.repairRequired || '');
+  const [repairDeadline, setRepairDeadline] = useState(reportState?.conclusion?.deadline || 'Trước 17h00 ngày hôm nay');
+  const [defectPhotos, setDefectPhotos] = useState(reportState?.defectPhotos || []);
+
+  // Modal Báo cáo khắc phục lỗi (Dành cho ĐVTC)
+  const [isRectifyModalOpen, setIsRectifyModalOpen] = useState(Boolean(initialOpenRectify));
+  const [rectifyDesc, setRectifyDesc] = useState(reportState?.rectification?.description || '');
+  const [rectifyPhotos, setRectifyPhotos] = useState(reportState?.rectification?.photos || []);
+  const [suggestedTime, setSuggestedTime] = useState(reportState?.rectification?.suggestedTime || '16h30 ngày hôm nay');
+
+  // Kiểm tra trạng thái ký số độc lập của 3 bên
+  const isSupervisorSigned = Boolean(signatures?.supervisor || reportState?.attendees?.supervisor?.signed);
+  const isInvestorSigned = Boolean(signatures?.investor || reportState?.attendees?.investor?.signed);
+  const isContractorSigned = Boolean(signatures?.contractor || reportState?.attendees?.contractor?.signed !== false);
+
+  // Trạng thái hoàn tất nghiệm thu đủ điều kiện:
+  // CHỈ hoàn tất khi status là 'COMPLETED' HOẶC cả 3 bên độc lập đều đã ký số!
+  const isCompleted = 
+    reportState?.status === 'COMPLETED' || 
+    report?.status === 'COMPLETED' || 
+    (isSupervisorSigned && isInvestorSigned && isContractorSigned);
+
+  // Trạng thái chờ CĐT phê duyệt (sau khi TVGS đã duyệt đạt):
+  const isWaitingInvestor = !isCompleted && (
+    reportState?.status === 'WAITING_INVESTOR' ||
+    report?.status === 'WAITING_INVESTOR' ||
+    (isSupervisorSigned && !isInvestorSigned && reportState?.conclusion?.isAccepted !== false)
+  );
+
+  // Trạng thái từ chối & đã sửa chữa (CHỈ KHI CHƯA HOÀN THÀNH VÀ CHƯA ĐƯỢC DUYỆT ĐẠT):
+  const isRectified = !isCompleted && !isWaitingInvestor && (
+    reportState?.status === 'RECTIFIED' || 
+    report?.status === 'RECTIFIED'
+  );
+  const isRejected = !isCompleted && !isWaitingInvestor && !isRectified && (
+    reportState?.status === 'REJECTED' || 
+    report?.status === 'REJECTED' ||
+    reportState?.conclusion?.isAccepted === false
+  );
+  const rejectionInfo = reportState?.conclusion?.rejectedBy || null;
+
+  const cameraInputRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const cameraRectifyRef = useRef(null);
+  const fileRectifyRef = useRef(null);
+  const cameraEvidenceRef = useRef(null);
+  const fileEvidenceRef = useRef(null);
+  const [evidencePhotos, setEvidencePhotos] = useState(report?.evidencePhotos || []);
+  
+  // Tùy chọn in: Mặc định FALSE để xuất nhanh đúng 1 trang Biên bản A4 chuẩn pháp lý, tránh treo Print Preview vì ảnh lớn
+  const [includePhotosInPrint, setIncludePhotosInPrint] = useState(false);
+  const totalPhotos = (evidencePhotos?.length || 0) + (defectPhotos?.length || 0) + (rectifyPhotos?.length || 0);
+
+  // Sync when report prop changes
+  useEffect(() => {
+    if (!report) return;
+    setReportState(report);
+
+    // Đồng bộ lại chữ ký theo dữ liệu report hiện hành
+    setSignatures({
+      investor: Boolean(report.attendees?.investor?.signed),
+      supervisor: Boolean(report.attendees?.supervisor?.signed),
+      contractor: report.attendees?.contractor?.signed !== false
+    });
+
+    if (report.evidencePhotos) {
+      setEvidencePhotos(report.evidencePhotos);
+    } else {
+      setEvidencePhotos([]);
+    }
+
+    setRejectReason(report.conclusion?.rejectionReason || '');
+    setRepairRequired(report.conclusion?.repairRequired || '');
+    setRepairDeadline(report.conclusion?.deadline || 'Trước 17h00 ngày hôm nay');
+    setDefectPhotos(report.defectPhotos || []);
+
+    // Đồng bộ thông tin đã khắc phục (nếu có)
+    if (report.rectification) {
+      setRectifyDesc(report.rectification.description || '');
+      const existingPhotos = report.rectification?.photos;
+      const validPhotos = (Array.isArray(existingPhotos) && existingPhotos.length > 0)
+        ? existingPhotos
+        : SAMPLE_RECTIFIED_IMAGES;
+      setRectifyPhotos(validPhotos);
+      setSuggestedTime(report.rectification?.suggestedTime || '');
+    }
+
+    // NẾU REPORT ĐÃ HOÀN TẤT HOẶC ĐANG CHỜ CĐT PHÊ DUYỆT:
+    // Tuyệt đối giữ nguyên trạng thái, không ép thành RECTIFIED!
+    if (report.status === 'COMPLETED' || report.status === 'WAITING_INVESTOR') {
+      setIsRectifyModalOpen(false);
+      return;
+    }
+
+    if (report.status === 'RECTIFIED') {
+      const desc = report.rectification?.description || report.rectificationNotes || 'Đã sửa chữa khắc phục theo đúng yêu cầu';
+      setRectifyDesc(desc);
+
+      const existingPhotos = report.rectification?.photos;
+      const validPhotos = (Array.isArray(existingPhotos) && existingPhotos.length > 0)
+        ? existingPhotos
+        : SAMPLE_RECTIFIED_IMAGES;
+
+      setRectifyPhotos(validPhotos);
+      setSuggestedTime(report.rectification?.suggestedTime || '16h30 ngày hôm nay');
+      
+      setActiveTab('RECTIFIED');
+      setIsRectifyModalOpen(false);
+    } else if (report.status === 'REJECTED' || report.conclusion?.isAccepted === false) {
+      setRectifyDesc('');
+      setRectifyPhotos([]);
+      setActiveTab('DOCUMENT');
+      if (initialOpenRectify) {
+        setIsRectifyModalOpen(true);
+      } else {
+        setIsRectifyModalOpen(false);
+      }
+    } else if (initialOpenRectify) {
+      setIsRectifyModalOpen(true);
+    } else {
+      setIsRectifyModalOpen(false);
+    }
+  }, [report, initialOpenRectify]);
+
+  const toggleStandard = (text) => {
+    setSelectedStandards(prev => 
+      prev.includes(text) ? prev.filter(t => t !== text) : [...prev, text]
+    );
+  };
+
+  const handleSign = (party) => {
+    const nextSignatures = { ...signatures, [party]: true };
+    setSignatures(nextSignatures);
+
+    const now = new Date().toISOString();
+    const nowFormatted = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('vi-VN');
+
+    // Cả 3 bên ký số độc lập: Chỉ khi cả 3 bên đều hoàn thành thì mới là COMPLETED
+    const isAllSigned = 
+      (party === 'investor' || nextSignatures.investor) &&
+      (party === 'supervisor' || nextSignatures.supervisor) &&
+      (party === 'contractor' || nextSignatures.contractor !== false);
+
+    const updated = {
+      ...reportState,
+      attendees: {
+        ...reportState.attendees,
+        [party]: {
+          ...reportState.attendees?.[party],
+          signed: true,
+          signedAt: nowFormatted
+        }
+      },
+      status: isAllSigned ? 'COMPLETED' : (party === 'supervisor' ? 'WAITING_INVESTOR' : (reportState.status || 'PENDING_APPROVAL')),
+      updatedAt: now
+    };
+    setReportState(updated);
+
+    if (onSaveReport) {
+      onSaveReport(updated);
+    }
+
+    if (isAllSigned) {
+      triggerSafeConfetti();
+    }
+  };
+
+  // Tự động lắng nghe sự kiện In từ trình duyệt (Ctrl+P / Cmd+P)
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleBeforePrint = () => {
+      document.body.classList.remove('modal-open');
+      document.documentElement.classList.remove('modal-open');
+      if (activeTab !== 'DOCUMENT') {
+        setActiveTab('DOCUMENT');
+      }
+    };
+
+    const handleAfterPrint = () => {
+      if (document.querySelector('.modal-overlay')) {
+        document.body.classList.add('modal-open');
+        document.documentElement.classList.add('modal-open');
+      }
+    };
+
+    window.addEventListener('beforeprint', handleBeforePrint);
+    window.addEventListener('afterprint', handleAfterPrint);
+
+    return () => {
+      window.removeEventListener('beforeprint', handleBeforePrint);
+      window.removeEventListener('afterprint', handleAfterPrint);
+    };
+  }, [isOpen, activeTab]);
+
+  const handlePrint = () => {
+    // 1. Tạm gỡ class modal-open để layout trang web mở khóa hoàn toàn cho print engine
+    document.body.classList.remove('modal-open');
+    document.documentElement.classList.remove('modal-open');
+
+    const executePrint = () => {
+      window.print();
+
+      // Sau khi đóng hộp thoại in thì phục hồi lại class modal-open
+      setTimeout(() => {
+        if (document.querySelector('.modal-overlay')) {
+          document.body.classList.add('modal-open');
+          document.documentElement.classList.add('modal-open');
+        }
+      }, 400);
+    };
+
+    if (activeTab !== 'DOCUMENT') {
+      setActiveTab('DOCUMENT');
+      setTimeout(executePrint, 250);
+    } else {
+      setTimeout(executePrint, 60);
+    }
+  };
+
+  // Thêm ảnh chụp lỗi từ Camera hoặc Thư viện (Tự động nén tối ưu & Lưu tức thì)
+  const handleFileCapture = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    const newPhotos = [];
+    for (const file of files) {
+      const compressedUrl = await compressImageFile(file);
+      if (!compressedUrl) continue;
+      const now = new Date();
+      const timeStr = `${now.toLocaleTimeString('vi-VN')} ngày ${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
+      newPhotos.push({
+        id: `defect_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        url: compressedUrl,
+        caption: file.name ? `Hiện trường lỗi: ${file.name.replace(/\.[^/.]+$/, '')}` : 'Hiện trường kiểm tra không đạt',
+        gps: '10.0076° N, 105.7823° E (P. Thường Thạnh, TP. Cần Thơ)',
+        time: timeStr,
+        photographer: `${currentUser?.fullName || 'Kỹ sư'} (${currentRole === 'SUPERVISOR' ? 'TVGS' : currentRole === 'INVESTOR' ? 'CĐT' : 'QLDA'})`
+      });
+    }
+
+    if (newPhotos.length > 0) {
+      setDefectPhotos(prev => {
+        const next = [...newPhotos, ...prev];
+        const updated = {
+          ...reportState,
+          defectPhotos: next,
+          updatedAt: new Date().toISOString()
+        };
+        setReportState(updated);
+        if (onSaveReport) onSaveReport(updated);
+        return next;
+      });
+    }
+    e.target.value = '';
+  };
+
+  // Thêm ảnh chụp đã sửa từ Camera hoặc Thư viện (Tự động nén tối ưu & Lưu tức thì)
+  const handleFileCaptureRectify = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    const newPhotos = [];
+    for (const file of files) {
+      const compressedUrl = await compressImageFile(file);
+      if (!compressedUrl) continue;
+      const now = new Date();
+      const timeStr = `${now.toLocaleTimeString('vi-VN')} ngày ${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
+      newPhotos.push({
+        id: `rectify_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        url: compressedUrl,
+        caption: file.name ? `Ảnh sửa chữa: ${file.name.replace(/\.[^/.]+$/, '')}` : 'Hiện trường sau khi khắc phục xong',
+        gps: '10.0076° N, 105.7823° E (P. Thường Thạnh, TP. Cần Thơ)',
+        time: timeStr,
+        photographer: `${currentUser?.fullName || 'KS. Lê Văn Kỹ Thuật'} (ĐVTC An Phú Gia)`
+      });
+    }
+
+    if (newPhotos.length > 0) {
+      setRectifyPhotos(prev => {
+        const next = [...newPhotos, ...prev];
+        const updated = {
+          ...reportState,
+          rectification: {
+            ...(reportState.rectification || {}),
+            photos: next
+          },
+          updatedAt: new Date().toISOString()
+        };
+        setReportState(updated);
+        if (onSaveReport) onSaveReport(updated);
+        return next;
+      });
+    }
+    e.target.value = '';
+  };
+
+  // Thêm ảnh mẫu lỗi
+  const handleAddSampleDefectPhoto = () => {
+    const sample = SAMPLE_DEFECT_IMAGES[defectPhotos.length % SAMPLE_DEFECT_IMAGES.length];
+    const now = new Date();
+    const timeStr = `${now.toLocaleTimeString('vi-VN')} ngày ${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
+    const newPhoto = {
+      id: `defect_sample_${Date.now()}`,
+      url: sample.url,
+      caption: sample.caption,
+      gps: sample.gps,
+      time: timeStr,
+      photographer: `${currentUser?.fullName || 'Kỹ sư'} (${currentRole === 'SUPERVISOR' ? 'TVGS' : currentRole === 'INVESTOR' ? 'CĐT' : 'QLDA'})`
+    };
+    setDefectPhotos(prev => {
+      const next = [newPhoto, ...prev];
+      const updated = {
+        ...reportState,
+        defectPhotos: next,
+        updatedAt: new Date().toISOString()
+      };
+      setReportState(updated);
+      if (onSaveReport) onSaveReport(updated);
+      return next;
+    });
+  };
+
+  // Thêm ảnh mẫu đã sửa chữa (kèm GPS)
+  const handleAddSampleRectifyPhoto = () => {
+    const sample = SAMPLE_RECTIFIED_IMAGES[rectifyPhotos.length % SAMPLE_RECTIFIED_IMAGES.length];
+    const now = new Date();
+    const timeStr = `${now.toLocaleTimeString('vi-VN')} ngày ${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
+    const newPhoto = {
+      id: `rectify_sample_${Date.now()}`,
+      url: sample.url,
+      caption: sample.caption,
+      gps: sample.gps,
+      time: timeStr,
+      photographer: `${currentUser?.fullName || 'KS. Lê Văn Kỹ Thuật'} (ĐVTC An Phú Gia)`
+    };
+    setRectifyPhotos(prev => {
+      const next = [newPhoto, ...prev];
+      const updated = {
+        ...reportState,
+        rectification: {
+          ...(reportState.rectification || {}),
+          photos: next
+        },
+        updatedAt: new Date().toISOString()
+      };
+      setReportState(updated);
+      if (onSaveReport) onSaveReport(updated);
+      return next;
+    });
+  };
+
+  const handleDeletePhoto = (photoId) => {
+    setDefectPhotos(prev => {
+      const next = prev.filter(p => p.id !== photoId);
+      const updated = {
+        ...reportState,
+        defectPhotos: next,
+        updatedAt: new Date().toISOString()
+      };
+      setReportState(updated);
+      if (onSaveReport) onSaveReport(updated);
+      return next;
+    });
+  };
+
+  const handleDeleteRectifyPhoto = (photoId) => {
+    setRectifyPhotos(prev => {
+      const next = prev.filter(p => p.id !== photoId);
+      const updated = {
+        ...reportState,
+        rectification: {
+          ...(reportState.rectification || {}),
+          photos: next
+        },
+        updatedAt: new Date().toISOString()
+      };
+      setReportState(updated);
+      if (onSaveReport) onSaveReport(updated);
+      return next;
+    });
+  };
+
+  // Quản lý ảnh nghiệm thu hiện trường (Tự động nén tối ưu)
+  const handleCaptureEvidencePhoto = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    for (const file of files) {
+      const compressedUrl = await compressImageFile(file);
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} ${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+      const newPhoto = {
+        id: `evidence_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        url: compressedUrl,
+        caption: file.name ? `Hiện trường: ${file.name.replace(/\.[^/.]+$/, '')}` : 'Hình ảnh nghiệm thu hiện trường',
+        gps: '10.0076° N, 105.7823° E (P. Thường Thạnh, TP. Cần Thơ)',
+        time: timeStr,
+        photographer: `${currentUser?.fullName || 'Kỹ sư'} (${currentRole === 'SUPERVISOR' ? 'TVGS' : currentRole === 'INVESTOR' ? 'CĐT' : 'ĐVTC'})`
+      };
+      setEvidencePhotos(prev => {
+        const next = [...prev, newPhoto];
+        const updated = { ...reportState, evidencePhotos: next };
+        setReportState(updated);
+        if (onSaveReport) onSaveReport(updated);
+        return next;
+      });
+    }
+    e.target.value = '';
+  };
+
+  const handleAddSampleEvidencePhoto = () => {
+    const sample = SAMPLE_DEFECT_IMAGES[evidencePhotos.length % SAMPLE_DEFECT_IMAGES.length] || SAMPLE_RECTIFIED_IMAGES[0];
+    const now = new Date();
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} ${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+    const newPhoto = {
+      id: `evidence_sample_${Date.now()}`,
+      url: sample.url,
+      caption: sample.caption,
+      gps: sample.gps,
+      time: timeStr,
+      photographer: `${currentUser?.fullName || 'Kỹ sư'} (${currentRole === 'SUPERVISOR' ? 'TVGS' : currentRole === 'INVESTOR' ? 'CĐT' : 'ĐVTC'})`
+    };
+    setEvidencePhotos(prev => {
+      const next = [...prev, newPhoto];
+      const updated = { ...reportState, evidencePhotos: next };
+      setReportState(updated);
+      if (onSaveReport) onSaveReport(updated);
+      return next;
+    });
+  };
+
+  const handleDeleteEvidencePhoto = (photoId) => {
+    setEvidencePhotos(prev => {
+      const next = prev.filter(p => p.id !== photoId);
+      const updated = { ...reportState, evidencePhotos: next };
+      setReportState(updated);
+      if (onSaveReport) onSaveReport(updated);
+      return next;
+    });
+  };
+
+  const handleUpdateEvidenceCaption = (photoId, newCaption) => {
+    setEvidencePhotos(prev => {
+      const next = prev.map(p => p.id === photoId ? { ...p, caption: newCaption } : p);
+      const updated = { ...reportState, evidencePhotos: next };
+      setReportState(updated);
+      if (onSaveReport) onSaveReport(updated);
+      return next;
+    });
+  };
+
+  const handleAddChipToReason = (chipText) => {
+    if (!rejectReason.trim()) {
+      setRejectReason(chipText);
+    } else if (!rejectReason.includes(chipText)) {
+      setRejectReason(prev => `${prev}; ${chipText}`);
+    }
+  };
+
+  const handleAddChipToRectify = (chipText) => {
+    if (!rectifyDesc.trim()) {
+      setRectifyDesc(chipText);
+    } else if (!rectifyDesc.includes(chipText)) {
+      setRectifyDesc(prev => `${prev}; ${chipText}`);
+    }
+  };
+
+  // Xác nhận Không đồng ý nghiệm thu
+  const handleConfirmReject = () => {
+    if (!rejectReason.trim()) {
+      alert('Vui lòng nhập lý do không nghiệm thu để lập biên bản!');
+      return;
+    }
+
+    const now = new Date();
+    const timeStr = `${now.toLocaleTimeString('vi-VN')} ngày ${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
+
+    const rejectPayload = {
+      rejectionReason: rejectReason.trim(),
+      repairRequired: repairRequired.trim() || 'Yêu cầu ĐVTC căn chỉnh, khắc phục triệt để các tồn tại kỹ thuật và dọn vệ sinh trước khi mời nghiệm thu lại.',
+      deadline: repairDeadline.trim() || 'Trước 17h00 ngày hôm nay',
+      rejectedBy: {
+        name: currentUser?.fullName || 'Cán bộ kiểm tra',
+        role: currentRole,
+        roleTitle: currentRole === 'SUPERVISOR' ? 'Tư Vấn Giám Sát' : currentRole === 'INVESTOR' ? 'Đại Diện Chủ Đầu Tư' : 'Quản Trị Viên',
+        company: currentUser?.company || 'Ban QLDA / GELICON',
+        timestamp: timeStr
+      },
+      defectPhotos: defectPhotos
+    };
+
+    // Lưu lại lịch sử khắc phục của lần trước (nếu có) vào rectificationHistory để không bị mất minh chứng ảnh
+    const previousHistory = reportState?.rectificationHistory || [];
+    const updatedHistory = reportState?.rectification 
+      ? [...previousHistory, { ...reportState.rectification, rejectedAt: timeStr, rejectionReason: rejectPayload.rejectionReason }]
+      : previousHistory;
+
+    // QUAN TRỌNG THEO SƠ ĐỒ HOẠT ĐỘNG:
+    // Nếu Chủ đầu tư từ chối: TVGS đã nghiệm thu đạt trước đó nên chữ ký của TVGS vẫn giữ nguyên!
+    // Nếu TVGS từ chối: Cả TVGS và CĐT đều chưa ký.
+    const isSupervisorAlreadySigned = Boolean(signatures.supervisor || reportState.attendees?.supervisor?.signed);
+    const keepSupervisorSigned = currentRole === 'INVESTOR' ? isSupervisorAlreadySigned : false;
+
+    const updated = {
+      ...reportState,
+      conclusion: {
+        ...reportState.conclusion,
+        isAccepted: false,
+        rejectionReason: rejectPayload.rejectionReason,
+        repairRequired: rejectPayload.repairRequired,
+        deadline: rejectPayload.deadline,
+        rejectedBy: rejectPayload.rejectedBy
+      },
+      attendees: {
+        ...reportState.attendees,
+        supervisor: {
+          ...reportState.attendees?.supervisor,
+          signed: keepSupervisorSigned
+        },
+        investor: {
+          ...reportState.attendees?.investor,
+          signed: false
+        }
+      },
+      defectPhotos: defectPhotos,
+      status: 'REJECTED',
+      rectification: null,
+      rectificationHistory: updatedHistory
+    };
+
+    setReportState(updated);
+    setSignatures(prev => ({
+      ...prev,
+      supervisor: keepSupervisorSigned,
+      investor: false
+    }));
+    setRectifyDesc('');
+    setRectifyPhotos([]);
+    setIsRejectModalOpen(false);
+    setActiveTab('DOCUMENT');
+
+    if (onRejectReport) {
+      onRejectReport(reportState.id || report?.id, { ...rejectPayload, rectificationHistory: updatedHistory, keepSupervisorSigned });
+    }
+  };
+
+  // Xác nhận ĐVTC Gửi ảnh sửa & Mời nghiệm thu lại
+  const handleConfirmRectification = () => {
+    if (!rectifyDesc.trim()) {
+      alert('Vui lòng nhập nội dung biện pháp đã sửa chữa, khắc phục!');
+      return;
+    }
+
+    const now = new Date();
+    const timeStr = `${now.toLocaleTimeString('vi-VN')} ngày ${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
+
+    // Xác định đúng người nhận theo sơ đồ hoạt động:
+    // CĐT từ chối -> gửi trực tiếp cho CĐT
+    // TVGS từ chối -> gửi cho TVGS
+    const targetReviewer = reportState?.conclusion?.rejectedBy?.role === 'INVESTOR' ? 'INVESTOR' : 'SUPERVISOR';
+
+    // Đảm bảo luôn có ảnh đính kèm (nếu chưa tải -> tự động lấy ảnh mẫu hiện trường làm bằng chứng)
+    const finalPhotos = (rectifyPhotos && rectifyPhotos.length > 0)
+      ? rectifyPhotos
+      : SAMPLE_RECTIFIED_IMAGES.map((img, i) => ({
+          ...img,
+          id: `rectify_auto_${Date.now()}_${i}`,
+          time: timeStr,
+          photographer: `${currentUser?.fullName || 'KS. Lê Văn Kỹ Thuật'} (ĐVTC An Phú Gia)`
+        }));
+
+    const rectificationPayload = {
+      description: rectifyDesc.trim(),
+      photos: finalPhotos,
+      suggestedTime: suggestedTime || '16h30 ngày hôm nay',
+      target: targetReviewer,
+      submittedBy: {
+        name: currentUser?.fullName || 'KS. Lê Văn Kỹ Thuật',
+        role: currentRole,
+        roleTitle: 'Kỹ Thuật Đơn Vị Thi Công',
+        company: currentUser?.company || 'Công ty CP Xây dựng An Phú Gia',
+        timestamp: timeStr
+      }
+    };
+
+    const updated = {
+      ...reportState,
+      status: 'RECTIFIED',
+      rectification: rectificationPayload
+    };
+
+    setReportState(updated);
+    setRectifyPhotos(finalPhotos);
+    setIsRectifyModalOpen(false);
+    setActiveTab('RECTIFIED'); // Chuyển sang tab xem ảnh sửa chữa
+
+    const targetReportId = reportState.id || report?.id;
+    if (onResubmitReport) {
+      onResubmitReport(targetReportId, rectificationPayload, updated);
+    }
+  };
+
+  // TVGS Chấp thuận nghiệm thu lại sau sửa chữa -> Chuyển sang Chủ đầu tư phê duyệt
+  const handleReinspectSupervisor = () => {
+    const now = new Date().toISOString();
+    const nowFormatted = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('vi-VN');
+
+    const updated = {
+      ...reportState,
+      conclusion: {
+        ...reportState.conclusion,
+        isAccepted: true,
+        repairRequired: 'TVGS đã kiểm tra và nghiệm thu đạt sau sửa chữa',
+        otherRequirements: 'Chuyển Chủ đầu tư kiểm tra và phê duyệt'
+      },
+      attendees: {
+        ...reportState.attendees,
+        supervisor: {
+          ...reportState.attendees?.supervisor,
+          signed: true,
+          signedAt: nowFormatted
+        },
+        investor: {
+          ...reportState.attendees?.investor,
+          signed: false // CĐT chưa ký, chờ CĐT kiểm tra!
+        },
+        contractor: {
+          ...reportState.attendees?.contractor,
+          signed: true
+        }
+      },
+      status: 'WAITING_INVESTOR',
+      updatedAt: now
+    };
+
+    setSignatures(prev => ({
+      ...prev,
+      supervisor: true,
+      investor: false,
+      contractor: true
+    }));
+    setReportState(updated);
+    setActiveTab('DOCUMENT');
+
+    const targetReportId = reportState.id || report?.id;
+    if (onReinspectReport) {
+      onReinspectReport(targetReportId, updated);
+    } else if (onSaveReport) {
+      onSaveReport(updated);
+    }
+  };
+
+  // CĐT Chấp thuận nghiệm thu lại sau sửa chữa -> Cả 3 bên hoàn tất nghiệm thu & ký số
+  const handleReinspectInvestor = () => {
+    const now = new Date().toISOString();
+    const nowFormatted = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('vi-VN');
+
+    const updated = {
+      ...reportState,
+      conclusion: {
+        ...reportState.conclusion,
+        isAccepted: true,
+        repairRequired: 'Đã hoàn thành khắc phục các tồn tại kỹ thuật và nghiệm thu đạt',
+        otherRequirements: 'Đạt yêu cầu nghiệm thu sau sửa chữa'
+      },
+      attendees: {
+        ...reportState.attendees,
+        supervisor: {
+          ...reportState.attendees?.supervisor,
+          signed: true,
+          signedAt: reportState.attendees?.supervisor?.signedAt || nowFormatted
+        },
+        investor: {
+          ...reportState.attendees?.investor,
+          signed: true,
+          signedAt: nowFormatted
+        },
+        contractor: {
+          ...reportState.attendees?.contractor,
+          signed: true
+        }
+      },
+      status: 'COMPLETED',
+      updatedAt: now
+    };
+
+    setSignatures({
+      investor: true,
+      supervisor: true,
+      contractor: true
+    });
+    setReportState(updated);
+    setActiveTab('DOCUMENT');
+
+    triggerSafeConfetti();
+
+    const targetReportId = reportState.id || report?.id;
+    if (onReinspectReport) {
+      onReinspectReport(targetReportId, updated);
+    } else if (onSaveReport) {
+      onSaveReport(updated);
+    }
+  };
+
+  // Phân luồng kiểm tra lại sau sửa chữa chuẩn theo vai trò:
+  // - Nếu CĐT từ chối hoặc người dùng là INVESTOR -> CĐT nghiệm thu đạt & hoàn tất
+  // - Nếu TVGS từ chối hoặc người dùng là TVGS -> TVGS nghiệm thu đạt & chuyển sang CĐT
+  const handleReinspect = () => {
+    const isInvestorReview = 
+      reportState?.status === 'WAITING_INVESTOR' || 
+      reportState?.rectification?.target === 'INVESTOR' || 
+      reportState?.conclusion?.rejectedBy?.role === 'INVESTOR' || 
+      currentRole === 'INVESTOR';
+
+    if (isInvestorReview) {
+      handleReinspectInvestor();
+    } else {
+      handleReinspectSupervisor();
+    }
+  };
+
+  if (!isOpen || !report) return null;
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content" style={{ maxWidth: '960px', height: '94vh' }}>
+        {/* Persistent Hidden File Inputs for Cameras and File Uploads */}
+        <input type="file" accept="image/*" capture="environment" ref={cameraInputRef} style={{ display: 'none' }} onChange={handleFileCapture} />
+        <input type="file" accept="image/*" multiple ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileCapture} />
+        <input type="file" accept="image/*" capture="environment" ref={cameraRectifyRef} style={{ display: 'none' }} onChange={handleFileCaptureRectify} />
+        <input type="file" accept="image/*" multiple ref={fileRectifyRef} style={{ display: 'none' }} onChange={handleFileCaptureRectify} />
+        <input type="file" accept="image/*" capture="environment" ref={cameraEvidenceRef} style={{ display: 'none' }} onChange={handleCaptureEvidencePhoto} />
+        <input type="file" accept="image/*" multiple ref={fileEvidenceRef} style={{ display: 'none' }} onChange={handleCaptureEvidencePhoto} />
+
+        {/* MODAL HEADER */}
+        <div className="modal-header no-print" style={{ background: '#f8fafc' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ 
+              background: isCompleted ? '#ecfdf5' : isRectified ? '#f3e8ff' : isRejected ? '#fee2e2' : '#ecfdf5', 
+              padding: '8px', 
+              borderRadius: '10px', 
+              color: isCompleted ? '#059669' : isRectified ? '#7c3aed' : isRejected ? '#dc2626' : '#10b981' 
+            }}>
+              {isCompleted ? <ShieldCheck size={20} /> : isRectified ? <RotateCcw size={20} /> : isRejected ? <AlertTriangle size={20} /> : <ShieldCheck size={20} />}
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <h3 style={{ margin: 0, fontSize: '1.2rem' }}>
+                  Biên Bản Nghiệm Thu Công Việc Xây Dựng
+                </h3>
+                {isCompleted ? (
+                  <span style={{ 
+                    background: '#059669', 
+                    color: '#ffffff', 
+                    fontSize: '0.72rem', 
+                    fontWeight: 700, 
+                    padding: '2px 8px', 
+                    borderRadius: '4px' 
+                  }}>
+                    ✓ ĐÃ HOÀN TẤT NGHIỆM THU
+                  </span>
+                ) : isWaitingInvestor ? (
+                  <span style={{ 
+                    background: '#2563eb', 
+                    color: '#ffffff', 
+                    fontSize: '0.72rem', 
+                    fontWeight: 700, 
+                    padding: '2px 8px', 
+                    borderRadius: '4px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}>
+                    ⏳ CHỜ CHỦ ĐẦU TƯ PHÊ DUYỆT
+                  </span>
+                ) : isRectified ? (
+                  <span style={{ 
+                    background: '#7c3aed', 
+                    color: '#ffffff', 
+                    fontSize: '0.72rem', 
+                    fontWeight: 700, 
+                    padding: '2px 8px', 
+                    borderRadius: '4px' 
+                  }}>
+                    🔄 ĐÃ SỬA - CHỜ NGHIỆM THU LẠI
+                  </span>
+                ) : isRejected && (
+                  <span style={{ 
+                    background: '#ef4444', 
+                    color: '#ffffff', 
+                    fontSize: '0.72rem', 
+                    fontWeight: 700, 
+                    padding: '2px 8px', 
+                    borderRadius: '4px' 
+                  }}>
+                    KHÔNG ĐẠT NGHIỆM THU
+                  </span>
+                )}
+              </div>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>
+                Mã biên bản: <strong>{reportState.reportNumber}</strong> • Căn cứ: Nghị định 06/2021/NĐ-CP
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {totalPhotos > 0 && (
+              <label 
+                className="no-print" 
+                style={{ 
+                  display: 'inline-flex', 
+                  alignItems: 'center', 
+                  gap: '6px', 
+                  fontSize: '0.78rem', 
+                  color: includePhotosInPrint ? '#1d4ed8' : '#64748b', 
+                  cursor: 'pointer',
+                  background: includePhotosInPrint ? '#eff6ff' : '#ffffff',
+                  padding: '5px 10px',
+                  borderRadius: '6px',
+                  border: includePhotosInPrint ? '1.5px solid #3b82f6' : '1px solid #cbd5e1',
+                  fontWeight: includePhotosInPrint ? 700 : 500,
+                  userSelect: 'none'
+                }}
+                title="Tích chọn để in kèm phụ lục ảnh hiện trường / Bỏ tích để in nhanh đúng 1 trang Biên bản A4"
+              >
+                <input 
+                  type="checkbox" 
+                  checked={includePhotosInPrint} 
+                  onChange={(e) => setIncludePhotosInPrint(e.target.checked)}
+                  style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: '#2563eb' }}
+                />
+                <span>In kèm ảnh ({totalPhotos})</span>
+              </label>
+            )}
+            <button className="btn-secondary" onClick={handlePrint} style={{ padding: '6px 12px', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <Printer size={15} />
+              <span>{includePhotosInPrint ? 'In A4 + Ảnh' : 'In A4 Biên Bản'}</span>
+            </button>
+            <button className="modal-close-btn" onClick={onClose}><X size={20} /></button>
+          </div>
+        </div>
+
+        {/* Tab switchers */}
+        <div className="report-modal-tabs no-print" style={{ display: 'flex', background: '#f1f5f9', borderBottom: '1px solid #e2e8f0', padding: '0 24px', flexWrap: 'wrap' }}>
+          <button 
+            style={{
+              padding: '10px 18px',
+              border: 'none',
+              background: activeTab === 'DOCUMENT' ? '#ffffff' : 'transparent',
+              fontWeight: 700,
+              fontSize: '0.88rem',
+              color: activeTab === 'DOCUMENT' ? '#2563eb' : '#64748b',
+              borderBottom: activeTab === 'DOCUMENT' ? '2px solid #2563eb' : 'none',
+              cursor: 'pointer'
+            }}
+            onClick={() => setActiveTab('DOCUMENT')}
+          >
+            📄 Văn Bản Biên Bản A4 Chuẩn
+          </button>
+          <button 
+            style={{
+              padding: '10px 18px',
+              border: 'none',
+              background: activeTab === 'EVIDENCE' ? '#ffffff' : 'transparent',
+              fontWeight: 700,
+              fontSize: '0.88rem',
+              color: activeTab === 'EVIDENCE' ? '#2563eb' : '#64748b',
+              borderBottom: activeTab === 'EVIDENCE' ? '2px solid #2563eb' : 'none',
+              cursor: 'pointer'
+            }}
+            onClick={() => setActiveTab('EVIDENCE')}
+          >
+            📸 Ảnh Hiện Trường ({evidencePhotos.length})
+          </button>
+
+          {/* TAB ẢNH LỖI KHIẾM KHUYẾT */}
+          {(isRejected || defectPhotos.length > 0) && (
+            <button 
+              style={{
+                padding: '10px 18px',
+                border: 'none',
+                background: activeTab === 'DEFECTS' ? '#ffffff' : 'transparent',
+                fontWeight: 700,
+                fontSize: '0.88rem',
+                color: activeTab === 'DEFECTS' ? '#dc2626' : '#b91c1c',
+                borderBottom: activeTab === 'DEFECTS' ? '2px solid #dc2626' : 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+              onClick={() => setActiveTab('DEFECTS')}
+            >
+              <AlertCircle size={15} />
+              <span>Ảnh Lỗi Khiếm Khuyết ({defectPhotos.length})</span>
+            </button>
+          )}
+
+          {/* TAB BẰNG CHỨNG ĐÃ KHẮC PHỤC SỬA CHỮA (MỚI) */}
+          {(isRectified || Boolean(reportState?.rectification) || Boolean(report?.rectification) || rectifyPhotos.length > 0 || Boolean(rectifyDesc)) && (
+            <button 
+              style={{
+                padding: '10px 18px',
+                border: 'none',
+                background: activeTab === 'RECTIFIED' ? '#ffffff' : 'transparent',
+                fontWeight: 700,
+                fontSize: '0.88rem',
+                color: activeTab === 'RECTIFIED' ? '#7c3aed' : '#6d28d9',
+                borderBottom: activeTab === 'RECTIFIED' ? '2px solid #7c3aed' : 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+              onClick={() => setActiveTab('RECTIFIED')}
+            >
+              <CheckCircle2 size={15} />
+              <span>Ảnh Đã Sửa Chữa ({rectifyPhotos.length})</span>
+            </button>
+          )}
+        </div>
+
+        {/* MODAL BODY */}
+        <div className="modal-body" style={{ background: '#f8fafc', padding: '24px' }}>
+          {activeTab === 'DOCUMENT' ? (
+            /* TRÌNH BÀY CHUẨN BIÊN BẢN KHỔ A4 */
+            <div className="document-paper" style={{ maxWidth: '800px', margin: '0 auto', fontSize: '0.92rem' }}>
+              {/* THÔNG BÁO HOÀN TẤT NẾU ĐÃ NGHIỆM THU ĐẠT SAU SỬA CHỮA */}
+              {isCompleted && (reportState?.rectification || report?.rectification) ? (
+                <div className="no-print" style={{
+                  background: '#ecfdf5',
+                  border: '1.5px solid #a7f3d0',
+                  borderRadius: '10px',
+                  padding: '14px 18px',
+                  marginBottom: '18px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '12px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ background: '#d1fae5', padding: '6px', borderRadius: '50%', color: '#059669' }}>
+                      <CheckCircle2 size={20} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 800, color: '#065f46', fontSize: '0.95rem' }}>
+                        BIÊN BẢN ĐÃ ĐƯỢC NGHIỆM THU ĐẠT & PHÊ DUYỆT HOÀN TẤT
+                      </div>
+                      <div style={{ fontSize: '0.84rem', color: '#047857', marginTop: '2px' }}>
+                        TVGS & Ban QLDA đã kiểm tra hiện trường, xác nhận ĐVTC khắc phục đạt chuẩn và đã ký số điện tử đầy đủ 3 bên.
+                      </div>
+                    </div>
+                  </div>
+                  {rectifyPhotos.length > 0 && (
+                    <button 
+                      style={{ 
+                        background: '#059669', 
+                        color: '#ffffff', 
+                        border: 'none', 
+                        borderRadius: '6px', 
+                        padding: '6px 12px', 
+                        fontSize: '0.8rem', 
+                        fontWeight: 700, 
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                      onClick={() => setActiveTab('RECTIFIED')}
+                    >
+                      Xem {rectifyPhotos.length} ảnh đã sửa ›
+                    </button>
+                  )}
+                </div>
+              ) : isRectified ? (
+                <div className="no-print" style={{
+                  background: '#f3e8ff',
+                  border: '1.5px solid #d8b4fe',
+                  borderRadius: '10px',
+                  padding: '14px 18px',
+                  marginBottom: '18px',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  gap: '12px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                    <div style={{ background: '#e9d5ff', padding: '6px', borderRadius: '50%', color: '#7c3aed', marginTop: '2px' }}>
+                      <RotateCcw size={20} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 800, color: '#6b21a8', fontSize: '0.98rem' }}>
+                        ĐƠN VỊ THI CÔNG ĐÃ BÁO CÁO KHẮC PHỤC XONG - MỜI NGHIỆM THU LẠI
+                      </div>
+                      <div style={{ fontSize: '0.84rem', color: '#7e22ce', marginTop: '3px' }}>
+                        Người gửi: <strong>{reportState.rectification?.submittedBy?.name || 'KS. Lê Văn Kỹ Thuật'}</strong> (ĐVTC) • {reportState.rectification?.submittedBy?.timestamp || 'Hôm nay'}
+                      </div>
+                      <div style={{ fontSize: '0.84rem', color: '#581c87', marginTop: '4px' }}>
+                        Biện pháp đã làm: <em>"{reportState.rectification?.description || rectifyDesc}"</em>
+                      </div>
+                    </div>
+                  </div>
+                  <button 
+                    style={{ 
+                      background: '#7c3aed', 
+                      color: '#ffffff', 
+                      border: 'none', 
+                      borderRadius: '6px', 
+                      padding: '6px 12px', 
+                      fontSize: '0.8rem', 
+                      fontWeight: 700, 
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap'
+                    }}
+                    onClick={() => setActiveTab('RECTIFIED')}
+                  >
+                    Xem {rectifyPhotos.length} ảnh đã sửa ›
+                  </button>
+                </div>
+              ) : isRejected && (
+                /* CẢNH BÁO NẾU BIÊN BẢN BỊ TỪ CHỐI */
+                <div className="no-print" style={{
+                  background: '#fef2f2',
+                  border: '1.5px solid #f87171',
+                  borderRadius: '10px',
+                  padding: '14px 18px',
+                  marginBottom: '18px',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  gap: '12px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                    <div style={{ background: '#fee2e2', padding: '6px', borderRadius: '50%', color: '#dc2626', marginTop: '2px' }}>
+                      <AlertTriangle size={20} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 800, color: '#991b1b', fontSize: '0.98rem' }}>
+                        CẢNH BÁO: BIÊN BẢN CHƯA ĐẠT NGHIỆM THU - YÊU CẦU SỬA CHỮA KHẮC PHỤC
+                      </div>
+                      <div style={{ fontSize: '0.84rem', color: '#b91c1c', marginTop: '3px' }}>
+                        Người lập: <strong>{rejectionInfo?.name || 'Cán bộ giám sát'}</strong> ({rejectionInfo?.roleTitle || rejectionInfo?.role || 'TVGS'}) • {rejectionInfo?.timestamp || 'Hôm nay'}
+                      </div>
+                      <div style={{ fontSize: '0.84rem', color: '#7f1d1d', marginTop: '4px' }}>
+                        Lý do: <em>"{reportState.conclusion?.rejectionReason}"</em>
+                      </div>
+                    </div>
+                  </div>
+                  {defectPhotos.length > 0 && (
+                    <button 
+                      style={{ 
+                        background: '#dc2626', 
+                        color: '#ffffff', 
+                        border: 'none', 
+                        borderRadius: '6px', 
+                        padding: '6px 12px', 
+                        fontSize: '0.8rem', 
+                        fontWeight: 700, 
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                      onClick={() => setActiveTab('DEFECTS')}
+                    >
+                      Xem {defectPhotos.length} ảnh lỗi hiện trường ›
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Quốc hiệu tiêu ngữ */}
+              <div className="doc-header-national" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div style={{ width: '45%', textAlign: 'center', fontSize: '0.82rem' }}>
+                  <strong>CÔNG TY CP XÂY DỰNG AN PHÚ GIA</strong><br />
+                  Số: {reportState.reportNumber}<br />
+                  Số TLCC: {reportState.referenceDocNumber || 'TLCC-01/2026'}
+                </div>
+                <div style={{ width: '50%', textAlign: 'center', fontSize: '0.82rem' }}>
+                  <strong>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</strong><br />
+                  <u>Độc lập - Tự do - Hạnh phúc</u><br /><br />
+                  <em>{reportState.cityDate || 'Cần Thơ, ngày 05 tháng 10 năm 2026'}</em>
+                </div>
+              </div>
+
+              {/* Tiêu đề biên bản */}
+              <div className="doc-main-title" style={{ textAlign: 'center', margin: '14px 0 20px 0' }}>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', margin: '0 0 4px 0', textTransform: 'uppercase' }}>
+                  BIÊN BẢN NGHIỆM THU CÔNG VIỆC XÂY DỰNG
+                </h2>
+                <div style={{ fontSize: '0.85rem', fontStyle: 'italic' }}>
+                  (Căn cứ Nghị định số 06/2021/NĐ-CP ngày 26/01/2021 của Chính phủ)
+                </div>
+              </div>
+
+              {/* Thông tin dự án */}
+              <div style={{ marginBottom: '14px' }}>
+                <div><strong>Dự án:</strong> {reportState.projectInfo?.projectName}</div>
+                <div><strong>Công trình:</strong> {reportState.projectInfo?.buildingName}</div>
+                <div><strong>Hạng mục:</strong> {reportState.projectInfo?.itemName}</div>
+                <div><strong>Địa điểm xây dựng:</strong> {reportState.projectInfo?.location}</div>
+              </div>
+
+              {/* 1. Đối tượng nghiệm thu */}
+              <div style={{ marginBottom: '14px' }}>
+                <strong>1. Đối tượng nghiệm thu:</strong>
+                <div style={{ paddingLeft: '20px', fontWeight: 'bold', color: '#1e3a8a' }}>
+                  - {reportState.inspectionObject}
+                </div>
+              </div>
+
+              {/* 2. Thành phần trực tiếp nghiệm thu */}
+              <div style={{ marginBottom: '14px' }}>
+                <strong>2. Thành phần trực tiếp nghiệm thu:</strong>
+                <div style={{ paddingLeft: '16px', marginTop: '4px' }}>
+                  <div><strong>a) Đại diện Chủ đầu tư:</strong> Công ty TNHH An Phú Cần Thơ</div>
+                  <div style={{ paddingLeft: '16px' }}>
+                    - Ông: <strong>Ngô Quý Linh</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: Trưởng Ban QLDA<br />
+                    - Ông: <strong>Bành Nguyễn Hậu</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: Cán bộ ban QLDA
+                  </div>
+
+                  <div style={{ marginTop: '4px' }}><strong>b) Tư vấn giám sát:</strong> Công ty CP Tư vấn Xây dựng và Thương mại GELICON</div>
+                  <div style={{ paddingLeft: '16px' }}>
+                    - Ông: <strong>Đinh Xuân Thám</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: Tư vấn giám sát trưởng<br />
+                    - Ông: <strong>Võ Văn Tón</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: Cán bộ tư vấn giám sát
+                  </div>
+
+                  <div style={{ marginTop: '4px' }}><strong>c) Đơn vị thi công:</strong> Công ty CP Xây dựng An Phú Gia</div>
+                  <div style={{ paddingLeft: '16px' }}>
+                    - Ông: <strong>Trần Hữu Chỉ Huy</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: Chỉ huy trưởng<br />
+                    - Ông: <strong>Lê Văn Kỹ Thuật</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: Kỹ thuật hiện trường
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Thời gian nghiệm thu */}
+              <div style={{ marginBottom: '14px' }}>
+                <strong>3. Thời gian nghiệm thu:</strong>
+                <div style={{ paddingLeft: '20px' }}>
+                  - Bắt đầu: {reportState.time?.startTime || '15h30, ngày 05/10/2026'}<br />
+                  - Kết thúc: {reportState.time?.endTime || '16h30, ngày 05/10/2026'}<br />
+                  - Tại: {reportState.time?.place || reportState.projectInfo?.projectName}
+                </div>
+              </div>
+
+              {/* 4. Đánh giá công việc xây dựng đã thực hiện */}
+              <div style={{ marginBottom: '14px' }}>
+                <strong>4. Đánh giá công việc xây dựng đã thực hiện:</strong>
+                <div style={{ paddingLeft: '16px', marginTop: '4px' }}>
+                  <div><strong>4.1. Tài liệu căn cứ nghiệm thu:</strong></div>
+                  <div style={{ paddingLeft: '16px' }}>
+                    4.1.1 Phiếu yêu cầu nghiệm thu của nhà thầu thi công số: <strong>{reportState.requestNumber || (reportState.requestId && !reportState.requestId.startsWith('req_') ? reportState.requestId : null) || '01/PYC-APG'}</strong><br />
+                    4.1.2 Hồ sơ thiết kế BVTC (đã được Chủ đầu tư phê duyệt ngày 16/12/2025):<br />
+                    &nbsp;&nbsp;&nbsp;&nbsp;+ Tên hồ sơ thiết kế: Hồ sơ thiết kế xây dựng triển khai sau hồ sơ TKCS.<br />
+                    &nbsp;&nbsp;&nbsp;&nbsp;+ Những thay đổi thiết kế đã được chấp thuận: Không.<br />
+                    4.1.3 Biện pháp thi công đã được phê duyệt: Biện pháp thi công số 01/BPTC-APG.<br />
+                    4.1.4 Quy chuẩn, tiêu chuẩn xây dựng được áp dụng:
+                    <div className="doc-standards-list" style={{ paddingLeft: '16px', color: '#b91c1c' }}>
+                      {STANDARD_CRITERIA_LIST.map((std, idx) => (
+                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '2px 0' }}>
+                          <input 
+                            type="checkbox" 
+                            checked={selectedStandards.includes(`${std.code} ${std.title}`)} 
+                            onChange={() => toggleStandard(`${std.code} ${std.title}`)}
+                          />
+                          <span>+ {std.code} {std.title}</span>
+                        </div>
+                      ))}
+                    </div>
+                    4.1.5 Biên bản nghiệm thu vật liệu đầu vào: Đạt yêu cầu.<br />
+                    4.1.6 Các kết quả kiểm tra, thí nghiệm chất lượng vật liệu, thiết bị: Đạt yêu cầu.<br />
+                    4.1.7 Nhật ký thi công: Đã ghi đầy đủ theo quy định.
+                  </div>
+
+                  <div style={{ marginTop: '6px' }}><strong>4.2. Chất lượng công việc xây dựng:</strong></div>
+                  <div style={{ paddingLeft: '16px' }}>
+                    - Đối chiếu với hồ sơ thiết kế được duyệt: <strong>[X] Đạt yêu cầu</strong><br />
+                    - Đánh giá sự phù hợp của công việc xây dựng so với TCXD:{' '}
+                    <strong style={{ color: (isCompleted && (reportState?.rectification || report?.rectification)) || isRectified ? '#059669' : isRejected ? '#dc2626' : 'inherit' }}>
+                      {(isCompleted && (reportState?.rectification || report?.rectification)) || isRectified ? '[X] ĐÃ SỬA CHỮA ĐẠT YÊU CẦU' : isRejected ? '[X] KHÔNG ĐẠT YÊU CẦU' : '[X] Đạt yêu cầu'}
+                    </strong><br />
+                    - Kiểm tra việc thực hiện theo yêu cầu kỹ thuật của công trình xây dựng:{' '}
+                    <strong style={{ color: (isCompleted && (reportState?.rectification || report?.rectification)) || isRectified ? '#059669' : isRejected ? '#dc2626' : 'inherit' }}>
+                      {(isCompleted && (reportState?.rectification || report?.rectification)) || isRectified ? '[X] ĐÃ KHẮC PHỤC XONG' : isRejected ? '[X] CẦN SỬA CHỮA KHẮC PHỤC' : '[X] Đạt yêu cầu'}
+                    </strong>
+                  </div>
+
+                  <div style={{ marginTop: '6px' }}><strong>4.3. Các ý kiến khác nếu có:</strong> <em>{(isCompleted && (reportState?.rectification || report?.rectification)) ? 'ĐVTC đã nắn chỉnh và khắc phục lỗi đạt yêu cầu TVGS' : isRectified ? 'ĐVTC đã nắn chỉnh và khắc phục lỗi' : isRejected ? 'Có tồn tại khiếm khuyết' : 'Không'}</em></div>
+                </div>
+              </div>
+
+              {/* 5. Kết luận */}
+              <div style={{ marginBottom: '20px' }}>
+                <strong>5. Kết luận:</strong>
+                <div style={{ paddingLeft: '20px', marginTop: '4px' }}>
+                  <div>
+                    - Chấp thuận nghiệm thu, đồng ý cho triển khai công việc tiếp theo:{' '}
+                    {isCompleted ? (
+                      <span>
+                        <strong style={{ 
+                          color: '#059669', 
+                          background: '#ecfdf5', 
+                          padding: '3px 10px', 
+                          borderRadius: '4px', 
+                          border: '1.5px solid #a7f3d0' 
+                        }}>
+                          ☑ ĐỒNG Ý NGHIỆM THU (ĐÃ PHÊ DUYỆT ĐẠT{(reportState?.rectification || report?.rectification) ? ' SAU SỬA CHỮA' : ''})
+                        </strong>
+                      </span>
+                    ) : isRectified ? (
+                      <span>
+                        <strong style={{ color: '#059669', background: '#ecfdf5', padding: '3px 10px', borderRadius: '4px', border: '1.5px solid #a7f3d0' }}>
+                          ☑ ĐÃ KHẮC PHỤC (CHỜ DUYỆT LẠI)
+                        </strong>
+                      </span>
+                    ) : isRejected ? (
+                      <span>
+                        ☐ Đồng ý &nbsp;&nbsp;&nbsp;&nbsp;
+                        <strong style={{ 
+                          color: '#dc2626', 
+                          background: '#fee2e2', 
+                          padding: '3px 10px', 
+                          borderRadius: '4px', 
+                          border: '1.5px solid #f87171' 
+                        }}>
+                          ☑ KHÔNG ĐỒNG Ý
+                        </strong>
+                      </span>
+                    ) : (
+                      <span><strong>☑ Đồng ý</strong> &nbsp;&nbsp; ☐ Không đồng ý</span>
+                    )}
+                  </div>
+
+                  {/* NỘI DUNG SỬA CHỮA HOẶC LÝ DO TỪ CHỐI */}
+                  {(reportState.rectification || report?.rectification) ? (
+                    <div style={{ 
+                      marginTop: '8px', 
+                      background: isCompleted ? '#ecfdf5' : '#f5f3ff', 
+                      borderLeft: isCompleted ? '4px solid #10b981' : '4px solid #7c3aed', 
+                      padding: '10px 14px', 
+                      borderRadius: '0 8px 8px 0' 
+                    }}>
+                      <div style={{ color: isCompleted ? '#065f46' : '#6b21a8', fontWeight: 700, marginBottom: '2px' }}>
+                        {isCompleted ? '✓ Báo cáo khắc phục của ĐVTC đã được TVGS nghiệm thu đạt:' : '🔄 Báo cáo khắc phục của ĐVTC:'}
+                      </div>
+                      <div style={{ color: '#581c87', fontSize: '0.88rem' }}>
+                        "{reportState.rectification?.description || rectifyDesc}"
+                      </div>
+                      <div style={{ color: '#6d28d9', fontSize: '0.82rem', marginTop: '4px' }}>
+                        • Kèm {rectifyPhotos.length} ảnh hiện trường sau sửa chữa (Xem tab 🛠️ Ảnh Đã Sửa)
+                      </div>
+                      <div style={{ color: '#64748b', fontSize: '0.78rem', marginTop: '2px' }}>
+                        • Người báo cáo: {reportState.rectification?.submittedBy?.name || currentUser?.fullName} ({reportState.rectification?.submittedBy?.timestamp || 'Hôm nay'})
+                      </div>
+                    </div>
+                  ) : isRejected ? (
+                    <div style={{ 
+                      marginTop: '8px', 
+                      background: '#fff1f2', 
+                      borderLeft: '4px solid #ef4444', 
+                      padding: '10px 14px', 
+                      borderRadius: '0 8px 8px 0' 
+                    }}>
+                      <div style={{ color: '#b91c1c', marginBottom: '4px' }}>
+                        <strong>• Lý do không nghiệm thu:</strong> {reportState.conclusion?.rejectionReason || rejectReason}
+                      </div>
+                      <div style={{ color: '#b91c1c', marginBottom: '4px' }}>
+                        <strong>• Yêu cầu sửa chữa, khắc phục:</strong> {reportState.conclusion?.repairRequired || repairRequired || 'Sửa chữa và mời nghiệm thu lại'}
+                      </div>
+                      {reportState.conclusion?.deadline && (
+                        <div style={{ color: '#475569', fontSize: '0.85rem' }}>
+                          <strong>• Thời hạn hoàn thành:</strong> {reportState.conclusion.deadline}
+                        </div>
+                      )}
+                      {reportState.rectificationHistory?.length > 0 && (
+                        <div style={{ color: '#7c3aed', fontSize: '0.82rem', marginTop: '6px', fontWeight: 600 }}>
+                          • Lịch sử: Đã qua {reportState.rectificationHistory.length} đợt sửa chữa trước đó chưa đạt chuẩn. Yêu cầu ĐVTC tiếp tục khắc phục.
+                        </div>
+                      )}
+                      {defectPhotos.length > 0 && (
+                        <div style={{ color: '#2563eb', fontSize: '0.85rem', marginTop: '4px' }}>
+                          <strong>• Ảnh khiếm khuyết đính kèm:</strong> {defectPhotos.length} ảnh hiện trường kèm tọa độ GPS (xem tab ⚠️ Ảnh Lỗi)
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <div>- Yêu cầu sửa chữa, hoàn thiện công việc xây dựng đã thực hiện: <em>Không có</em></div>
+                      <div>- Các yêu cầu khác (nếu có): <em>Không có</em></div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* CHỮ KÝ 3 BÊN */}
+              <div className="doc-signatures-grid">
+                {/* 1. CHỦ ĐẦU TƯ */}
+                <div>
+                  <strong style={{ fontSize: '0.95rem' }}>CHỦ ĐẦU TƯ / BAN QLDA</strong><br />
+                  <span style={{ fontSize: '0.8rem', fontStyle: 'italic' }}>(Ký, ghi rõ họ tên)</span>
+                  <div style={{ height: '90px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {isInvestorSigned ? (
+                      <div style={{ color: '#047857', fontWeight: 'bold', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.2rem', fontFamily: 'cursive' }}>
+                          {reportState.attendees?.investor?.person || 'Ông Bành Nguyễn Hậu'}
+                        </div>
+                        <div style={{ fontSize: '0.72rem' }}>✓ Đã ký số điện tử</div>
+                        {reportState.attendees?.investor?.signedAt && (
+                          <div style={{ fontSize: '0.65rem', color: '#64748b' }}>
+                            {reportState.attendees.investor.signedAt}
+                          </div>
+                        )}
+                      </div>
+                    ) : isRejected && rejectionInfo?.role === 'INVESTOR' ? (
+                      <div style={{ border: '2px dashed #dc2626', background: '#fef2f2', padding: '6px 10px', borderRadius: '6px', textAlign: 'center' }}>
+                        <div style={{ color: '#dc2626', fontWeight: 800, fontSize: '0.85rem' }}>❌ TỪ CHỐI DUYỆT</div>
+                        <div style={{ fontSize: '0.72rem', color: '#991b1b' }}>{rejectionInfo?.name}</div>
+                        <div style={{ fontSize: '0.68rem', color: '#64748b' }}>{rejectionInfo?.timestamp}</div>
+                      </div>
+                    ) : isRectified && (rejectionInfo?.role === 'INVESTOR' || reportState.rectification?.target === 'INVESTOR') ? (
+                      <span style={{ color: '#7c3aed', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ CĐT kiểm tra lại)</span>
+                    ) : !isSupervisorSigned ? (
+                      <span style={{ color: '#d97706', fontStyle: 'italic', fontSize: '0.8rem' }}>(Chờ TVGS duyệt trước)</span>
+                    ) : (
+                      <span style={{ color: '#d97706', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ CĐT ký duyệt)</span>
+                    )}
+                  </div>
+                  <strong>{reportState.attendees?.investor?.person || 'Ông Bành Nguyễn Hậu'}</strong>
+                </div>
+
+                {/* 2. TƯ VẤN GIÁM SÁT */}
+                <div>
+                  <strong style={{ fontSize: '0.95rem' }}>TƯ VẤN GIÁM SÁT</strong><br />
+                  <span style={{ fontSize: '0.8rem', fontStyle: 'italic' }}>(Ký, ghi rõ họ tên)</span>
+                  <div style={{ height: '90px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {isSupervisorSigned ? (
+                      <div style={{ color: '#047857', fontWeight: 'bold', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.2rem', fontFamily: 'cursive' }}>
+                          {reportState.attendees?.supervisor?.person || 'KS. Võ Văn Tón'}
+                        </div>
+                        <div style={{ fontSize: '0.72rem' }}>✓ Đã ký số điện tử</div>
+                        {reportState.attendees?.supervisor?.signedAt && (
+                          <div style={{ fontSize: '0.65rem', color: '#64748b' }}>
+                            {reportState.attendees.supervisor.signedAt}
+                          </div>
+                        )}
+                      </div>
+                    ) : isRejected && rejectionInfo?.role === 'SUPERVISOR' ? (
+                      <div style={{ border: '2px dashed #dc2626', background: '#fef2f2', padding: '6px 10px', borderRadius: '6px', textAlign: 'center' }}>
+                        <div style={{ color: '#dc2626', fontWeight: 800, fontSize: '0.85rem' }}>❌ TỪ CHỐI NGHIỆM THU</div>
+                        <div style={{ fontSize: '0.72rem', color: '#991b1b' }}>{rejectionInfo?.name}</div>
+                        <div style={{ fontSize: '0.68rem', color: '#64748b' }}>{rejectionInfo?.timestamp}</div>
+                      </div>
+                    ) : isRectified && (rejectionInfo?.role === 'SUPERVISOR' || reportState.rectification?.target === 'SUPERVISOR') ? (
+                      <span style={{ color: '#7c3aed', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ TVGS nghiệm thu lại)</span>
+                    ) : (
+                      <span style={{ color: '#059669', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ TVGS kiểm tra & ký)</span>
+                    )}
+                  </div>
+                  <strong>{reportState.attendees?.supervisor?.person || 'KS. Võ Văn Tón'}</strong>
+                </div>
+
+                {/* 3. ĐƠN VỊ THI CÔNG */}
+                <div>
+                  <strong style={{ fontSize: '0.95rem' }}>ĐƠN VỊ THI CÔNG</strong><br />
+                  <span style={{ fontSize: '0.8rem', fontStyle: 'italic' }}>(Ký, ghi rõ họ tên)</span>
+                  <div style={{ height: '90px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {isContractorSigned ? (
+                      <div style={{ color: '#047857', fontWeight: 'bold', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.2rem', fontFamily: 'cursive' }}>
+                          {reportState.attendees?.contractor?.person || 'KS. Lê Văn Kỹ Thuật'}
+                        </div>
+                        <div style={{ fontSize: '0.72rem' }}>✓ Đã ký số điện tử</div>
+                      </div>
+                    ) : (
+                      <span style={{ color: '#2563eb', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ ĐVTC ký)</span>
+                    )}
+                  </div>
+                  <strong>{reportState.attendees?.contractor?.person || 'KS. Lê Văn Kỹ Thuật'}</strong>
+                </div>
+              </div>
+
+              {/* THANH TÙY CHỌN IN KÈM PHỤ LỤC ẢNH HAY CHỈ IN 1 TRANG BIÊN BẢN */}
+              {totalPhotos > 0 && (
+                <div className="no-print" style={{ 
+                  marginTop: '28px', 
+                  padding: '14px 18px', 
+                  background: includePhotosInPrint ? '#eff6ff' : '#f8fafc', 
+                  border: includePhotosInPrint ? '1.5px solid #3b82f6' : '1px dashed #cbd5e1', 
+                  borderRadius: '10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '14px',
+                  flexWrap: 'wrap'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ 
+                      background: includePhotosInPrint ? '#dbeafe' : '#e2e8f0', 
+                      color: includePhotosInPrint ? '#2563eb' : '#64748b', 
+                      padding: '8px', 
+                      borderRadius: '8px' 
+                    }}>
+                      <Camera size={20} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1e293b' }}>
+                        Phụ Lục Hình Ảnh Hiện Trường ({totalPhotos} ảnh)
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>
+                        {includePhotosInPrint 
+                          ? '✓ Đang BẬT in kèm ảnh: Bản in sẽ gồm Trang 1 (Biên bản A4) + Các trang sau (Ảnh GPS & timestamp).' 
+                          : 'Đang TẮT in kèm ảnh: Bản in sẽ chỉ có DUY NHẤT 1 trang Biên bản A4 chuẩn (in siêu nhanh, không lo lỗi/treo máy).'}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setIncludePhotosInPrint(prev => !prev)}
+                      style={{
+                        padding: '7px 14px',
+                        borderRadius: '6px',
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        border: 'none',
+                        background: includePhotosInPrint ? '#2563eb' : '#0284c7',
+                        color: '#ffffff'
+                      }}
+                    >
+                      {includePhotosInPrint ? '✕ Bỏ In Kèm Ảnh (Chỉ in 1 trang)' : '＋ Bật In Kèm Cả Ảnh'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* PHỤ LỤC HÌNH ẢNH HIỆN TRƯỜNG KÈM THEO BIÊN BẢN (IN KÈM THEO BIÊN BẢN) */}
+              {includePhotosInPrint && (
+                <div className="doc-photo-appendix" style={{ marginTop: '36px', pageBreakBefore: 'always', breakBefore: 'page' }}>
+                  <div style={{ textAlign: 'center', marginBottom: '20px', borderBottom: '2px solid #000', paddingBottom: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+                      <div style={{ width: '45%', textAlign: 'center', fontSize: '0.82rem' }}>
+                        <strong>{reportState.attendees?.contractor?.company || 'CÔNG TY CP XÂY DỰNG AN PHÚ GIA'}</strong><br />
+                        Số: {reportState.reportNumber}
+                      </div>
+                      <div style={{ width: '50%', textAlign: 'center', fontSize: '0.82rem' }}>
+                        <strong>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</strong><br />
+                        <u>Độc lập - Tự do - Hạnh phúc</u>
+                      </div>
+                    </div>
+                    <h3 style={{ fontSize: '1.15rem', fontWeight: 'bold', margin: '14px 0 4px 0', textTransform: 'uppercase' }}>
+                      PHỤ LỤC HÌNH ẢNH HIỆN TRƯỜNG KÈM THEO BIÊN BẢN
+                    </h3>
+                    <div style={{ fontSize: '0.88rem', fontStyle: 'italic', color: '#334155' }}>
+                      (Kèm theo Biên bản nghiệm thu số: <strong>{reportState.reportNumber}</strong> - Ngày: {reportState.time?.startTime || reportState.cityDate})
+                    </div>
+                  </div>
+
+                  {/* 1. ẢNH HIỆN TRƯỜNG THI CÔNG BAN ĐẦU */}
+                  <div style={{ marginBottom: '24px' }}>
+                    <div style={{ 
+                      background: '#f1f5f9', 
+                      borderLeft: '4px solid #2563eb', 
+                      padding: '8px 12px', 
+                      marginBottom: '12px',
+                      fontSize: '0.96rem', 
+                      fontWeight: 'bold',
+                      color: '#0f172a'
+                    }}>
+                      I. ẢNH HIỆN TRƯỜNG THI CÔNG BAN ĐẦU ({evidencePhotos.length} ảnh)
+                    </div>
+                    {evidencePhotos.length === 0 ? (
+                      <div style={{ fontStyle: 'italic', color: '#64748b', fontSize: '0.85rem', padding: '6px 12px' }}>
+                        (Không có ảnh hiện trường ban đầu đính kèm)
+                      </div>
+                    ) : (
+                      <div className="doc-photo-grid">
+                        {evidencePhotos.map((photo, idx) => (
+                          <div key={photo.id || idx} className="doc-photo-card">
+                            <div className="doc-photo-card-img-wrapper" style={{ height: '210px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: '#f8fafc', borderRadius: '6px', marginBottom: '8px' }}>
+                              <img 
+                                src={photo.url} 
+                                alt={photo.caption || `Ảnh hiện trường ${idx + 1}`} 
+                                loading="lazy"
+                                onError={(e) => { e.target.style.display = 'none'; }}
+                                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                              />
+                            </div>
+                            <div style={{ fontSize: '0.82rem', lineHeight: 1.45, color: '#1e293b' }}>
+                              <strong>Hình {idx + 1}:</strong> {photo.caption || 'Hiện trường thi công công tác xây dựng'}<br />
+                              {photo.timestamp && <span style={{ color: '#475569' }}>⏰ <strong>Thời gian:</strong> {photo.timestamp}<br /></span>}
+                              {photo.gps && <span style={{ color: '#475569' }}>📍 <strong>GPS:</strong> {typeof photo.gps === 'object' && photo.gps?.lat ? `${photo.gps.lat.toFixed(5)}, ${photo.gps.lng.toFixed(5)}` : String(photo.gps)}<br /></span>}
+                              {photo.photographer && <span style={{ color: '#475569' }}>👤 <strong>Người chụp:</strong> {photo.photographer}</span>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 2. ẢNH KHIẾM KHUYẾT / TỒN TẠI KỸ THUẬT (NẾU CÓ) */}
+                  {(defectPhotos.length > 0 || isRejected) && (
+                    <div style={{ marginBottom: '24px' }}>
+                      <div style={{ 
+                        background: '#fef2f2', 
+                        borderLeft: '4px solid #dc2626', 
+                        padding: '8px 12px', 
+                        marginBottom: '12px',
+                        fontSize: '0.96rem', 
+                        fontWeight: 'bold',
+                        color: '#991b1b'
+                      }}>
+                        II. ẢNH KHIẾM KHUYẾT / LỖI KỸ THUẬT CẦN KHẮC PHỤC ({defectPhotos.length} ảnh)
+                      </div>
+                      {defectPhotos.length === 0 ? (
+                        <div style={{ fontStyle: 'italic', color: '#64748b', fontSize: '0.85rem', padding: '6px 12px' }}>
+                          (Không ghi nhận khiếm khuyết tồn tại)
+                        </div>
+                      ) : (
+                        <div className="doc-photo-grid">
+                          {defectPhotos.map((photo, idx) => (
+                            <div key={photo.id || idx} className="doc-photo-card">
+                              <div className="doc-photo-card-img-wrapper" style={{ height: '210px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: '#fef2f2', borderRadius: '6px', marginBottom: '8px' }}>
+                                <img 
+                                  src={photo.url} 
+                                  alt={photo.note || `Ảnh lỗi ${idx + 1}`} 
+                                  loading="lazy"
+                                  onError={(e) => { e.target.style.display = 'none'; }}
+                                  style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                                />
+                              </div>
+                              <div style={{ fontSize: '0.82rem', lineHeight: 1.45, color: '#1e293b' }}>
+                                <strong style={{ color: '#dc2626' }}>Lỗi {idx + 1}:</strong> {photo.note || 'Tồn tại kỹ thuật cần sửa chữa'}<br />
+                                {photo.timestamp && <span style={{ color: '#475569' }}>⏰ <strong>Thời gian:</strong> {photo.timestamp}<br /></span>}
+                                {photo.gps && <span style={{ color: '#475569' }}>📍 <strong>GPS:</strong> {typeof photo.gps === 'object' && photo.gps?.lat ? `${photo.gps.lat.toFixed(5)}, ${photo.gps.lng.toFixed(5)}` : String(photo.gps)}<br /></span>}
+                                {photo.photographer && <span style={{ color: '#475569' }}>👤 <strong>Người lập:</strong> {photo.photographer}</span>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 3. ẢNH HIỆN TRƯỜNG SAU KHI KHẮC PHỤC SỬA CHỮA (NẾU CÓ) */}
+                  {(rectifyPhotos.length > 0 || isRectified) && (
+                    <div style={{ marginBottom: '24px' }}>
+                      <div style={{ 
+                        background: '#faf5ff', 
+                        borderLeft: '4px solid #7c3aed', 
+                        padding: '8px 12px', 
+                        marginBottom: '12px',
+                        fontSize: '0.96rem', 
+                        fontWeight: 'bold',
+                        color: '#6b21a8'
+                      }}>
+                        III. ẢNH HIỆN TRƯỜNG SAU KHI SỬA CHỮA KHẮC PHỤC ({rectifyPhotos.length} ảnh)
+                      </div>
+                      {rectifyPhotos.length === 0 ? (
+                        <div style={{ fontStyle: 'italic', color: '#64748b', fontSize: '0.85rem', padding: '6px 12px' }}>
+                          (Chưa có ảnh khắc phục)
+                        </div>
+                      ) : (
+                        <div className="doc-photo-grid">
+                          {rectifyPhotos.map((photo, idx) => (
+                            <div key={photo.id || idx} className="doc-photo-card">
+                              <div className="doc-photo-card-img-wrapper" style={{ height: '210px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: '#faf5ff', borderRadius: '6px', marginBottom: '8px' }}>
+                                <img 
+                                  src={photo.url} 
+                                  alt={photo.caption || photo.note || `Ảnh khắc phục ${idx + 1}`} 
+                                  loading="lazy"
+                                  onError={(e) => { e.target.style.display = 'none'; }}
+                                  style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                                />
+                              </div>
+                              <div style={{ fontSize: '0.82rem', lineHeight: 1.45, color: '#1e293b' }}>
+                                <strong style={{ color: '#7c3aed' }}>Khắc phục {idx + 1}:</strong> {photo.caption || photo.note || reportState.rectification?.description || 'Hiện trường đã khắc phục hoàn thiện'}<br />
+                                {photo.timestamp && <span style={{ color: '#475569' }}>⏰ <strong>Thời gian:</strong> {photo.timestamp}<br /></span>}
+                                {photo.gps && <span style={{ color: '#475569' }}>📍 <strong>GPS:</strong> {typeof photo.gps === 'object' && photo.gps?.lat ? `${photo.gps.lat.toFixed(5)}, ${photo.gps.lng.toFixed(5)}` : String(photo.gps)}<br /></span>}
+                                {photo.photographer && <span style={{ color: '#475569' }}>👤 <strong>Người gửi:</strong> {photo.photographer}</span>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : activeTab === 'EVIDENCE' ? (
+            /* TAB ẢNH HIỆN TRƯỜNG NGHIỆM THU DYNAMIC */
+            <div>
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                marginBottom: '16px',
+                background: '#eff6ff',
+                padding: '12px 16px',
+                borderRadius: '10px',
+                border: '1px solid #bfdbfe',
+                flexWrap: 'wrap',
+                gap: '10px'
+              }}>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '0.98rem', color: '#1e40af', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Camera size={18} />
+                    <span>Hình Ảnh Nghiệm Thu Hiện Trường ({evidencePhotos.length} ảnh)</span>
+                  </h4>
+                  <div style={{ fontSize: '0.8rem', color: '#2563eb', marginTop: '2px' }}>
+                    Đóng dấu GPS & Thời gian thực • Minh chứng công tác xây dựng đã thực hiện
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <input 
+                    ref={cameraEvidenceRef} 
+                    type="file" 
+                    accept="image/*" 
+                    capture="environment" 
+                    style={{ display: 'none' }} 
+                    onChange={handleCaptureEvidencePhoto} 
+                  />
+                  <input 
+                    ref={fileEvidenceRef} 
+                    type="file" 
+                    accept="image/*" 
+                    multiple 
+                    style={{ display: 'none' }} 
+                    onChange={handleCaptureEvidencePhoto} 
+                  />
+                  <button 
+                    type="button" 
+                    className="btn-primary" 
+                    style={{ padding: '7px 12px', fontSize: '0.82rem', background: '#2563eb' }}
+                    onClick={() => cameraEvidenceRef.current?.click()}
+                  >
+                    <Camera size={14} />
+                    <span>Chụp ảnh</span>
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn-secondary" 
+                    style={{ padding: '7px 12px', fontSize: '0.82rem' }}
+                    onClick={() => fileEvidenceRef.current?.click()}
+                  >
+                    <ImagePlus size={14} />
+                    <span>Tải ảnh lên</span>
+                  </button>
+                </div>
+              </div>
+
+              {evidencePhotos.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 20px', background: '#ffffff', borderRadius: '12px', border: '2px dashed #cbd5e1' }}>
+                  <Camera size={44} color="#94a3b8" style={{ margin: '0 auto 10px auto', display: 'block' }} />
+                  <div style={{ fontWeight: 600, color: '#334155', fontSize: '1rem' }}>
+                    Chưa có hình ảnh nghiệm thu hiện trường
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '6px' }}>
+                    Bấm nút "Chụp ảnh" hoặc "Tải ảnh lên" ở trên để lưu trữ minh chứng nghiệm thu thực tế
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+                  {evidencePhotos.map((photo, idx) => (
+                    <div 
+                      key={photo.id || idx} 
+                      style={{ 
+                        background: '#ffffff', 
+                        border: '1px solid #e2e8f0', 
+                        borderRadius: '12px', 
+                        overflow: 'hidden', 
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                        position: 'relative'
+                      }}
+                    >
+                      <div style={{ position: 'relative' }}>
+                        <img 
+                          src={photo.url} 
+                          alt={photo.caption || `Ảnh ${idx + 1}`}
+                          style={{ width: '100%', height: '210px', objectFit: 'cover', display: 'block' }}
+                        />
+                        <span style={{ 
+                          position: 'absolute', 
+                          top: '10px', 
+                          left: '10px', 
+                          background: '#2563eb', 
+                          color: '#ffffff', 
+                          fontSize: '0.72rem', 
+                          fontWeight: 800, 
+                          padding: '3px 8px', 
+                          borderRadius: '4px' 
+                        }}>
+                          ẢNH #{idx + 1}
+                        </span>
+                        <button 
+                          type="button" 
+                          onClick={() => handleDeleteEvidencePhoto(photo.id)}
+                          style={{ 
+                            position: 'absolute', 
+                            top: '10px', 
+                            right: '10px', 
+                            background: 'rgba(239, 68, 68, 0.9)', 
+                            color: '#ffffff', 
+                            border: 'none', 
+                            borderRadius: '6px', 
+                            width: '26px', 
+                            height: '26px', 
+                            cursor: 'pointer',
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center' 
+                          }}
+                          title="Xóa ảnh này"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                        <div style={{ 
+                          position: 'absolute', 
+                          bottom: '8px', 
+                          left: '8px', 
+                          right: '8px', 
+                          background: 'rgba(15, 23, 42, 0.88)', 
+                          backdropFilter: 'blur(4px)', 
+                          color: '#ffffff', 
+                          padding: '6px 10px', 
+                          borderRadius: '6px', 
+                          fontSize: '0.72rem',
+                          lineHeight: 1.3
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <MapPin size={12} color="#60a5fa" />
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              GPS: {photo.gps || '10.0076° N, 105.7823° E (P. Thường Thạnh, TP. Cần Thơ)'}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                            <Clock size={12} color="#34d399" />
+                            <span>{photo.time} {photo.photographer ? `• ${photo.photographer}` : ''}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ padding: '12px' }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1e293b', marginBottom: '6px' }}>
+                          {photo.caption || 'Ảnh thi công nghiệm thu hiện trường'}
+                        </div>
+                        <input 
+                          type="text" 
+                          value={photo.caption || ''} 
+                          onChange={(e) => handleUpdateEvidenceCaption(photo.id, e.target.value)}
+                          placeholder="Chỉnh sửa ghi chú ảnh..."
+                          style={{ 
+                            width: '100%', 
+                            fontSize: '0.78rem', 
+                            border: '1px solid #e2e8f0', 
+                            borderRadius: '6px', 
+                            padding: '4px 8px',
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : activeTab === 'DEFECTS' ? (
+            /* TAB ẢNH LỖI KHIẾM KHUYẾT */
+            <div>
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                marginBottom: '16px',
+                background: '#fef2f2',
+                padding: '12px 16px',
+                borderRadius: '10px',
+                border: '1px solid #fecaca'
+              }}>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '0.98rem', color: '#991b1b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <AlertTriangle size={18} />
+                    <span>Hình Ảnh Khiếm Khuyết Không Đạt Nghiệm Thu</span>
+                  </h4>
+                  <div style={{ fontSize: '0.8rem', color: '#b91c1c', marginTop: '2px' }}>
+                    Căn cứ TVGS/CĐT yêu cầu Đơn vị thi công sửa chữa khắc phục
+                  </div>
+                </div>
+
+                {/* Nút hành động dựa trên vai trò */}
+                {(currentRole === 'CONTRACTOR' || currentRole === 'ADMIN') ? (
+                  <button 
+                    className="btn-primary" 
+                    style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)', padding: '8px 14px', fontSize: '0.82rem' }}
+                    onClick={() => setIsRectifyModalOpen(true)}
+                  >
+                    <Wrench size={15} />
+                    <span>Gửi Ảnh Đã Sửa & Mời Nghiệm Thu Lại</span>
+                  </button>
+                ) : (
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button 
+                      type="button"
+                      className="btn-primary" 
+                      style={{ background: '#dc2626', padding: '8px 14px', fontSize: '0.82rem' }}
+                      onClick={() => cameraInputRef.current?.click()}
+                    >
+                      <Camera size={15} />
+                      <span>📸 Chụp Ảnh Lỗi</span>
+                    </button>
+                    <button 
+                      type="button"
+                      className="btn-secondary" 
+                      style={{ padding: '8px 14px', fontSize: '0.82rem' }}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <ImagePlus size={15} />
+                      <span>📁 Tải Ảnh Lỗi</span>
+                    </button>
+                    <button 
+                      type="button"
+                      className="btn-secondary" 
+                      style={{ borderColor: '#fca5a5', color: '#991b1b', background: '#fef2f2', padding: '8px 12px', fontSize: '0.82rem' }}
+                      onClick={handleAddSampleDefectPhoto}
+                    >
+                      <Zap size={14} />
+                      <span>⚡ Mẫu Lỗi</span>
+                    </button>
+                    <button 
+                      type="button"
+                      className="btn-danger" 
+                      style={{ padding: '8px 14px', fontSize: '0.82rem' }}
+                      onClick={() => {
+                        setRejectReason(reportState.conclusion?.rejectionReason || '');
+                        setIsRejectModalOpen(true);
+                      }}
+                      title="Lập yêu cầu ĐVTC sửa chữa"
+                    >
+                      <AlertTriangle size={15} />
+                      <span>Yêu Cầu Sửa Chữa</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {defectPhotos.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 20px', background: '#ffffff', borderRadius: '12px', border: '2px dashed #fecaca' }}>
+                  <Camera size={40} color="#f87171" style={{ marginBottom: '10px' }} />
+                  <div style={{ fontWeight: 600, color: '#991b1b' }}>Chưa có hình ảnh khiếm khuyết nào được lưu</div>
+                  <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px', marginBottom: '16px' }}>
+                    Bấm các nút dưới đây để chụp ảnh camera hoặc tải ảnh hiện trường lỗi để lập bằng chứng yêu cầu ĐVTC khắc phục.
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                    <button 
+                      type="button" 
+                      className="btn-primary" 
+                      style={{ background: '#dc2626' }}
+                      onClick={() => cameraInputRef.current?.click()}
+                    >
+                      <Camera size={16} /> <span>📸 Chụp Ảnh Camera Ngay</span>
+                    </button>
+                    <button 
+                      type="button" 
+                      className="btn-secondary"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <ImagePlus size={16} /> <span>📁 Tải Ảnh Lên</span>
+                    </button>
+                    <button 
+                      type="button" 
+                      className="btn-secondary" 
+                      style={{ borderColor: '#fca5a5', color: '#991b1b', background: '#fef2f2' }}
+                      onClick={handleAddSampleDefectPhoto}
+                    >
+                      <Zap size={16} /> <span>⚡ Dùng Ảnh Mẫu Lỗi (Demo)</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' }}>
+                  {defectPhotos.map((photo, idx) => (
+                    <div 
+                      key={photo.id || idx} 
+                      style={{ 
+                        background: '#ffffff', 
+                        border: '1.5px solid #fca5a5', 
+                        borderRadius: '12px', 
+                        overflow: 'hidden', 
+                        boxShadow: '0 2px 6px rgba(239, 68, 68, 0.1)',
+                        position: 'relative'
+                      }}
+                    >
+                      <div style={{ position: 'relative' }}>
+                        <img 
+                          src={photo.url} 
+                          alt={`Lỗi ${idx + 1}`}
+                          style={{ width: '100%', height: '220px', objectFit: 'cover' }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePhoto(photo.id)}
+                          style={{
+                            position: 'absolute',
+                            top: '8px',
+                            right: '8px',
+                            background: '#ef4444',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '50%',
+                            width: '26px',
+                            height: '26px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                            zIndex: 10
+                          }}
+                          title="Xóa ảnh lỗi này"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                        <div style={{
+                          position: 'absolute',
+                          top: '10px',
+                          left: '10px',
+                          background: '#dc2626',
+                          color: '#ffffff',
+                          fontWeight: 800,
+                          fontSize: '0.72rem',
+                          padding: '3px 8px',
+                          borderRadius: '4px',
+                          letterSpacing: '0.04em'
+                        }}>
+                          LỖI HIỆN TRƯỜNG #{idx + 1}
+                        </div>
+                        <div style={{ 
+                          position: 'absolute', 
+                          bottom: '8px', 
+                          left: '8px', 
+                          right: '8px', 
+                          background: 'rgba(15, 23, 42, 0.88)', 
+                          backdropFilter: 'blur(4px)', 
+                          color: '#ffffff', 
+                          padding: '6px 10px', 
+                          borderRadius: '6px', 
+                          fontSize: '0.72rem' 
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <MapPin size={12} color="#60a5fa" />
+                            <span>{photo.gps || '10.0076° N, 105.7823° E'}</span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                            <Clock size={12} color="#f87171" />
+                            <span>{photo.time} • {photo.photographer || 'Cán bộ giám sát'}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ padding: '12px' }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#991b1b' }}>
+                          {photo.caption}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            /* TAB ẢNH ĐÃ KHẮC PHỤC SỬA CHỮA (MỚI) */
+            <div>
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                marginBottom: '16px',
+                background: '#f5f3ff',
+                padding: '14px 18px',
+                borderRadius: '12px',
+                border: '1.5px solid #d8b4fe',
+                flexWrap: 'wrap',
+                gap: '10px'
+              }}>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '1rem', color: '#6b21a8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <CheckCircle2 size={18} color="#7c3aed" />
+                    <span>Hình Ảnh Hiện Trường Sau Khi ĐVTC Khắc Phục Sửa Chữa</span>
+                  </h4>
+                  <div style={{ fontSize: '0.82rem', color: '#7e22ce', marginTop: '2px' }}>
+                    Biện pháp đã làm: <strong>"{reportState.rectification?.description || rectifyDesc || 'Đã nắn chỉnh và khắc phục đạt yêu cầu'}"</strong>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {(currentRole === 'CONTRACTOR' || currentRole === 'ADMIN') && (
+                    <>
+                      <button 
+                        type="button"
+                        className="btn-primary" 
+                        style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)', padding: '8px 14px', fontSize: '0.82rem' }}
+                        onClick={() => cameraRectifyRef.current?.click()}
+                      >
+                        <Camera size={15} />
+                        <span>📸 Chụp Thêm Ảnh Sửa</span>
+                      </button>
+                      <button 
+                        type="button"
+                        className="btn-secondary" 
+                        style={{ borderColor: '#d8b4fe', color: '#6b21a8', padding: '8px 14px', fontSize: '0.82rem' }}
+                        onClick={() => fileRectifyRef.current?.click()}
+                      >
+                        <ImagePlus size={15} />
+                        <span>📁 Tải Ảnh Sửa</span>
+                      </button>
+                      <button 
+                        type="button"
+                        className="btn-secondary" 
+                        style={{ padding: '8px 14px', fontSize: '0.82rem' }}
+                        onClick={() => setIsRectifyModalOpen(true)}
+                      >
+                        <Wrench size={15} />
+                        <span>Sửa Nội Dung Khắc Phục</span>
+                      </button>
+                    </>
+                  )}
+
+                  {(currentRole === 'SUPERVISOR' || currentRole === 'INVESTOR' || currentRole === 'ADMIN') && (
+                    <>
+                      <button 
+                        className="btn-danger" 
+                        style={{ padding: '8px 14px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                        onClick={() => {
+                          setRejectReason('');
+                          setIsRejectModalOpen(true);
+                        }}
+                        title="Sau sửa chữa vẫn chưa đạt chuẩn, yêu cầu ĐVTC sửa lại tiếp"
+                      >
+                        <XCircle size={15} />
+                        <span>Không Đạt / Sửa Lại Tiếp</span>
+                      </button>
+
+                      <button 
+                        className="btn-success" 
+                        style={{ padding: '8px 14px', fontSize: '0.82rem' }}
+                        onClick={handleReinspect}
+                      >
+                        <CheckCircle2 size={15} />
+                        <span>
+                          {currentRole === 'INVESTOR' 
+                            ? 'CĐT: Nghiệm Thu Đạt Sau Sửa' 
+                            : 'TVGS: Nghiệm Thu Đạt Sau Sửa & Chuyển CĐT'}
+                        </span>
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {rectifyPhotos.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 20px', background: '#ffffff', borderRadius: '12px', border: '2px dashed #d8b4fe' }}>
+                  <Wrench size={40} color="#a855f7" style={{ marginBottom: '10px' }} />
+                  <div style={{ fontWeight: 600, color: '#6b21a8' }}>Chưa có hình ảnh khắc phục nào được gửi</div>
+                  <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px', marginBottom: '14px' }}>
+                    Bấm nút bên dưới để tải ảnh chụp sửa chữa hoặc chèn ảnh mẫu hiện trường làm bằng chứng nghiệm thu.
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                    <button 
+                      type="button"
+                      className="btn-secondary" 
+                      style={{ borderColor: '#a855f7', color: '#7c3aed', background: '#faf5ff' }}
+                      onClick={handleAddSampleRectifyPhoto}
+                    >
+                      <Zap size={16} />
+                      <span>⚡ Tự Động Lấy Ảnh Mẫu Đã Sửa (Demo)</span>
+                    </button>
+                    {(currentRole === 'CONTRACTOR' || currentRole === 'ADMIN') && (
+                      <button 
+                        type="button"
+                        className="btn-primary" 
+                        style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)' }}
+                        onClick={() => setIsRectifyModalOpen(true)}
+                      >
+                        <Camera size={16} />
+                        <span>Chụp & Gửi Ảnh Khắc Phục Ngay</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' }}>
+                  {rectifyPhotos.map((photo, idx) => (
+                    <div 
+                      key={photo.id || idx} 
+                      style={{ 
+                        background: '#ffffff', 
+                        border: '1.5px solid #a7f3d0', 
+                        borderRadius: '12px', 
+                        overflow: 'hidden', 
+                        boxShadow: '0 2px 8px rgba(16, 185, 129, 0.1)' 
+                      }}
+                    >
+                      <div style={{ position: 'relative' }}>
+                        <img 
+                          src={photo.url} 
+                          alt={`Đã sửa ${idx + 1}`}
+                          style={{ width: '100%', height: '220px', objectFit: 'cover' }}
+                        />
+                        <div style={{
+                          position: 'absolute',
+                          top: '10px',
+                          left: '10px',
+                          background: '#059669',
+                          color: '#ffffff',
+                          fontWeight: 800,
+                          fontSize: '0.72rem',
+                          padding: '3px 8px',
+                          borderRadius: '4px',
+                          letterSpacing: '0.04em'
+                        }}>
+                          ✓ ĐÃ SỬA CHỮA #{idx + 1}
+                        </div>
+                        <div style={{ 
+                          position: 'absolute', 
+                          bottom: '8px', 
+                          left: '8px', 
+                          right: '8px', 
+                          background: 'rgba(15, 23, 42, 0.88)', 
+                          backdropFilter: 'blur(4px)', 
+                          color: '#ffffff', 
+                          padding: '6px 10px', 
+                          borderRadius: '6px', 
+                          fontSize: '0.72rem' 
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <MapPin size={12} color="#60a5fa" />
+                            <span>{photo.gps || '10.0076° N, 105.7823° E'}</span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                            <Clock size={12} color="#34d399" />
+                            <span>{photo.time} • {photo.photographer || 'ĐVTC An Phú Gia'}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ padding: '12px' }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#065f46' }}>
+                          {photo.caption}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* MODAL FOOTER */}
+        <div className="modal-footer no-print" style={{ justifyContent: 'space-between' }}>
+          <div>
+            <button className="btn-secondary" onClick={onClose}>
+              Đóng
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            {/* 1. NẾU ĐÃ HOÀN TẤT TOÀN DIỆN */}
+            {isCompleted ? (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                color: '#065f46',
+                background: '#ecfdf5',
+                border: '1.5px solid #a7f3d0',
+                padding: '8px 16px',
+                borderRadius: '8px',
+                fontWeight: 600,
+                fontSize: '0.88rem'
+              }}>
+                <CheckCircle2 size={18} color="#059669" />
+                <span>Biên bản đã hoàn tất nghiệm thu đủ 3 bên (Đã hoàn tất ký số độc lập)</span>
+              </div>
+            ) : isWaitingInvestor ? (
+              /* GIAI ĐOẠN 2: TVGS ĐÃ ĐẠT -> CĐT PHÊ DUYỆT & KÝ SỐ */
+              <>
+                {(currentRole === 'INVESTOR' || currentRole === 'ADMIN') ? (
+                  <>
+                    <button 
+                      className="btn-danger" 
+                      onClick={() => {
+                        setRejectReason('');
+                        setIsRejectModalOpen(true);
+                      }}
+                      title="CĐT: Không đồng ý nghiệm thu, gửi yêu cầu trực tiếp cho ĐVTC sửa chữa"
+                    >
+                      <AlertTriangle size={16} />
+                      <span>✕ CĐT: Không Đồng Ý (Yêu Cầu Sửa)</span>
+                    </button>
+
+                    <button 
+                      className="btn-primary" 
+                      style={{ background: '#d97706' }} 
+                      onClick={() => handleSign('investor')}
+                      title="CĐT: Phê duyệt nghiệm thu đạt và ký số hoàn tất biên bản"
+                    >
+                      <PenTool size={16} />
+                      <span>✓ CĐT: Nghiệm Thu Đạt & Ký Phê Duyệt</span>
+                    </button>
+                  </>
+                ) : (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    color: '#059669',
+                    fontSize: '0.84rem',
+                    fontWeight: 600,
+                    background: '#ecfdf5',
+                    border: '1px solid #a7f3d0',
+                    padding: '7px 14px',
+                    borderRadius: '8px'
+                  }}>
+                    <CheckCircle2 size={16} color="#059669" />
+                    <span>TVGS đã ký duyệt đạt. Đang chờ Chủ Đầu Tư phê duyệt & ký số.</span>
+                  </div>
+                )}
+              </>
+            ) : isRectified ? (
+              /* 2. ĐÃ SỬA CHỮA - CHỜ DUYỆT LẠI */
+              (() => {
+                const targetReviewer = reportState?.rectification?.target || (reportState?.conclusion?.rejectedBy?.role === 'INVESTOR' ? 'INVESTOR' : 'SUPERVISOR');
+                return (
+                  <>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '6px', 
+                      background: '#f3e8ff', 
+                      border: '1px solid #d8b4fe', 
+                      padding: '6px 12px', 
+                      borderRadius: '8px', 
+                      color: '#7c3aed', 
+                      fontSize: '0.84rem', 
+                      fontWeight: 600 
+                    }}>
+                      <RotateCcw size={16} />
+                      <span>
+                        {targetReviewer === 'INVESTOR'
+                          ? `ĐVTC đã sửa và gửi trực tiếp CĐT (${rectifyPhotos.length} ảnh). Chờ CĐT kiểm tra lại.`
+                          : `ĐVTC đã gửi ảnh sửa (${rectifyPhotos.length} ảnh). Chờ TVGS kiểm tra lại.`}
+                      </span>
+                    </div>
+
+                    {/* ĐVTC bổ sung thêm ảnh sửa nếu cần */}
+                    {(currentRole === 'CONTRACTOR' || currentRole === 'ADMIN') && (
+                      <button 
+                        className="btn-primary" 
+                        style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)', padding: '8px 14px', fontSize: '0.84rem' }}
+                        onClick={() => setIsRectifyModalOpen(true)}
+                      >
+                        <Camera size={15} />
+                        <span>Cập Nhật Thêm Ảnh Sửa</span>
+                      </button>
+                    )}
+
+                    {/* TVGS DUYỆT LẠI (Khi TVGS là người từ chối) */}
+                    {targetReviewer === 'SUPERVISOR' && (currentRole === 'SUPERVISOR' || currentRole === 'ADMIN') && (
+                      <>
+                        <button 
+                          className="btn-danger" 
+                          style={{ padding: '8px 14px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                          onClick={() => {
+                            setRejectReason('');
+                            setIsRejectModalOpen(true);
+                          }}
+                          title="Sau sửa chữa vẫn chưa đạt chuẩn, TVGS yêu cầu ĐVTC sửa tiếp"
+                        >
+                          <XCircle size={16} />
+                          <span>TVGS: Không Đạt / Sửa Tiếp</span>
+                        </button>
+
+                        <button 
+                          className="btn-success" 
+                          style={{ padding: '8px 16px', fontSize: '0.86rem' }}
+                          onClick={handleReinspectSupervisor}
+                        >
+                          <CheckCircle2 size={16} />
+                          <span>TVGS: Nghiệm Thu Đạt & Chuyển CĐT</span>
+                        </button>
+                      </>
+                    )}
+
+                    {/* CĐT DUYỆT LẠI (Khi CĐT là người từ chối trực tiếp) */}
+                    {targetReviewer === 'INVESTOR' && (currentRole === 'INVESTOR' || currentRole === 'ADMIN') && (
+                      <>
+                        <button 
+                          className="btn-danger" 
+                          style={{ padding: '8px 14px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                          onClick={() => {
+                            setRejectReason('');
+                            setIsRejectModalOpen(true);
+                          }}
+                          title="Chủ đầu tư kiểm tra lại chưa đạt, yêu cầu ĐVTC sửa tiếp"
+                        >
+                          <XCircle size={16} />
+                          <span>CĐT: Không Đạt / Sửa Tiếp</span>
+                        </button>
+
+                        <button 
+                          className="btn-success" 
+                          style={{ padding: '8px 16px', fontSize: '0.86rem' }}
+                          onClick={handleReinspectInvestor}
+                        >
+                          <CheckCircle2 size={16} />
+                          <span>CĐT: Nghiệm Thu Đạt & Ký Phê Duyệt</span>
+                        </button>
+                      </>
+                    )}
+
+                    {/* Thông báo tiến độ cho các bên khác */}
+                    {targetReviewer === 'SUPERVISOR' && currentRole === 'INVESTOR' && (
+                      <div style={{ color: '#64748b', fontSize: '0.82rem', fontStyle: 'italic', padding: '6px 10px', background: '#f8fafc', borderRadius: '6px' }}>
+                        ⏳ Chờ TVGS kiểm tra lại ảnh sửa trước. CĐT sẽ duyệt sau khi TVGS đạt.
+                      </div>
+                    )}
+                    {targetReviewer === 'INVESTOR' && currentRole === 'SUPERVISOR' && (
+                      <div style={{ color: '#047857', fontSize: '0.82rem', fontWeight: 600, padding: '6px 10px', background: '#ecfdf5', borderRadius: '6px' }}>
+                        ✓ TVGS đã duyệt đạt. Chủ Đầu Tư đang trực tiếp kiểm tra lại kết quả sửa chữa.
+                      </div>
+                    )}
+                  </>
+                );
+              })()
+            ) : isRejected ? (
+              /* 3. NẾU ĐANG BỊ TỪ CHỐI (CHỜ ĐVTC SỬA) */
+              <>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '6px', 
+                  background: '#fee2e2', 
+                  border: '1px solid #fecaca', 
+                  padding: '6px 12px', 
+                  borderRadius: '8px', 
+                  color: '#dc2626', 
+                  fontSize: '0.84rem', 
+                  fontWeight: 600 
+                }}>
+                  <AlertCircle size={16} />
+                  <span>
+                    {rejectionInfo?.role === 'INVESTOR' 
+                      ? 'Chủ Đầu Tư yêu cầu sửa chữa. Đang chờ ĐVTC khắc phục.' 
+                      : 'TVGS yêu cầu sửa chữa. Đang chờ ĐVTC khắc phục.'}
+                  </span>
+                </div>
+
+                {/* ĐVTC BÁO CÁO ĐÃ SỬA & GỬI LẠI */}
+                {(currentRole === 'CONTRACTOR' || currentRole === 'ADMIN') && (
+                  <button 
+                    className="btn-primary" 
+                    style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)', padding: '8px 16px', fontSize: '0.86rem' }}
+                    onClick={() => setIsRectifyModalOpen(true)}
+                  >
+                    <Wrench size={16} />
+                    <span>
+                      {rejectionInfo?.role === 'INVESTOR'
+                        ? 'Sửa Chữa & Gửi Duyệt Trực Tiếp CĐT'
+                        : 'Sửa Chữa & Gửi Duyệt Lại TVGS'}
+                    </span>
+                  </button>
+                )}
+
+                {/* TVGS / CĐT chụp thêm ảnh lỗi */}
+                {(currentRole === 'SUPERVISOR' || currentRole === 'INVESTOR' || currentRole === 'ADMIN') && (
+                  <button 
+                    className="btn-danger" 
+                    style={{ padding: '8px 14px', fontSize: '0.84rem' }}
+                    onClick={() => setIsRejectModalOpen(true)}
+                  >
+                    <Camera size={15} />
+                    <span>Chụp Thêm Lỗi</span>
+                  </button>
+                )}
+              </>
+            ) : (
+              /* 4. BIÊN BẢN BÌNH THƯỜNG / DUYỆT LẦN ĐẦU */
+              <>
+                {/* GIAI ĐOẠN 1: TVGS KIỂM TRA & DUYỆT TRƯỚC */}
+                {!isSupervisorSigned ? (
+                  <>
+                    {(currentRole === 'SUPERVISOR' || currentRole === 'ADMIN') ? (
+                      <>
+                        <button 
+                          className="btn-danger" 
+                          onClick={() => setIsRejectModalOpen(true)}
+                          title="TVGS: Từ chối nghiệm thu, chụp ảnh lỗi hiện trường và yêu cầu ĐVTC sửa chữa"
+                        >
+                          <AlertTriangle size={16} />
+                          <span>✕ TVGS: Không Đồng Ý Nghiệm Thu</span>
+                        </button>
+
+                        <button 
+                          className="btn-primary" 
+                          style={{ background: '#059669' }} 
+                          onClick={() => handleSign('supervisor')}
+                          title="TVGS: Xác nhận nghiệm thu đạt và ký số chuyển Chủ Đầu Tư"
+                        >
+                          <PenTool size={16} />
+                          <span>✓ TVGS: Xác Nhận Nghiệm Thu Đạt & Ký Số</span>
+                        </button>
+                      </>
+                    ) : currentRole === 'INVESTOR' ? (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: '#fffbeb',
+                        border: '1.5px solid #fde68a',
+                        color: '#b45309',
+                        padding: '8px 14px',
+                        borderRadius: '8px',
+                        fontSize: '0.85rem',
+                        fontWeight: 600
+                      }}>
+                        <Clock size={16} />
+                        <span>Chờ TVGS duyệt trước: CĐT chỉ phê duyệt sau khi TVGS xác nhận đạt</span>
+                      </div>
+                    ) : (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: '#eff6ff',
+                        border: '1px solid #bfdbfe',
+                        color: '#1e40af',
+                        padding: '7px 14px',
+                        borderRadius: '8px',
+                        fontSize: '0.84rem',
+                        fontWeight: 600
+                      }}>
+                        <Clock size={16} />
+                        <span>Đã phát hành phiếu: Đang chờ Tư Vấn Giám Sát kiểm tra & duyệt</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  /* GIAI ĐOẠN 2: TVGS ĐÃ ĐẠT -> CĐT PHÊ DUYỆT & KÝ SỐ */
+                  <>
+                    {!isInvestorSigned ? (
+                      <>
+                        {(currentRole === 'INVESTOR' || currentRole === 'ADMIN') ? (
+                          <>
+                            <button 
+                              className="btn-danger" 
+                              onClick={() => setIsRejectModalOpen(true)}
+                              title="CĐT: Không đồng ý nghiệm thu, gửi yêu cầu trực tiếp cho ĐVTC sửa chữa"
+                            >
+                              <AlertTriangle size={16} />
+                              <span>✕ CĐT: Không Đồng Ý (Yêu Cầu Sửa)</span>
+                            </button>
+
+                            <button 
+                              className="btn-primary" 
+                              style={{ background: '#d97706' }} 
+                              onClick={() => handleSign('investor')}
+                              title="CĐT: Phê duyệt nghiệm thu đạt và ký số hoàn tất biên bản"
+                            >
+                              <PenTool size={16} />
+                              <span>✓ CĐT: Nghiệm Thu Đạt & Ký Phê Duyệt</span>
+                            </button>
+                          </>
+                        ) : (
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            color: '#059669',
+                            fontSize: '0.84rem',
+                            fontWeight: 600,
+                            background: '#ecfdf5',
+                            border: '1px solid #a7f3d0',
+                            padding: '7px 14px',
+                            borderRadius: '8px'
+                          }}>
+                            <CheckCircle2 size={16} color="#059669" />
+                            <span>TVGS đã ký duyệt đạt. Đang chờ Chủ Đầu Tư phê duyệt & ký số.</span>
+                          </div>
+                        )}
+                      </>
+                    ) : null}
+                  </>
+                )}
+
+                {/* ĐVTC KÝ SỐ ĐỘC LẬP */}
+                {currentRole === 'CONTRACTOR' && !isContractorSigned && (
+                  <button className="btn-primary" onClick={() => handleSign('contractor')}>
+                    <PenTool size={16} />
+                    <span>Đơn Vị Thi Công Ký Xác Nhận</span>
+                  </button>
+                )}
+
+                {/* Trạng thái ký cho ĐVTC */}
+                {currentRole === 'CONTRACTOR' && isContractorSigned && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    color: '#059669',
+                    fontSize: '0.84rem',
+                    fontWeight: 600,
+                    background: '#ecfdf5',
+                    border: '1px solid #a7f3d0',
+                    padding: '7px 14px',
+                    borderRadius: '8px'
+                  }}>
+                    <CheckCircle2 size={16} color="#059669" />
+                    <span>ĐVTC đã ký xác nhận độc lập</span>
+                  </div>
+                )}
+
+                {currentRole === 'ADMIN' && (
+                  <button className="btn-primary" style={{ background: '#7e22ce' }} onClick={() => {
+                    const now = new Date().toISOString();
+                    const nowFormatted = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('vi-VN');
+                    const updated = {
+                      ...reportState,
+                      conclusion: {
+                        ...reportState.conclusion,
+                        isAccepted: true
+                      },
+                      attendees: {
+                        ...reportState.attendees,
+                        supervisor: {
+                          ...reportState.attendees?.supervisor,
+                          signed: true,
+                          signedAt: nowFormatted
+                        },
+                        investor: {
+                          ...reportState.attendees?.investor,
+                          signed: true,
+                          signedAt: nowFormatted
+                        },
+                        contractor: {
+                          ...reportState.attendees?.contractor,
+                          signed: true
+                        }
+                      },
+                      status: 'COMPLETED',
+                      updatedAt: now
+                    };
+                    setSignatures({ investor: true, supervisor: true, contractor: true });
+                    setReportState(updated);
+                    triggerSafeConfetti();
+                    const targetReportId = reportState.id || report?.id;
+                    if (onReinspectReport) {
+                      onReinspectReport(targetReportId, updated);
+                    } else if (onSaveReport) {
+                      onSaveReport(updated);
+                    }
+                  }}>
+                    <ShieldCheck size={16} />
+                    <span>Admin: Xác Thực Toàn Bộ Chữ Ký</span>
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* =========================================================================
+          SUB-MODAL 1: TỪ CHỐI NGHIỆM THU (DÀNH CHO TVGS & CĐT)
+          ========================================================================= */}
+      {isRejectModalOpen && currentRole !== 'CONTRACTOR' && (
+        <div className="modal-overlay no-print" style={{ zIndex: 160, background: 'rgba(15, 23, 42, 0.75)' }}>
+          <div className="modal-content" style={{ maxWidth: '680px', maxHeight: '92vh', border: '1.5px solid #fca5a5' }}>
+            <div className="modal-header" style={{ background: '#fef2f2', borderBottom: '1px solid #fecaca' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ background: '#fee2e2', padding: '8px', borderRadius: '10px', color: '#dc2626' }}>
+                  <AlertTriangle size={22} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#991b1b' }}>
+                    {currentRole === 'INVESTOR'
+                      ? (isRectified ? 'Chủ Đầu Tư: Không Đồng Ý Sau Sửa & Yêu Cầu Sửa Tiếp' : 'Chủ Đầu Tư: Không Đồng Ý Phê Duyệt & Yêu Cầu Sửa Chữa')
+                      : (isRectified ? 'TVGS: Không Đồng Ý Sau Sửa & Yêu Cầu Sửa Tiếp' : 'TVGS: Không Đồng Ý Nghiệm Thu & Yêu Cầu Sửa Chữa')}
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '0.8rem', color: '#b91c1c' }}>
+                    Thông báo gửi trực tiếp đến <strong>Đơn Vị Thi Công</strong> • Biên bản số: <strong>{reportState.reportNumber}</strong>
+                  </p>
+                </div>
+              </div>
+              <button className="modal-close-btn" onClick={() => setIsRejectModalOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ padding: '20px' }}>
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem' }}>
+                <User size={18} color="#64748b" />
+                <div>
+                  <span>Cán bộ lập: <strong>{currentUser?.fullName}</strong></span>
+                  <span style={{ color: '#64748b' }}> ({currentRole === 'SUPERVISOR' ? 'Tư Vấn Giám Sát' : currentRole === 'INVESTOR' ? 'Đại Diện Ban QLDA' : 'Quản Trị'})</span>
+                </div>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '16px' }}>
+                <label className="form-label" style={{ color: '#991b1b', fontWeight: 700 }}>
+                  1. Lý do không nghiệm thu / Khiếm khuyết hiện trường (*):
+                </label>
+                <textarea 
+                  className="form-textarea"
+                  style={{ minHeight: '85px', borderColor: '#fca5a5' }}
+                  placeholder="Nhập chi tiết các lỗi không đạt kỹ thuật..."
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                />
+
+                <div style={{ marginTop: '8px' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginBottom: '6px' }}>
+                    ⚡ Gợi ý chọn nhanh các lỗi kỹ thuật thường gặp:
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {COMMON_DEFECT_CHIPS.map((chip, idx) => (
+                      <button key={idx} type="button" style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: '0.74rem', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer' }} onClick={() => handleAddChipToReason(chip)}>
+                        + {chip}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '16px' }}>
+                <label className="form-label" style={{ fontWeight: 700 }}>
+                  2. Yêu cầu khắc phục, sửa chữa:
+                </label>
+                <textarea 
+                  className="form-textarea"
+                  style={{ minHeight: '65px' }}
+                  placeholder="Chỉ đạo ĐVTC: Nắn chỉnh lại đai thép, bổ sung con kê đạt chuẩn..."
+                  value={repairRequired}
+                  onChange={(e) => setRepairRequired(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="form-label">Thời hạn ĐVTC phải hoàn thành khắc phục:</label>
+                <input type="text" className="form-input" value={repairDeadline} onChange={(e) => setRepairDeadline(e.target.value)} />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" style={{ margin: '0 0 10px 0', fontWeight: 700, color: '#991b1b' }}>
+                  3. Hình ảnh chụp lỗi hiện trường ({defectPhotos.length} ảnh):
+                </label>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px', marginBottom: '14px' }}>
+                  <button type="button" className="btn-secondary" style={{ borderColor: '#3b82f6', color: '#1d4ed8', background: '#eff6ff', justifyContent: 'center' }} onClick={() => cameraInputRef.current?.click()}>
+                    <Camera size={16} /> <span>📸 Chụp Ảnh Camera</span>
+                  </button>
+                  <button type="button" className="btn-secondary" style={{ justifyContent: 'center' }} onClick={() => fileInputRef.current?.click()}>
+                    <ImagePlus size={16} /> <span>📁 Tải Ảnh Từ Máy</span>
+                  </button>
+                  <button type="button" className="btn-secondary" style={{ borderColor: '#fca5a5', color: '#991b1b', background: '#fef2f2', justifyContent: 'center' }} onClick={handleAddSampleDefectPhoto}>
+                    <Zap size={16} /> <span>⚡ Dùng Ảnh Mẫu (Demo)</span>
+                  </button>
+                </div>
+
+                {defectPhotos.length > 0 && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+                    {defectPhotos.map((photo, idx) => (
+                      <div key={photo.id || idx} style={{ border: '1px solid #fecaca', borderRadius: '8px', overflow: 'hidden', background: '#fff', position: 'relative' }}>
+                        <img src={photo.url} alt={`Lỗi ${idx + 1}`} style={{ width: '100%', height: '120px', objectFit: 'cover' }} />
+                        <button type="button" onClick={() => handleDeletePhoto(photo.id)} style={{ position: 'absolute', top: '4px', right: '4px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                          <Trash2 size={12} />
+                        </button>
+                        <div style={{ padding: '6px' }}>
+                          <input type="text" value={photo.caption} onChange={(e) => setDefectPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, caption: e.target.value } : p))} style={{ width: '100%', fontSize: '0.76rem', padding: '4px', border: '1px solid #e2e8f0', borderRadius: '4px' }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+              <button type="button" className="btn-secondary" onClick={() => setIsRejectModalOpen(false)}>Hủy bỏ</button>
+              <button type="button" className="btn-danger" onClick={handleConfirmReject}>
+                <AlertTriangle size={16} /> <span>
+                  {currentRole === 'INVESTOR'
+                    ? (isRectified ? 'CĐT: Xác Nhận Không Đạt & Bắt Buộc Sửa Lại' : 'CĐT: Xác Nhận Không Đồng Ý & Gửi ĐVTC Sửa')
+                    : (isRectified ? 'TVGS: Xác Nhận Không Đạt & Bắt Buộc Sửa Lại' : 'TVGS: Xác Nhận Không Đồng Ý & Gửi ĐVTC Sửa')}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          SUB-MODAL 2: ĐVTC BÁO CÁO KHẮC PHỤC & GỬI ẢNH ĐÃ SỬA CHỮA (MỚI)
+          ========================================================================= */}
+      {isRectifyModalOpen && (
+        <div className="modal-overlay no-print" style={{ zIndex: 170, background: 'rgba(15, 23, 42, 0.78)' }}>
+          <div className="modal-content" style={{ maxWidth: '700px', maxHeight: '92vh', border: '2px solid #a855f7' }}>
+            <div className="modal-header" style={{ background: '#f5f3ff', borderBottom: '1px solid #d8b4fe' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ background: '#e9d5ff', padding: '8px', borderRadius: '10px', color: '#7c3aed' }}>
+                  <Wrench size={22} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#6b21a8' }}>
+                    {reportState.conclusion?.rejectedBy?.role === 'INVESTOR'
+                      ? 'Báo Cáo Sửa Chữa Khắc Phục & Gửi Trực Tiếp Cho Chủ Đầu Tư'
+                      : 'Báo Cáo Sửa Chữa Khắc Phục & Gửi Cho TVGS Duyệt Lại'}
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '0.8rem', color: '#7e22ce' }}>
+                    Người nhận duyệt: <strong>{reportState.conclusion?.rejectedBy?.role === 'INVESTOR' ? 'Đại Diện Chủ Đầu Tư' : 'Tư Vấn Giám Sát'}</strong> • Biên bản: {reportState.reportNumber}
+                  </p>
+                </div>
+              </div>
+              <button className="modal-close-btn" onClick={() => setIsRectifyModalOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ padding: '20px' }}>
+              {/* TÓM TẮT LỖI YÊU CẦU SỬA */}
+              <div style={{ 
+                background: '#fff1f2', 
+                border: '1px solid #fecaca', 
+                borderRadius: '8px', 
+                padding: '10px 14px', 
+                marginBottom: '16px',
+                fontSize: '0.84rem'
+              }}>
+                <div style={{ color: '#991b1b', fontWeight: 700, marginBottom: '2px' }}>
+                  ⚠️ Yêu cầu sửa chữa từ {reportState.conclusion?.rejectedBy?.role === 'INVESTOR' ? 'Chủ Đầu Tư' : 'TVGS'} ({reportState.conclusion?.rejectedBy?.name || 'Cán bộ kiểm tra'}):
+                </div>
+                <div style={{ color: '#7f1d1d' }}>
+                  "{reportState.conclusion?.rejectionReason || 'Cần nắn chỉnh và kiểm tra lại vị trí kỹ thuật'}"
+                </div>
+              </div>
+
+              {/* 1. NỘI DUNG ĐÃ SỬA CHỮA */}
+              <div className="form-group" style={{ marginBottom: '16px' }}>
+                <label className="form-label" style={{ color: '#6b21a8', fontWeight: 700 }}>
+                  1. Biện pháp & Nội dung ĐVTC đã khắc phục xong (*):
+                </label>
+                <textarea 
+                  className="form-textarea"
+                  style={{ minHeight: '85px', borderColor: '#d8b4fe' }}
+                  placeholder="Ghi rõ công việc đã khắc phục (Ví dụ: Đã nắn chỉnh lại thép đai dầm D1 về đúng khoảng cách a150 theo bản vẽ BVTC-KC-12, kê thêm con kê bê tông 25mm và dọn sạch hộc cốp pha...)"
+                  value={rectifyDesc}
+                  onChange={(e) => setRectifyDesc(e.target.value)}
+                />
+
+                <div style={{ marginTop: '8px' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginBottom: '6px' }}>
+                    ⚡ Gợi ý chọn nhanh biện pháp khắc phục đã hoàn thành:
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {COMMON_RECTIFIED_CHIPS.map((chip, idx) => (
+                      <button key={idx} type="button" style={{ background: '#f5f3ff', border: '1px solid #d8b4fe', color: '#6b21a8', fontSize: '0.74rem', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer' }} onClick={() => handleAddChipToRectify(chip)}>
+                        + {chip}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. CHỤP / GỬI ẢNH ĐÃ SỬA CHỮA */}
+              <div className="form-group" style={{ marginBottom: '18px' }}>
+                <label className="form-label" style={{ fontWeight: 700, color: '#6b21a8' }}>
+                  2. Chụp & Đính kèm ảnh hiện trường sau khi sửa chữa ({rectifyPhotos.length} ảnh):
+                </label>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px', marginBottom: '12px' }}>
+                  <button type="button" className="btn-secondary" style={{ borderColor: '#7c3aed', color: '#6d28d9', background: '#f5f3ff', justifyContent: 'center' }} onClick={() => cameraRectifyRef.current?.click()}>
+                    <Camera size={16} /> <span>📸 Chụp Ảnh Camera</span>
+                  </button>
+                  <button type="button" className="btn-secondary" style={{ justifyContent: 'center' }} onClick={() => fileRectifyRef.current?.click()}>
+                    <ImagePlus size={16} /> <span>📁 Tải Ảnh Từ Máy</span>
+                  </button>
+                  <button type="button" className="btn-secondary" style={{ borderColor: '#a855f7', color: '#7c3aed', background: '#faf5ff', justifyContent: 'center' }} onClick={handleAddSampleRectifyPhoto}>
+                    <Zap size={16} /> <span>⚡ Dùng Ảnh Mẫu (Demo)</span>
+                  </button>
+                </div>
+
+                {/* DANH SÁCH ẢNH ĐÃ SỬA CHỮA */}
+                {rectifyPhotos.length === 0 ? (
+                  <div style={{ border: '2px dashed #d8b4fe', borderRadius: '10px', padding: '20px', textAlign: 'center', background: '#faf5ff' }}>
+                    <Camera size={30} color="#c084fc" style={{ marginBottom: '6px' }} />
+                    <div style={{ fontSize: '0.84rem', color: '#6b21a8', fontWeight: 600 }}>Chưa có ảnh sửa chữa nào được đính kèm</div>
+                    <div style={{ fontSize: '0.76rem', color: '#64748b', marginTop: '2px' }}>Bấm nút phía trên để chụp ảnh hiện trường làm bằng chứng nghiệm thu</div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+                    {rectifyPhotos.map((photo, idx) => (
+                      <div key={photo.id || idx} style={{ border: '1.5px solid #a7f3d0', borderRadius: '8px', overflow: 'hidden', background: '#fff', position: 'relative' }}>
+                        <img src={photo.url} alt={`Ảnh sửa ${idx + 1}`} style={{ width: '100%', height: '125px', objectFit: 'cover' }} />
+                        <button type="button" onClick={() => handleDeleteRectifyPhoto(photo.id)} style={{ position: 'absolute', top: '4px', right: '4px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                          <Trash2 size={12} />
+                        </button>
+                        <div style={{ position: 'absolute', bottom: '26px', left: '4px', right: '4px', background: 'rgba(15, 23, 42, 0.85)', color: '#fff', padding: '2px 6px', borderRadius: '3px', fontSize: '0.64rem' }}>
+                          <div>📍 {photo.gps?.split('(')[0] || '10.0076° N, 105.7823° E'}</div>
+                        </div>
+                        <div style={{ padding: '6px' }}>
+                          <input type="text" value={photo.caption} onChange={(e) => setRectifyPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, caption: e.target.value } : p))} style={{ width: '100%', fontSize: '0.74rem', padding: '4px', border: '1px solid #e2e8f0', borderRadius: '4px' }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 3. THỜI GIAN ĐỀ NGHỊ NGHIỆM THU LẠI */}
+              <div className="form-group">
+                <label className="form-label">
+                  3. Thời gian đề nghị {reportState.conclusion?.rejectedBy?.role === 'INVESTOR' ? 'Chủ Đầu Tư' : 'TVGS'} kiểm tra lại:
+                </label>
+                <input type="text" className="form-input" value={suggestedTime} onChange={(e) => setSuggestedTime(e.target.value)} placeholder="Ví dụ: 16h30 ngày hôm nay / 09h00 sáng mai" />
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+              <button type="button" className="btn-secondary" onClick={() => setIsRectifyModalOpen(false)}>Hủy bỏ</button>
+              <button 
+                type="button" 
+                className="btn-primary" 
+                style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)' }}
+                onClick={handleConfirmRectification}
+              >
+                <Send size={16} /> <span>
+                  {reportState.conclusion?.rejectedBy?.role === 'INVESTOR'
+                    ? 'Xác Nhận Đã Sửa & Gửi Trực Tiếp Cho Chủ Đầu Tư Duyệt'
+                    : 'Xác Nhận Đã Sửa & Gửi Cho TVGS Duyệt Lại'}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e3a8a"/>
+      <stop offset="50%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#fbbf24"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background with rounded corners -->
+  <rect width="512" height="512" rx="110" fill="url(#bgGrad)"/>
+
+  <!-- Subtle glow ring -->
+  <circle cx="256" cy="256" r="210" stroke="rgba(255,255,255,0.15)" stroke-width="4" fill="none"/>
+
+  <!-- Building / Construction Grid -->
+  <g transform="translate(106, 116)" fill="#ffffff">
+    <!-- Main building outline -->
+    <path d="M40 280 L40 90 L160 90 L160 280 Z" fill="rgba(255,255,255,0.2)"/>
+    <path d="M160 280 L160 30 L260 30 L260 280 Z" fill="rgba(255,255,255,0.3)"/>
+    
+    <!-- Windows -->
+    <rect x="65" y="120" width="22" height="30" rx="3" fill="#ffffff"/>
+    <rect x="110" y="120" width="22" height="30" rx="3" fill="#ffffff"/>
+    <rect x="65" y="180" width="22" height="30" rx="3" fill="#ffffff"/>
+    <rect x="110" y="180" width="22" height="30" rx="3" fill="#ffffff"/>
+
+    <rect x="185" y="60" width="24" height="35" rx="3" fill="#ffffff"/>
+    <rect x="225" y="60" width="24" height="35" rx="3" fill="#ffffff"/>
+    <rect x="185" y="120" width="24" height="35" rx="3" fill="#ffffff"/>
+    <rect x="225" y="120" width="24" height="35" rx="3" fill="#ffffff"/>
+    <rect x="185" y="180" width="24" height="35" rx="3" fill="#ffffff"/>
+    <rect x="225" y="180" width="24" height="35" rx="3" fill="#ffffff"/>
+
+    <!-- Ground base line -->
+    <rect x="20" y="270" width="260" height="12" rx="6" fill="#ffffff"/>
+  </g>
+
+  <!-- Big Checkmark Badge (Nghiệm thu đạt) -->
+  <circle cx="360" cy="360" r="75" fill="#10b981" stroke="#ffffff" stroke-width="8"/>
+  <path d="M325 360 L348 385 L395 335" fill="none" stroke="#ffffff" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

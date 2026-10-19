@@ -1,0 +1,454 @@
+// ============================================================================
+// GOOGLE FIRESTORE DATABASE SERVICE
+// Quản lý lưu trữ thời gian thực (Real-time Cloud Sync) cho toàn hệ thống:
+// 1. Phiếu Yêu Cầu Nghiệm Thu (inspection_requests)
+// 2. Biên Bản Nghiệm Thu (inspection_reports)
+// 3. Thông Báo Hệ Thống & Đẩy Web Push (system_notifications)
+// ============================================================================
+
+import { db, isFirebaseConfigured } from './firebase';
+import { 
+  collection, 
+  doc, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc,
+  getDocs,
+  onSnapshot 
+} from 'firebase/firestore';
+import { INITIAL_REQUESTS, INITIAL_REPORTS, INITIAL_NOTIFICATIONS } from '../data/mockData';
+
+const REQUESTS_COLLECTION = 'inspection_requests';
+const REPORTS_COLLECTION = 'inspection_reports';
+const NOTIFICATIONS_COLLECTION = 'system_notifications';
+const USERS_COLLECTION = 'system_users';
+const BUILDINGS_COLLECTION = 'system_buildings';
+
+// ============================================================================
+// 1. PHIẾU YÊU CẦU NGHIỆM THU (INSPECTION REQUESTS)
+// ============================================================================
+
+// Helper: Loại bỏ hoặc chuyển đổi các giá trị undefined thành null để Firestore không báo lỗi
+export const sanitizeData = (data) => {
+  if (data === undefined) return null;
+  return JSON.parse(JSON.stringify(data, (_, value) => (value === undefined ? null : value)));
+};
+
+/**
+ * Lắng nghe thời gian thực (Real-time listener) danh sách Phiếu yêu cầu
+ */
+export const subscribeToRequests = (callback) => {
+  if (!isFirebaseConfigured || !db) {
+    callback(INITIAL_REQUESTS);
+    return () => {};
+  }
+
+  try {
+    const colRef = collection(db, REQUESTS_COLLECTION);
+    const unsubscribe = onSnapshot(colRef, (snapshot) => {
+      const items = [];
+      snapshot.forEach(docSnap => {
+        items.push({ id: docSnap.id, ...docSnap.data() });
+      });
+
+      // Sắp xếp giảm dần theo thời gian tạo
+      items.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+      callback(items);
+    }, (error) => {
+      console.warn('[Firestore] Lỗi lắng nghe danh sách phiếu:', error);
+      callback([]);
+    });
+
+    return unsubscribe;
+  } catch (e) {
+    console.warn('[Firestore Exception]', e);
+    callback([]);
+    return () => {};
+  }
+};
+
+/**
+ * Lưu hoặc cập nhật Phiếu yêu cầu lên Firestore
+ */
+export const saveInspectionRequest = async (requestData) => {
+  const cleanData = sanitizeData(requestData);
+  if (!isFirebaseConfigured || !db) {
+    console.log('[Firestore Offline] Lưu phiếu nội bộ:', cleanData?.requestNumber);
+    return cleanData;
+  }
+
+  try {
+    const docRef = doc(db, REQUESTS_COLLECTION, cleanData.id);
+    await setDoc(docRef, cleanData);
+    console.log('[Firestore Cloud] Đã lưu phiếu thành công:', cleanData.requestNumber);
+    return cleanData;
+  } catch (error) {
+    console.error('[Firestore Save Request Error]', error);
+    return cleanData;
+  }
+};
+
+/**
+ * Cập nhật phản hồi thành phần tiếp nhận trên Phiếu yêu cầu
+ */
+export const updateRecipientResponse = async (requestId, assignedRecipients, newOverallStatus) => {
+  if (!isFirebaseConfigured || !db) {
+    return true;
+  }
+
+  try {
+    const docRef = doc(db, REQUESTS_COLLECTION, requestId);
+    await updateDoc(docRef, {
+      assignedRecipients,
+      status: newOverallStatus,
+      updatedAt: new Date().toISOString()
+    });
+    return true;
+  } catch (error) {
+    console.error('[Firestore Update Response Error]', error);
+    throw error;
+  }
+};
+
+// ============================================================================
+// 2. BIÊN BẢN NGHIỆM THU (INSPECTION REPORTS)
+// ============================================================================
+
+/**
+ * Lắng nghe thời gian thực (Real-time listener) danh sách Biên bản nghiệm thu
+ */
+export const subscribeToReports = (callback) => {
+  if (!isFirebaseConfigured || !db) {
+    callback(INITIAL_REPORTS);
+    return () => {};
+  }
+
+  try {
+    const colRef = collection(db, REPORTS_COLLECTION);
+    const unsubscribe = onSnapshot(colRef, (snapshot) => {
+      const items = [];
+      snapshot.forEach(docSnap => {
+        items.push({ id: docSnap.id, ...docSnap.data() });
+      });
+
+      items.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+      callback(items);
+    }, (error) => {
+      console.warn('[Firestore] Lỗi lắng nghe danh sách biên bản:', error);
+      callback([]);
+    });
+
+    return unsubscribe;
+  } catch (e) {
+    console.warn('[Firestore Exception Reports]', e);
+    callback([]);
+    return () => {};
+  }
+};
+
+/**
+ * Lưu hoặc cập nhật Biên bản nghiệm thu lên Firestore
+ */
+export const saveInspectionReport = async (reportData) => {
+  const cleanData = sanitizeData(reportData);
+  if (!isFirebaseConfigured || !db) {
+    console.log('[Firestore Offline] Lưu biên bản nội bộ:', cleanData?.reportNumber);
+    return cleanData;
+  }
+
+  try {
+    const docRef = doc(db, REPORTS_COLLECTION, cleanData.id);
+    await setDoc(docRef, cleanData);
+    console.log('[Firestore Cloud] Đã lưu biên bản thành công:', cleanData.reportNumber);
+    return cleanData;
+  } catch (error) {
+    console.error('[Firestore Save Report Error]', error);
+    return cleanData;
+  }
+};
+
+// ============================================================================
+// 3. THÔNG BÁO HỆ THỐNG THỜI GIAN THỰC (REAL-TIME SYSTEM NOTIFICATIONS)
+// ============================================================================
+
+/**
+ * Lắng nghe thời gian thực (Real-time listener) danh sách Thông báo hệ thống
+ */
+export const subscribeToNotifications = (callback) => {
+  if (!isFirebaseConfigured || !db) {
+    callback(INITIAL_NOTIFICATIONS);
+    return () => {};
+  }
+
+  try {
+    const colRef = collection(db, NOTIFICATIONS_COLLECTION);
+    const unsubscribe = onSnapshot(colRef, (snapshot) => {
+      const items = [];
+      snapshot.forEach(docSnap => {
+        items.push({ id: docSnap.id, ...docSnap.data() });
+      });
+
+      items.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+      callback(items);
+    }, (error) => {
+      console.warn('[Firestore] Lỗi lắng nghe danh sách thông báo:', error);
+      callback([]);
+    });
+
+    return unsubscribe;
+  } catch (e) {
+    console.warn('[Firestore Exception Notifications]', e);
+    callback([]);
+    return () => {};
+  }
+};
+
+/**
+ * Phát hành thông báo mới lên Firestore để tất cả thiết bị đồng loạt nhận được
+ */
+export const saveSystemNotification = async (notifData) => {
+  const cleanData = sanitizeData({
+    ...notifData,
+    createdAt: notifData.createdAt || new Date().toISOString()
+  });
+  if (!isFirebaseConfigured || !db) {
+    return cleanData;
+  }
+
+  try {
+    const docRef = doc(db, NOTIFICATIONS_COLLECTION, cleanData.id);
+    await setDoc(docRef, cleanData);
+    console.log('[Firestore Cloud] Đã phát thông báo lên toàn mạng:', cleanData.title);
+    return cleanData;
+  } catch (error) {
+    console.error('[Firestore Notification Error]', error);
+    throw error;
+  }
+};
+
+/**
+ * Đánh dấu thông báo đã đọc trên Firestore
+ */
+export const markNotificationRead = async (notifId) => {
+  if (!isFirebaseConfigured || !db) return;
+  try {
+    const docRef = doc(db, NOTIFICATIONS_COLLECTION, notifId);
+    await updateDoc(docRef, { isRead: true });
+  } catch (err) {
+    console.warn('[Firestore Mark Read Error]', err);
+  }
+};
+
+/**
+ * Đánh dấu tất cả thông báo đã đọc trên Firestore
+ */
+export const markAllNotificationsRead = async (notifications = []) => {
+  if (!isFirebaseConfigured || !db) return;
+  try {
+    const unread = notifications.filter(n => !n.isRead);
+    for (const notif of unread) {
+      const docRef = doc(db, NOTIFICATIONS_COLLECTION, notif.id);
+      updateDoc(docRef, { isRead: true }).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('[Firestore Mark All Read Error]', err);
+  }
+};
+
+/**
+ * Xóa một thông báo trên Firestore
+ */
+export const deleteSystemNotification = async (notifId) => {
+  if (!isFirebaseConfigured || !db) return;
+  try {
+    const docRef = doc(db, NOTIFICATIONS_COLLECTION, notifId);
+    await deleteDoc(docRef);
+  } catch (err) {
+    console.warn('[Firestore Delete Notif Error]', err);
+  }
+};
+
+/**
+ * Xóa toàn bộ danh sách thông báo trên Firestore
+ */
+export const clearAllSystemNotifications = async (notifications = []) => {
+  if (!isFirebaseConfigured || !db) return;
+  try {
+    for (const notif of notifications) {
+      const docRef = doc(db, NOTIFICATIONS_COLLECTION, notif.id);
+      deleteDoc(docRef).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('[Firestore Clear All Error]', err);
+  }
+};
+
+/**
+ * Lưu FCM Device Token của người dùng lên Firestore để phục vụ gửi Push từ Server/Cloud
+ */
+export const saveDeviceFCMToken = async (userId, userRole, token) => {
+  if (!isFirebaseConfigured || !db || !token) return;
+  try {
+    const cleanId = `${userId || 'guest'}_${token.slice(-12)}`;
+    const docRef = doc(db, 'fcm_device_tokens', cleanId);
+    await setDoc(docRef, {
+      userId,
+      userRole,
+      token,
+      updatedAt: new Date().toISOString(),
+      platform: /iPhone|iPad|iPod/.test(navigator.userAgent) ? 'iOS' : 'Android/Desktop'
+    });
+    console.log('[Firestore] Đã đăng ký FCM Device Token thành công:', cleanId);
+  } catch (err) {
+    console.warn('[Firestore FCM Token Error]', err);
+  }
+};
+
+// ============================================================================
+// 4. QUẢN LÝ CÁN BỘ HỆ THỐNG (SYSTEM USERS REAL-TIME SYNC)
+// ============================================================================
+
+/**
+ * Lắng nghe danh sách cán bộ tùy chỉnh / bổ sung từ Firestore
+ */
+export const subscribeToUsers = (callback) => {
+  if (!isFirebaseConfigured || !db) {
+    callback([]);
+    return () => {};
+  }
+
+  try {
+    const colRef = collection(db, USERS_COLLECTION);
+    const unsubscribe = onSnapshot(colRef, (snapshot) => {
+      const usersList = [];
+      snapshot.forEach(docSnap => {
+        usersList.push({ uid: docSnap.id, ...docSnap.data() });
+      });
+      callback(usersList);
+    }, (error) => {
+      console.warn('[Firestore] Lỗi lắng nghe cán bộ:', error);
+      callback([]);
+    });
+
+    return unsubscribe;
+  } catch (e) {
+    console.warn('[Firestore Users Exception]', e);
+    callback([]);
+    return () => {};
+  }
+};
+
+/**
+ * Lưu hoặc cập nhật thông tin cán bộ lên Firestore
+ */
+export const saveSystemUser = async (userData) => {
+  const cleanData = sanitizeData({
+    ...userData,
+    updatedAt: new Date().toISOString()
+  });
+  if (!isFirebaseConfigured || !db) return cleanData;
+  try {
+    const docRef = doc(db, USERS_COLLECTION, cleanData.uid);
+    await setDoc(docRef, cleanData);
+    console.log('[Firestore Cloud] Đã lưu thông tin cán bộ:', cleanData.fullName);
+    return cleanData;
+  } catch (error) {
+    console.error('[Firestore Save User Error]', error);
+    throw error;
+  }
+};
+
+/**
+ * Xóa cán bộ khỏi Firestore
+ */
+export const deleteSystemUser = async (userId) => {
+  if (!isFirebaseConfigured || !db) return;
+  try {
+    const docRef = doc(db, USERS_COLLECTION, userId);
+    await deleteDoc(docRef);
+    console.log('[Firestore Cloud] Đã xóa cán bộ:', userId);
+  } catch (error) {
+    console.error('[Firestore Delete User Error]', error);
+    throw error;
+  }
+};
+
+// ============================================================================
+// 5. QUẢN LÝ CÔNG TRÌNH / TÒA NHÀ (SYSTEM BUILDINGS SYNC)
+// ============================================================================
+
+/**
+ * Lắng nghe danh sách công trình bổ sung từ Firestore
+ */
+export const subscribeToBuildings = (callback) => {
+  if (!isFirebaseConfigured || !db) {
+    callback([]);
+    return () => {};
+  }
+
+  try {
+    const colRef = collection(db, BUILDINGS_COLLECTION);
+    const unsubscribe = onSnapshot(colRef, (snapshot) => {
+      const buildingsList = [];
+      snapshot.forEach(docSnap => {
+        buildingsList.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      callback(buildingsList);
+    }, (error) => {
+      console.warn('[Firestore] Lỗi lắng nghe công trình:', error);
+      callback([]);
+    });
+
+    return unsubscribe;
+  } catch (e) {
+    console.warn('[Firestore Buildings Exception]', e);
+    callback([]);
+    return () => {};
+  }
+};
+
+/**
+ * Lưu công trình mới lên Firestore
+ */
+export const saveBuilding = async (buildingData) => {
+  const cleanData = sanitizeData({
+    ...buildingData,
+    updatedAt: new Date().toISOString()
+  });
+  if (!isFirebaseConfigured || !db) return cleanData;
+  try {
+    const docRef = doc(db, BUILDINGS_COLLECTION, cleanData.id);
+    await setDoc(docRef, cleanData);
+    console.log('[Firestore Cloud] Đã lưu công trình mới:', cleanData.name);
+    return cleanData;
+  } catch (error) {
+    console.error('[Firestore Save Building Error]', error);
+    throw error;
+  }
+};
+
+// ============================================================================
+// 6. XÓA DỮ LIỆU THỬ NGHIỆM TRÊN CLOUD (RESET TESTING DATA)
+// ============================================================================
+
+/**
+ * Xóa sạch toàn bộ Phiếu yêu cầu, Biên bản nghiệm thu và Thông báo trên Cloud Firestore
+ */
+export const clearAllCloudInspectionData = async () => {
+  if (!isFirebaseConfigured || !db) return true;
+  try {
+    const collectionsToClear = [REQUESTS_COLLECTION, REPORTS_COLLECTION, NOTIFICATIONS_COLLECTION];
+    for (const colName of collectionsToClear) {
+      const colRef = collection(db, colName);
+      const snapshot = await getDocs(colRef);
+      const deletePromises = snapshot.docs.map(docSnap => deleteDoc(doc(db, colName, docSnap.id)));
+      await Promise.all(deletePromises);
+    }
+    console.log('[Firestore Cloud] Đã dọn sạch toàn bộ phiếu và biên bản trên Firestore!');
+    return true;
+  } catch (err) {
+    console.error('[Firestore Clear Cloud Data Error]', err);
+    throw err;
+  }
+};
+

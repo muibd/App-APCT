@@ -1,0 +1,25 @@
+{
+  "name": "APCT - Quản Lý Nghiệm Thu Xây Dựng",
+  "short_name": "APCT Nghiệm Thu",
+  "description": "Ứng dụng Quản lý Nghiệm thu Công trình Xây dựng Chuyên nghiệp theo Nghị định 06/2021/NĐ-CP",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f172a",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity", "utilities"]
+}
