@@ -2581,7 +2581,22 @@ export default function App() {
                           </button>
 
                           {isRejected ? (
-                            <>
+                            currentRole === 'CONTRACTOR' ? (
+                              <button 
+                                className="btn-primary" 
+                                style={{ background: '#7c3aed' }}
+                                onClick={() => {
+                                  if (matchingRep) {
+                                    handleOpenReport(matchingRep, { openRectify: true });
+                                  } else {
+                                    handleOpenOrCreateReport(req.reportId || req.id, false);
+                                  }
+                                }}
+                              >
+                                <Wrench size={16} />
+                                <span>Khắc Phục & Mời Lại</span>
+                              </button>
+                            ) : (
                               <button 
                                 className="btn-secondary" 
                                 style={{ borderColor: '#fca5a5', color: '#b91c1c', background: '#fff' }}
@@ -2590,24 +2605,7 @@ export default function App() {
                                 <AlertTriangle size={16} color="#dc2626" />
                                 <span>Xem Biên Bản Lỗi</span>
                               </button>
-
-                              {currentRole === 'CONTRACTOR' && (
-                                <button 
-                                  className="btn-primary" 
-                                  style={{ background: '#7c3aed' }}
-                                  onClick={() => {
-                                    if (matchingRep) {
-                                      handleOpenReport(matchingRep, { openRectify: true });
-                                    } else {
-                                      handleOpenOrCreateReport(req.reportId || req.id, false);
-                                    }
-                                  }}
-                                >
-                                  <Wrench size={16} />
-                                  <span>Khắc Phục & Mời Lại</span>
-                                </button>
-                              )}
-                            </>
+                            )
                           ) : isRectified ? (
                             <button 
                               className="btn-primary" 

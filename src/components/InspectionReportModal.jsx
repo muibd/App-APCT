@@ -215,10 +215,27 @@ export default function InspectionReportModal({
       setEvidencePhotos([]);
     }
 
-    setRejectReason(report.conclusion?.rejectionReason || '');
-    setRepairRequired(report.conclusion?.repairRequired || '');
-    setRepairDeadline(report.conclusion?.deadline || 'Trước 17h00 ngày hôm nay');
-    setDefectPhotos(report.defectPhotos || []);
+    if (isDifferentReport) {
+      setRejectReason(report.conclusion?.rejectionReason || '');
+      setRepairRequired(report.conclusion?.repairRequired || '');
+      setRepairDeadline(report.conclusion?.deadline || 'Trước 17h00 ngày hôm nay');
+      setDefectPhotos(report.defectPhotos || []);
+    } else {
+      if (!isRejectModalOpen) {
+        if (report.conclusion?.rejectionReason !== undefined) {
+          setRejectReason(report.conclusion.rejectionReason);
+        }
+        if (report.conclusion?.repairRequired !== undefined) {
+          setRepairRequired(report.conclusion.repairRequired);
+        }
+        if (report.conclusion?.deadline !== undefined) {
+          setRepairDeadline(report.conclusion.deadline);
+        }
+        if (report.defectPhotos) {
+          setDefectPhotos(report.defectPhotos);
+        }
+      }
+    }
 
     if (report.standardsApplied && Array.isArray(report.standardsApplied) && report.standardsApplied.length > 0) {
       setSelectedStandards(report.standardsApplied);
@@ -261,6 +278,12 @@ export default function InspectionReportModal({
       }
     }
   }, [report, initialOpenRectify]);
+
+  useEffect(() => {
+    if (initialOpenRectify) {
+      setIsRectifyModalOpen(true);
+    }
+  }, [initialOpenRectify]);
 
   const toggleStandard = (text) => {
     setSelectedStandards(prev => 
@@ -380,17 +403,11 @@ export default function InspectionReportModal({
     }
 
     if (newPhotos.length > 0) {
-      setDefectPhotos(prev => {
-        const next = [...newPhotos, ...prev];
-        const updated = {
-          ...reportState,
-          defectPhotos: next,
-          updatedAt: new Date().toISOString()
-        };
-        setReportState(updated);
-        if (onSaveReport) onSaveReport(updated);
-        return next;
-      });
+      setDefectPhotos(prev => [...newPhotos, ...prev]);
+      setReportState(prev => ({
+        ...prev,
+        defectPhotos: [...newPhotos, ...(prev.defectPhotos || [])]
+      }));
     }
     e.target.value = '';
   };
@@ -827,7 +844,7 @@ export default function InspectionReportModal({
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content" style={{ maxWidth: '960px', height: '94vh' }}>
+      <div className="modal-content" style={{ maxWidth: '1280px', width: '96vw', height: '94vh' }}>
         {/* Persistent Hidden File Inputs for Cameras and File Uploads */}
         <input type="file" accept="image/*" capture="environment" ref={cameraInputRef} style={{ display: 'none' }} onChange={handleFileCapture} />
         <input type="file" accept="image/*" multiple ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileCapture} />
@@ -907,7 +924,7 @@ export default function InspectionReportModal({
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap', flexShrink: 0 }}>
             {totalPhotos > 0 && (
               <label 
                 className="no-print" 
@@ -923,7 +940,8 @@ export default function InspectionReportModal({
                   borderRadius: '6px',
                   border: includePhotosInPrint ? '1.5px solid #3b82f6' : '1px solid #cbd5e1',
                   fontWeight: includePhotosInPrint ? 700 : 500,
-                  userSelect: 'none'
+                  userSelect: 'none',
+                  whiteSpace: 'nowrap'
                 }}
                 title="Tích chọn để in kèm phụ lục ảnh hiện trường / Bỏ tích để in nhanh đúng 1 trang Biên bản A4"
               >
@@ -936,11 +954,11 @@ export default function InspectionReportModal({
                 <span>In kèm ảnh ({totalPhotos})</span>
               </label>
             )}
-            <button className="btn-secondary" onClick={handlePrint} style={{ padding: '6px 12px', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <button className="btn-secondary" onClick={handlePrint} style={{ padding: '6px 12px', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
               <Printer size={15} />
               <span>{includePhotosInPrint ? 'In A4 + Ảnh' : 'In A4 Biên Bản'}</span>
             </button>
-            <button className="modal-close-btn" onClick={onClose}><X size={20} /></button>
+            <button className="modal-close-btn" onClick={onClose} style={{ marginLeft: '4px' }}><X size={20} /></button>
           </div>
         </div>
 
@@ -2173,92 +2191,37 @@ export default function InspectionReportModal({
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   {(currentRole === 'CONTRACTOR' || currentRole === 'ADMIN') && (
-                    <>
-                      <button 
-                        type="button"
-                        className="btn-primary" 
-                        style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)', padding: '8px 14px', fontSize: '0.82rem' }}
-                        onClick={() => cameraRectifyRef.current?.click()}
-                      >
-                        <Camera size={15} />
-                        <span>📸 Chụp Thêm Ảnh Sửa</span>
-                      </button>
-                      <button 
-                        type="button"
-                        className="btn-secondary" 
-                        style={{ borderColor: '#d8b4fe', color: '#6b21a8', padding: '8px 14px', fontSize: '0.82rem' }}
-                        onClick={() => fileRectifyRef.current?.click()}
-                      >
-                        <ImagePlus size={15} />
-                        <span>📁 Tải Ảnh Sửa</span>
-                      </button>
-                      <button 
-                        type="button"
-                        className="btn-secondary" 
-                        style={{ padding: '8px 14px', fontSize: '0.82rem' }}
-                        onClick={() => setIsRectifyModalOpen(true)}
-                      >
-                        <Wrench size={15} />
-                        <span>Sửa Nội Dung Khắc Phục</span>
-                      </button>
-                    </>
-                  )}
-
-                  {(() => {
-                    const targetReviewer = reportState?.rectification?.target || (
-                      (reportState?.conclusion?.rejectedBy?.role === 'INVESTOR' || reportState?.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR')
-                        ? 'INVESTOR'
-                        : 'SUPERVISOR'
-                    );
-                    const canReview = 
-                      (currentRole === 'ADMIN') ||
-                      (isSupervisorReviewer && targetReviewer === 'SUPERVISOR') ||
-                      (isInvestorReviewer && targetReviewer === 'INVESTOR');
-
-                    if (!canReview) {
-                      if (isSupervisorRole || isInvestorRole) {
-                        return (
-                          <div style={{ color: '#475569', fontSize: '0.8rem', fontStyle: 'italic', padding: '6px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                            Phiếu do {targetReviewer === 'SUPERVISOR' ? (supAttendee?.person || 'Cán bộ TVGS') : (invAttendee?.person || 'Cán bộ CĐT')} kiểm tra lại sau sửa
-                          </div>
-                        );
-                      }
-                      return null;
-                    }
-
-                    return (
-                      <>
-                        <button 
-                          className="btn-danger" 
-                          style={{ padding: '8px 14px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-                          onClick={() => {
-                            setRejectReason('');
-                            setIsRejectModalOpen(true);
-                          }}
-                          title="Sau sửa chữa vẫn chưa đạt chuẩn, yêu cầu ĐVTC sửa lại tiếp"
-                        >
-                          <XCircle size={15} />
-                          <span>Không Đạt / Sửa Lại Tiếp</span>
-                        </button>
-
-                        <button 
-                          className="btn-success" 
-                          style={{ padding: '8px 14px', fontSize: '0.82rem' }}
-                          onClick={handleReinspect}
-                        >
-                          <CheckCircle2 size={15} />
-                          <span>
-                            {targetReviewer === 'INVESTOR' 
-                              ? 'CĐT: Nghiệm Thu Đạt Sau Sửa' 
-                              : 'TVGS: Nghiệm Thu Đạt Sau Sửa & Chuyển CĐT'}
-                          </span>
-                        </button>
-                      </>
-                    );
-                  })()}
-                </div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button 
+                      type="button"
+                      className="btn-primary" 
+                      style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)', padding: '8px 14px', fontSize: '0.82rem' }}
+                      onClick={() => cameraRectifyRef.current?.click()}
+                    >
+                      <Camera size={15} />
+                      <span>Chụp Thêm Ảnh Sửa</span>
+                    </button>
+                    <button 
+                      type="button"
+                      className="btn-secondary" 
+                      style={{ borderColor: '#d8b4fe', color: '#6b21a8', padding: '8px 14px', fontSize: '0.82rem' }}
+                      onClick={() => fileRectifyRef.current?.click()}
+                    >
+                      <ImagePlus size={15} />
+                      <span>Tải Ảnh Sửa</span>
+                    </button>
+                    <button 
+                      type="button"
+                      className="btn-secondary" 
+                      style={{ padding: '8px 14px', fontSize: '0.82rem' }}
+                      onClick={() => setIsRectifyModalOpen(true)}
+                    >
+                      <Wrench size={15} />
+                      <span>Sửa Nội Dung Khắc Phục</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               {rectifyPhotos.length === 0 ? (
@@ -2359,7 +2322,7 @@ export default function InspectionReportModal({
             </button>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'nowrap', justifyContent: 'flex-end' }}>
             {/* 1. NẾU ĐÃ HOÀN TẤT TOÀN DIỆN */}
             {isCompleted ? (
               <div style={{
@@ -2372,7 +2335,8 @@ export default function InspectionReportModal({
                 padding: '8px 16px',
                 borderRadius: '8px',
                 fontWeight: 600,
-                fontSize: '0.88rem'
+                fontSize: '0.88rem',
+                whiteSpace: 'nowrap'
               }}>
                 <CheckCircle2 size={18} color="#059669" />
                 <span>Biên bản đã hoàn tất nghiệm thu đủ 3 bên (Đã hoàn tất ký số độc lập)</span>
@@ -2389,18 +2353,17 @@ export default function InspectionReportModal({
                         setIsRejectModalOpen(true);
                       }}
                       title="CĐT: Không đồng ý nghiệm thu, gửi yêu cầu trực tiếp cho ĐVTC sửa chữa"
+                      style={{ whiteSpace: 'nowrap' }}
                     >
-                      <AlertTriangle size={16} />
                       <span>✕ CĐT: Không Đồng Ý (Yêu Cầu Sửa)</span>
                     </button>
 
                     <button 
                       className="btn-primary" 
-                      style={{ background: '#d97706' }} 
+                      style={{ background: '#d97706', whiteSpace: 'nowrap' }} 
                       onClick={() => handleSign('investor')}
                       title="CĐT: Phê duyệt nghiệm thu đạt và ký số hoàn tất biên bản"
                     >
-                      <PenTool size={16} />
                       <span>✓ CĐT: Nghiệm Thu Đạt & Ký Phê Duyệt</span>
                     </button>
                   </>
@@ -2415,7 +2378,8 @@ export default function InspectionReportModal({
                     background: '#ecfdf5',
                     border: '1px solid #a7f3d0',
                     padding: '7px 14px',
-                    borderRadius: '8px'
+                    borderRadius: '8px',
+                    whiteSpace: 'nowrap'
                   }}>
                     <CheckCircle2 size={16} color="#059669" />
                     <span>TVGS đã ký duyệt đạt. Đang chờ Chủ Đầu Tư phê duyệt & ký số.</span>
@@ -2432,31 +2396,12 @@ export default function InspectionReportModal({
                 );
                 return (
                   <>
-                    <div style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '6px', 
-                      background: '#f3e8ff', 
-                      border: '1px solid #d8b4fe', 
-                      padding: '6px 12px', 
-                      borderRadius: '8px', 
-                      color: '#7c3aed', 
-                      fontSize: '0.84rem', 
-                      fontWeight: 600 
-                    }}>
-                      <RotateCcw size={16} />
-                      <span>
-                        {targetReviewer === 'INVESTOR'
-                          ? `ĐVTC đã sửa và gửi trực tiếp CĐT (${rectifyPhotos.length} ảnh). Chờ CĐT kiểm tra lại.`
-                          : `ĐVTC đã gửi ảnh sửa (${rectifyPhotos.length} ảnh). Chờ TVGS kiểm tra lại.`}
-                      </span>
-                    </div>
 
                     {/* ĐVTC bổ sung thêm ảnh sửa nếu cần */}
                     {(currentRole === 'CONTRACTOR' || currentRole === 'ADMIN') && (
                       <button 
                         className="btn-primary" 
-                        style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)', padding: '8px 14px', fontSize: '0.84rem' }}
+                        style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)', padding: '8px 14px', fontSize: '0.84rem', whiteSpace: 'nowrap' }}
                         onClick={() => setIsRectifyModalOpen(true)}
                       >
                         <Camera size={15} />
@@ -2470,7 +2415,7 @@ export default function InspectionReportModal({
                         <>
                           <button 
                             className="btn-danger" 
-                            style={{ padding: '8px 14px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                            style={{ padding: '8px 14px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
                             onClick={() => {
                               setRejectReason('');
                               setIsRejectModalOpen(true);
@@ -2483,7 +2428,7 @@ export default function InspectionReportModal({
 
                           <button 
                             className="btn-success" 
-                            style={{ padding: '8px 16px', fontSize: '0.86rem' }}
+                            style={{ padding: '8px 16px', fontSize: '0.86rem', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px' }}
                             onClick={handleReinspectSupervisor}
                           >
                             <CheckCircle2 size={16} />
@@ -2491,7 +2436,7 @@ export default function InspectionReportModal({
                           </button>
                         </>
                       ) : isSupervisorRole ? (
-                        <div style={{ color: '#15803d', fontSize: '0.82rem', fontWeight: 600, padding: '7px 12px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ color: '#15803d', fontSize: '0.82rem', fontWeight: 600, padding: '7px 12px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
                           <Eye size={15} color="#16a34a" />
                           <span>Phiếu do <strong>{supAttendee?.person || 'Cán bộ TVGS'}</strong> kiểm tra lại • TVGS Trưởng giám sát tiến độ</span>
                         </div>
@@ -2610,7 +2555,6 @@ export default function InspectionReportModal({
                           onClick={() => setIsRejectModalOpen(true)}
                           title="TVGS: Từ chối nghiệm thu, chụp ảnh lỗi hiện trường và yêu cầu ĐVTC sửa chữa"
                         >
-                          <AlertTriangle size={16} />
                           <span>✕ TVGS: Không Đồng Ý Nghiệm Thu</span>
                         </button>
 
@@ -2620,7 +2564,6 @@ export default function InspectionReportModal({
                           onClick={() => handleSign('supervisor')}
                           title="TVGS: Xác nhận nghiệm thu đạt và ký số chuyển Chủ Đầu Tư"
                         >
-                          <PenTool size={16} />
                           <span>✓ TVGS: Xác Nhận Nghiệm Thu Đạt & Ký Số</span>
                         </button>
                       </>
@@ -2688,7 +2631,6 @@ export default function InspectionReportModal({
                               onClick={() => setIsRejectModalOpen(true)}
                               title="CĐT: Không đồng ý nghiệm thu, gửi yêu cầu trực tiếp cho ĐVTC sửa chữa"
                             >
-                              <AlertTriangle size={16} />
                               <span>✕ CĐT: Không Đồng Ý (Yêu Cầu Sửa)</span>
                             </button>
 
@@ -2698,7 +2640,6 @@ export default function InspectionReportModal({
                               onClick={() => handleSign('investor')}
                               title="CĐT: Phê duyệt nghiệm thu đạt và ký số hoàn tất biên bản"
                             >
-                              <PenTool size={16} />
                               <span>✓ CĐT: Nghiệm Thu Đạt & Ký Phê Duyệt</span>
                             </button>
                           </>
@@ -2847,38 +2788,17 @@ export default function InspectionReportModal({
             </div>
 
             <div className="modal-body" style={{ padding: '20px' }}>
-              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem' }}>
-                <User size={18} color="#64748b" />
-                <div>
-                  <span>Cán bộ lập: <strong>{currentUser?.fullName}</strong></span>
-                  <span style={{ color: '#64748b' }}> ({currentRole === 'LEAD_SUPERVISOR' ? 'Tư Vấn Giám Sát Trưởng' : currentRole === 'SUPERVISOR' ? 'Tư Vấn Giám Sát' : currentRole === 'LEAD_INVESTOR' ? 'Đại Diện CĐT Trưởng' : currentRole === 'INVESTOR' ? 'Đại Diện Ban QLDA' : 'Quản Trị'})</span>
-                </div>
-              </div>
-
               <div className="form-group" style={{ marginBottom: '16px' }}>
                 <label className="form-label" style={{ color: '#991b1b', fontWeight: 700 }}>
                   1. Lý do không nghiệm thu / Khiếm khuyết hiện trường (*):
                 </label>
                 <textarea 
                   className="form-textarea"
-                  style={{ minHeight: '85px', borderColor: '#fca5a5' }}
+                  style={{ minHeight: '95px', borderColor: '#fca5a5' }}
                   placeholder="Nhập chi tiết các lỗi không đạt kỹ thuật..."
                   value={rejectReason}
                   onChange={(e) => setRejectReason(e.target.value)}
                 />
-
-                <div style={{ marginTop: '8px' }}>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginBottom: '6px' }}>
-                    ⚡ Gợi ý chọn nhanh các lỗi kỹ thuật thường gặp:
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                    {COMMON_DEFECT_CHIPS.map((chip, idx) => (
-                      <button key={idx} type="button" style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: '0.74rem', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer' }} onClick={() => handleAddChipToReason(chip)}>
-                        + {chip}
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </div>
 
               <div className="form-group" style={{ marginBottom: '16px' }}>
@@ -2906,10 +2826,10 @@ export default function InspectionReportModal({
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px', marginBottom: '14px' }}>
                   <button type="button" className="btn-secondary" style={{ borderColor: '#3b82f6', color: '#1d4ed8', background: '#eff6ff', justifyContent: 'center' }} onClick={() => cameraInputRef.current?.click()}>
-                    <Camera size={16} /> <span>📸 Chụp Ảnh Camera</span>
+                    <Camera size={16} /> <span>Chụp Ảnh Camera</span>
                   </button>
                   <button type="button" className="btn-secondary" style={{ justifyContent: 'center' }} onClick={() => fileInputRef.current?.click()}>
-                    <ImagePlus size={16} /> <span>📁 Tải Ảnh Từ Máy</span>
+                    <ImagePlus size={16} /> <span>Tải Ảnh Từ Máy</span>
                   </button>
                 </div>
 
@@ -2997,24 +2917,11 @@ export default function InspectionReportModal({
                 </label>
                 <textarea 
                   className="form-textarea"
-                  style={{ minHeight: '85px', borderColor: '#d8b4fe' }}
+                  style={{ minHeight: '95px', borderColor: '#d8b4fe' }}
                   placeholder="Ghi rõ công việc đã khắc phục (Ví dụ: Đã nắn chỉnh lại thép đai dầm D1 về đúng khoảng cách a150 theo bản vẽ BVTC-KC-12, kê thêm con kê bê tông 25mm và dọn sạch hộc cốp pha...)"
                   value={rectifyDesc}
                   onChange={(e) => setRectifyDesc(e.target.value)}
                 />
-
-                <div style={{ marginTop: '8px' }}>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginBottom: '6px' }}>
-                    ⚡ Gợi ý chọn nhanh biện pháp khắc phục đã hoàn thành:
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                    {COMMON_RECTIFIED_CHIPS.map((chip, idx) => (
-                      <button key={idx} type="button" style={{ background: '#f5f3ff', border: '1px solid #d8b4fe', color: '#6b21a8', fontSize: '0.74rem', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer' }} onClick={() => handleAddChipToRectify(chip)}>
-                        + {chip}
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </div>
 
               {/* 2. CHỤP / GỬI ẢNH ĐÃ SỬA CHỮA */}
@@ -3025,10 +2932,10 @@ export default function InspectionReportModal({
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px', marginBottom: '12px' }}>
                   <button type="button" className="btn-secondary" style={{ borderColor: '#7c3aed', color: '#6d28d9', background: '#f5f3ff', justifyContent: 'center' }} onClick={() => cameraRectifyRef.current?.click()}>
-                    <Camera size={16} /> <span>📸 Chụp Ảnh Camera</span>
+                    <Camera size={16} /> <span>Chụp Ảnh Camera</span>
                   </button>
                   <button type="button" className="btn-secondary" style={{ justifyContent: 'center' }} onClick={() => fileRectifyRef.current?.click()}>
-                    <ImagePlus size={16} /> <span>📁 Tải Ảnh Từ Máy</span>
+                    <ImagePlus size={16} /> <span>Tải Ảnh Từ Máy</span>
                   </button>
                 </div>
 
