@@ -1,34 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   X, Send, Users, Calendar, MapPin, CheckSquare, Square, 
-  AlertCircle, Building, Camera, ImagePlus, Zap, Trash2, Plus, Clock 
+  AlertCircle, Building, Camera, ImagePlus, Zap, Trash2, Plus, Clock, FileSpreadsheet, Package 
 } from 'lucide-react';
 import { MOCK_PROJECT, MOCK_USERS } from '../data/mockData';
 import { saveBuilding } from '../services/firestoreService';
 import { compressImageFile } from '../utils/storageHelper';
+import { 
+  CONSTRUCTION_WORK_STANDARDS, 
+  MATERIAL_STANDARDS, 
+  GENERAL_MANDATORY_STANDARDS, 
+  getSuggestedStandards 
+} from '../data/standardsRules';
 
-const SAMPLE_CONSTRUCTION_PHOTOS = [
-  {
-    url: 'https://images.unsplash.com/photo-1541888946425-d0fbb18615b3?auto=format&fit=crop&w=800&q=80',
-    caption: 'Kiểm tra định vị tim trục dầm sàn và cao độ cốp pha',
-    gps: '10.0076° N, 105.7823° E (Tòa A - Trục 1-13/A-D)',
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=800&q=80',
-    caption: 'Lắp dựng cốt thép dầm sàn hoàn thiện đạt yêu cầu thiết kế',
-    gps: '10.0078° N, 105.7825° E (Sàn tầng 2 Tháp A)',
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1590069261209-f8e9b8642343?auto=format&fit=crop&w=800&q=80',
-    caption: 'Kiểm tra con kê bảo vệ bê tông, đai thép và vệ sinh ván khuôn',
-    gps: '10.0075° N, 105.7821° E (Khu vực dầm D1 Tòa A)',
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1581094794329-c8112a89af12?auto=format&fit=crop&w=800&q=80',
-    caption: 'Trắc đạc hiện trường kiểm tra độ thẳng đứng cột vách trước khi đổ bê tông',
-    gps: '10.0080° N, 105.7828° E (Trục C1-C4 Tòa B)',
-  }
-];
+
 
 export default function CreateRequestModal({ isOpen, onClose, users, currentUser, onSubmitRequest }) {
   if (!isOpen) return null;
@@ -72,6 +57,74 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
     return buildingsList[0]?.items?.[0]?.tasks?.[0] || 'Nghiệm thu công tác định vị tim trục dầm sàn';
   });
   const [customTask, setCustomTask] = useState('');
+
+  // -------------------------------------------------------------
+  // HỆ THỐNG ĐỘNG THEO FILE EXCEL & MẪU SỐ 12
+  // -------------------------------------------------------------
+  // Loại hình nghiệm thu: 'WORK' (Công việc xây dựng) | 'MATERIAL' (Vật liệu đầu vào - Mẫu số 12)
+  const [inspectionType, setInspectionType] = useState('WORK');
+
+  // Cho Công việc xây dựng (Sheet A - 15 nhóm theo Excel)
+  const [selectedWorkGroup, setSelectedWorkGroup] = useState(() => CONSTRUCTION_WORK_STANDARDS[0]?.name || 'Cốt thép, ván khuôn, bê tông');
+
+  // Cho Vật liệu đầu vào (Mẫu số 12 theo Sheet B - 24 loại theo Excel)
+  const [selectedMaterialGroup, setSelectedMaterialGroup] = useState(() => MATERIAL_STANDARDS[0]?.name || 'Gạch ốp lát');
+  const [materialName, setMaterialName] = useState(() => 'Gạch ốp lát granite 600x600');
+  const [materialOrigin, setMaterialOrigin] = useState('Đồng Nai, Việt Nam');
+  const [materialUnit, setMaterialUnit] = useState('m2');
+  const [materialQuantity, setMaterialQuantity] = useState('500');
+  const [certificateNumber, setCertificateNumber] = useState('CCXX-2026/01/ĐN');
+
+  // Tiêu chuẩn áp dụng (Tự động cập nhật theo file Excel DANH MỤC TIÊU CHUẨN NGHIỆM THU.xls)
+  const [applicableStandards, setApplicableStandards] = useState(() => {
+    return getSuggestedStandards(CONSTRUCTION_WORK_STANDARDS[0]?.name || 'Cốt thép, ván khuôn, bê tông', 'WORK');
+  });
+
+  const handleInspectionTypeChange = (type) => {
+    setInspectionType(type);
+    if (type === 'MATERIAL') {
+      const suggested = getSuggestedStandards(materialName || selectedMaterialGroup, 'MATERIAL');
+      setApplicableStandards(suggested);
+    } else {
+      const currentTask = customTask.trim() || taskContent || selectedWorkGroup;
+      const suggested = getSuggestedStandards(currentTask, 'WORK');
+      setApplicableStandards(suggested);
+    }
+  };
+
+  const handleWorkGroupChange = (groupName) => {
+    setSelectedWorkGroup(groupName);
+    if (groupName !== '__CUSTOM_WORK__') {
+      setTaskContent(`Nghiệm thu công tác ${groupName.toLowerCase()}`);
+      setCustomTask('');
+      const suggested = getSuggestedStandards(groupName, 'WORK');
+      setApplicableStandards(suggested);
+    }
+  };
+
+  const handleWorkTaskSelect = (task) => {
+    setTaskContent(task);
+    setCustomTask('');
+    if (task !== '__custom__') {
+      const suggested = getSuggestedStandards(task, 'WORK');
+      setApplicableStandards(suggested);
+    }
+  };
+
+  const handleMaterialGroupChange = (matName) => {
+    setSelectedMaterialGroup(matName);
+    if (matName !== '__CUSTOM_MAT__') {
+      setMaterialName(matName);
+      const suggested = getSuggestedStandards(matName, 'MATERIAL');
+      setApplicableStandards(suggested);
+    }
+  };
+
+  const toggleApplicableStandard = (std) => {
+    setApplicableStandards(prev => 
+      prev.includes(std) ? prev.filter(s => s !== std) : [...prev, std]
+    );
+  };
 
   // Ngày thực hiện
   const [scheduledDate, setScheduledDate] = useState(() => {
@@ -203,20 +256,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
     e.target.value = '';
   };
 
-  const handleAddSamplePhoto = () => {
-    const sample = SAMPLE_CONSTRUCTION_PHOTOS[evidencePhotos.length % SAMPLE_CONSTRUCTION_PHOTOS.length];
-    const now = new Date();
-    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} ${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
-    const newPhoto = {
-      id: `sample_photo_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      url: sample.url,
-      caption: sample.caption,
-      gps: sample.gps,
-      time: timeStr,
-      photographer: `${currentUser?.fullName || 'KS. Lê Văn Kỹ Thuật'} (ĐVTC)`
-    };
-    setEvidencePhotos(prev => [...prev, newPhoto]);
-  };
+
 
   const handleDeletePhoto = (photoId) => {
     setEvidencePhotos(prev => prev.filter(p => p.id !== photoId));
@@ -302,7 +342,13 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
       }));
     }
 
-    const finalTask = customTask.trim() ? customTask : taskContent;
+    const finalTask = inspectionType === 'MATERIAL'
+      ? `Nghiệm thu vật liệu đầu vào: ${materialName}`
+      : (customTask.trim() ? customTask : taskContent);
+
+    const finalItemName = inspectionType === 'MATERIAL'
+      ? `Nghiệm thu vật liệu đầu vào (${materialName})`
+      : finalItem;
 
     const dateFormatted = scheduledDate.split('-').reverse().join('/');
     const formattedStartTime = `${startTime.replace(':', 'h')}, ngày ${dateFormatted}`;
@@ -314,7 +360,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
       projectId: MOCK_PROJECT.id,
       projectName: MOCK_PROJECT.projectName,
       buildingName: selectedBuilding,
-      itemName: finalItem,
+      itemName: finalItemName,
       location: MOCK_PROJECT.location,
       contractorCompany: currentUser?.company || 'Công ty CP Xây dựng An Phú Gia',
       createdByUid: currentUser?.uid || 'uid_dvtc_01',
@@ -330,7 +376,19 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
       hasReport: true,
       reportId: null,
       assignedRecipients: finalRecipients,
-      evidencePhotos: evidencePhotos
+      evidencePhotos: evidencePhotos,
+      // DỮ LIỆU ĐỘNG THEO EXCEL & MẪU SỐ 12:
+      inspectionType, // 'WORK' | 'MATERIAL'
+      standardsApplied: applicableStandards,
+      reportTemplate: inspectionType === 'MATERIAL' ? 'FORM_12' : 'CONSTRUCTION_WORK',
+      materialDetails: inspectionType === 'MATERIAL' ? {
+        name: materialName,
+        origin: materialOrigin,
+        unit: materialUnit,
+        quantity: materialQuantity,
+        certificateNumber: certificateNumber,
+        isPass: true
+      } : null
     };
 
     onSubmitRequest(newRequest);
@@ -356,6 +414,65 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
         </div>
 
         <form onSubmit={handleSubmit} className="modal-body">
+          {/* CHỌN LOẠI HÌNH NGHIỆM THU: CÔNG VIỆC XÂY DỰNG vs VẬT LIỆU ĐẦU VÀO (MẪU SỐ 12) */}
+          <div style={{
+            display: 'flex',
+            background: '#f1f5f9',
+            padding: '4px',
+            borderRadius: '12px',
+            marginBottom: '16px',
+            border: '1.5px solid #e2e8f0'
+          }}>
+            <button
+              type="button"
+              onClick={() => handleInspectionTypeChange('WORK')}
+              style={{
+                flex: 1,
+                padding: '10px 14px',
+                borderRadius: '8px',
+                border: 'none',
+                fontWeight: 700,
+                fontSize: '0.88rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                background: inspectionType === 'WORK' ? '#ffffff' : 'transparent',
+                color: inspectionType === 'WORK' ? '#1d4ed8' : '#64748b',
+                boxShadow: inspectionType === 'WORK' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <span>🏗️</span>
+              <span>1. Biên Bản Công Việc Xây Dựng (Sheet A)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleInspectionTypeChange('MATERIAL')}
+              style={{
+                flex: 1,
+                padding: '10px 14px',
+                borderRadius: '8px',
+                border: 'none',
+                fontWeight: 700,
+                fontSize: '0.88rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                background: inspectionType === 'MATERIAL' ? '#ffffff' : 'transparent',
+                color: inspectionType === 'MATERIAL' ? '#059669' : '#64748b',
+                boxShadow: inspectionType === 'MATERIAL' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <Package size={17} color={inspectionType === 'MATERIAL' ? '#059669' : '#64748b'} />
+              <span>2. Vật Liệu Đầu Vào - Mẫu Số 12 (Sheet B)</span>
+            </button>
+          </div>
+
           {/* Row 1: Số phiếu & Dự án */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px', marginBottom: '14px' }}>
             <div className="form-group" style={{ margin: 0 }}>
@@ -380,127 +497,265 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
             </div>
           </div>
 
-          {/* Row 2: Công trình & Hạng mục */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px', marginBottom: '14px' }}>
-            <div className="form-group" style={{ margin: 0 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <label className="form-label" style={{ margin: 0 }}>Công trình / Khối nhà:</label>
-                <button
-                  type="button"
-                  onClick={() => setIsAddingBuilding(!isAddingBuilding)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#2563eb',
-                    fontSize: '0.78rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    padding: 0
-                  }}
-                >
-                  <Plus size={13} />
-                  <span>{isAddingBuilding ? 'Hủy thêm' : '+ Thêm công trình'}</span>
-                </button>
-              </div>
-              <select 
-                className="form-select" 
-                value={selectedBuilding} 
-                onChange={(e) => handleBuildingChange(e.target.value)}
-              >
-                {buildingsList.map(b => (
-                  <option key={b.id || b.name} value={b.name}>{b.name}</option>
-                ))}
-                <option value="__NEW_BUILDING__">➕ -- Thêm công trình / tòa nhà mới --</option>
-              </select>
-
-              {isAddingBuilding && (
-                <div style={{ marginTop: '8px', display: 'flex', gap: '6px' }}>
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="Nhập tên công trình mới (VD: Chung cư NOXH 3, Tòa C...)"
-                    value={newBuildingInput}
-                    onChange={(e) => setNewBuildingInput(e.target.value)}
-                    style={{ flex: 1, borderColor: '#2563eb', background: '#f8fafc' }}
-                    autoFocus
-                  />
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    style={{ padding: '0 12px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
-                    onClick={handleAddNewBuilding}
+          {/* NẾU LÀ CÔNG VIỆC XÂY DỰNG */}
+          {inspectionType === 'WORK' ? (
+            <>
+              {/* Row 2: Công trình & Hạng mục */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px', marginBottom: '14px' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <label className="form-label" style={{ margin: 0 }}>Công trình / Khối nhà:</label>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingBuilding(!isAddingBuilding)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#2563eb',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: 0
+                      }}
+                    >
+                      <Plus size={13} />
+                      <span>{isAddingBuilding ? 'Hủy thêm' : '+ Thêm công trình'}</span>
+                    </button>
+                  </div>
+                  <select 
+                    className="form-select" 
+                    value={selectedBuilding} 
+                    onChange={(e) => handleBuildingChange(e.target.value)}
                   >
-                    Lưu
-                  </button>
-                </div>
-              )}
-            </div>
-            <div className="form-group" style={{ margin: 0 }}>
-              <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>Hạng mục:</span>
-                {selectedItem === '__NEW_ITEM__' && (
-                  <span style={{ color: '#2563eb', fontSize: '0.74rem', fontWeight: 700 }}>
-                    ✨ Thêm mới
-                  </span>
-                )}
-              </label>
-              <select 
-                className="form-select" 
-                value={selectedItem} 
-                onChange={(e) => handleItemChange(e.target.value)}
-              >
-                {buildingItems.map(it => (
-                  <option key={it.id || it.name} value={it.name}>{it.name}</option>
-                ))}
-                <option value="__NEW_ITEM__">➕ -- Thêm hạng mục mới --</option>
-              </select>
-              {selectedItem === '__NEW_ITEM__' && (
-                <input 
-                  type="text" 
-                  className="form-input" 
-                  placeholder="Nhập tên hạng mục mới (VD: Thi công trần thạch cao, Thi công M&E...)" 
-                  value={customItemInput} 
-                  onChange={(e) => setCustomItemInput(e.target.value)} 
-                  style={{ marginTop: '8px', borderColor: '#2563eb', background: '#f8fafc' }}
-                  autoFocus
-                  required 
-                />
-              )}
-            </div>
-          </div>
+                    {buildingsList.map(b => (
+                      <option key={b.id || b.name} value={b.name}>{b.name}</option>
+                    ))}
+                    <option value="__NEW_BUILDING__">➕ -- Thêm công trình / tòa nhà mới --</option>
+                  </select>
 
-          {/* Công tác xây dựng yêu cầu nghiệm thu */}
-          <div className="form-group">
-            <label className="form-label">Công tác xây dựng yêu cầu nghiệm thu (*):</label>
-            {availableTasks.length > 0 && selectedItem !== '__NEW_ITEM__' ? (
-              <select 
-                className="form-select" 
-                value={taskContent} 
-                onChange={(e) => {
-                  setTaskContent(e.target.value);
-                  setCustomTask('');
-                }}
-                style={{ marginBottom: '8px' }}
-              >
-                {availableTasks.map((t, idx) => (
-                  <option key={idx} value={t}>{t}</option>
-                ))}
-                <option value="__custom__">-- Tự nhập công tác khác --</option>
-              </select>
-            ) : null}
-            {(taskContent === '__custom__' || selectedItem === '__NEW_ITEM__' || availableTasks.length === 0) && (
-              <textarea 
-                className="form-textarea" 
-                placeholder="Nhập chi tiết công tác xây dựng cần nghiệm thu..."
-                value={customTask}
-                onChange={(e) => setCustomTask(e.target.value)}
-                required
-              />
-            )}
-          </div>
+                  {isAddingBuilding && (
+                    <div style={{ marginTop: '8px', display: 'flex', gap: '6px' }}>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="Nhập tên công trình mới (VD: Chung cư NOXH 3, Tòa C...)"
+                        value={newBuildingInput}
+                        onChange={(e) => setNewBuildingInput(e.target.value)}
+                        style={{ flex: 1, borderColor: '#2563eb', background: '#f8fafc' }}
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        style={{ padding: '0 12px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                        onClick={handleAddNewBuilding}
+                      >
+                        Lưu
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Hạng mục:</span>
+                    {selectedItem === '__NEW_ITEM__' && (
+                      <span style={{ color: '#2563eb', fontSize: '0.74rem', fontWeight: 700 }}>
+                        ✨ Thêm mới
+                      </span>
+                    )}
+                  </label>
+                  <select 
+                    className="form-select" 
+                    value={selectedItem} 
+                    onChange={(e) => handleItemChange(e.target.value)}
+                  >
+                    {buildingItems.map(it => (
+                      <option key={it.id || it.name} value={it.name}>{it.name}</option>
+                    ))}
+                    <option value="__NEW_ITEM__">➕ -- Thêm hạng mục mới --</option>
+                  </select>
+                  {selectedItem === '__NEW_ITEM__' && (
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      placeholder="Nhập tên hạng mục mới (VD: Thi công trần thạch cao, Thi công M&E...)" 
+                      value={customItemInput} 
+                      onChange={(e) => setCustomItemInput(e.target.value)} 
+                      style={{ marginTop: '8px', borderColor: '#2563eb', background: '#f8fafc' }}
+                      autoFocus
+                      required 
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* Chọn Nhóm Tiêu Chuẩn Công Việc Xây Dựng (Sheet A - 15 nhóm) */}
+              <div className="form-group" style={{ marginBottom: '14px' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Nhóm công việc theo file Excel (Sheet A - Tự động gắn TCVN):</span>
+                  <span style={{ color: '#16a34a', fontSize: '0.74rem', fontWeight: 600 }}>⚡ 15 nhóm tiêu chuẩn</span>
+                </label>
+                <select 
+                  className="form-select" 
+                  value={selectedWorkGroup} 
+                  onChange={(e) => handleWorkGroupChange(e.target.value)}
+                  style={{ background: '#f0fdf4', borderColor: '#86efac', fontWeight: 600 }}
+                >
+                  {CONSTRUCTION_WORK_STANDARDS.map(w => (
+                    <option key={w.id} value={w.name}>
+                      Mục {w.stt}: {w.name} ({w.standards.length} tiêu chuẩn)
+                    </option>
+                  ))}
+                  <option value="__CUSTOM_WORK__">-- Nhập công tác ngoài danh mục --</option>
+                </select>
+              </div>
+
+              {/* Công tác xây dựng yêu cầu nghiệm thu chi tiết */}
+              <div className="form-group">
+                <label className="form-label">Nội dung công việc nghiệm thu chi tiết (*):</label>
+                {availableTasks.length > 0 && selectedItem !== '__NEW_ITEM__' ? (
+                  <select 
+                    className="form-select" 
+                    value={taskContent} 
+                    onChange={(e) => {
+                      handleWorkTaskSelect(e.target.value);
+                    }}
+                    style={{ marginBottom: '8px' }}
+                  >
+                    {availableTasks.map((t, idx) => (
+                      <option key={idx} value={t}>{t}</option>
+                    ))}
+                    <option value="__custom__">-- Tự nhập nội dung khác --</option>
+                  </select>
+                ) : null}
+                {(taskContent === '__custom__' || selectedItem === '__NEW_ITEM__' || availableTasks.length === 0) && (
+                  <textarea 
+                    className="form-textarea" 
+                    placeholder="Nhập chi tiết công tác xây dựng cần nghiệm thu..."
+                    value={customTask}
+                    onChange={(e) => {
+                      setCustomTask(e.target.value);
+                      if (e.target.value.trim().length > 3) {
+                        setApplicableStandards(getSuggestedStandards(e.target.value, 'WORK'));
+                      }
+                    }}
+                    required
+                  />
+                )}
+              </div>
+            </>
+          ) : (
+            /* NẾU LÀ VẬT LIỆU ĐẦU VÀO - MẪU SỐ 12 (SHEET B) */
+            <div style={{ background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                <Package size={18} color="#16a34a" />
+                <strong style={{ fontSize: '0.96rem', color: '#166534' }}>
+                  Thông Tin Vật Liệu Đầu Vào (Theo Mẫu số 12 & Sheet B Excel)
+                </strong>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px', marginBottom: '12px' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Công trình:</label>
+                  <select 
+                    className="form-select" 
+                    value={selectedBuilding} 
+                    onChange={(e) => handleBuildingChange(e.target.value)}
+                  >
+                    {buildingsList.map(b => (
+                      <option key={b.id || b.name} value={b.name}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Danh mục vật liệu từ Excel (Sheet B - 24 loại):</label>
+                  <select 
+                    className="form-select" 
+                    value={selectedMaterialGroup} 
+                    onChange={(e) => handleMaterialGroupChange(e.target.value)}
+                    style={{ fontWeight: 600, color: '#166534' }}
+                  >
+                    {MATERIAL_STANDARDS.map(m => (
+                      <option key={m.id} value={m.name}>
+                        Mục {m.stt}: {m.name} ({m.standards.length} tiêu chuẩn)
+                      </option>
+                    ))}
+                    <option value="__CUSTOM_MAT__">-- Nhập vật liệu khác --</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Chi tiết cho Bảng Mẫu số 12 */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '12px' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Tên / Chủng loại vật liệu (*):</label>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    value={materialName} 
+                    onChange={(e) => {
+                      setMaterialName(e.target.value);
+                      if (e.target.value.trim().length > 2) {
+                        setApplicableStandards(getSuggestedStandards(e.target.value, 'MATERIAL'));
+                      }
+                    }} 
+                    placeholder="VD: Xi măng PCB 40 Vicem Hà Tiên"
+                    required 
+                  />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Xuất xứ / Nhà máy sản xuất (*):</label>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    value={materialOrigin} 
+                    onChange={(e) => setMaterialOrigin(e.target.value)} 
+                    placeholder="VD: Kiên Lương, Kiên Giang (Vicem Hà Tiên)"
+                    required 
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Đơn vị tính (*):</label>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    value={materialUnit} 
+                    onChange={(e) => setMaterialUnit(e.target.value)} 
+                    placeholder="Tấn, m2, m3, bao..."
+                    required 
+                  />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Khối lượng nghiệm thu (*):</label>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    value={materialQuantity} 
+                    onChange={(e) => setMaterialQuantity(e.target.value)} 
+                    placeholder="50, 1500, 20.000..."
+                    required 
+                  />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Số Chứng chỉ xuất xưởng / CO-CQ:</label>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    value={certificateNumber} 
+                    onChange={(e) => setCertificateNumber(e.target.value)} 
+                    placeholder="CCXX-2026/01..."
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Thời gian nghiệm thu: Giờ bắt đầu (giờ tạo phiếu) & Giờ kết thúc (cho điền) */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginBottom: '18px' }}>
@@ -550,6 +805,45 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
                 value={inspectionPlace} 
                 onChange={(e) => setInspectionPlace(e.target.value)} 
               />
+            </div>
+          </div>
+
+          {/* KHU VỰC TIÊU CHUẨN ĐỘNG THEO FILE EXCEL */}
+          <div style={{
+            background: '#fffbeb',
+            border: '1.5px solid #fde68a',
+            borderRadius: '12px',
+            padding: '14px 16px',
+            marginBottom: '18px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <FileSpreadsheet size={18} color="#b45309" />
+                <strong style={{ fontSize: '0.92rem', color: '#92400e' }}>
+                  Tiêu Chuẩn & Quy Chuẩn Áp Dụng (Tự động theo Excel: {applicableStandards.length} tiêu chuẩn)
+                </strong>
+              </div>
+              <span style={{ fontSize: '0.75rem', background: '#fef3c7', color: '#b45309', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                {inspectionType === 'MATERIAL' ? 'Theo Sheet B - Mẫu số 12' : 'Theo Sheet A - Công việc XD'}
+              </span>
+            </div>
+            <div style={{ fontSize: '0.8rem', color: '#78350f', marginBottom: '8px' }}>
+              Hệ thống tự động tra cứu và gắn tiêu chuẩn quy phạm TCVN / QCVN tương ứng theo đúng file <strong>DANH MỤC TIÊU CHUẨN NGHIỆM THU.xls</strong>:
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', maxHeight: '180px', overflowY: 'auto', background: '#ffffff', padding: '10px', borderRadius: '8px', border: '1px solid #fef08a' }}>
+              {applicableStandards.map((std, idx) => (
+                <label key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '0.82rem', cursor: 'pointer', lineHeight: 1.4 }}>
+                  <input 
+                    type="checkbox" 
+                    checked={applicableStandards.includes(std)} 
+                    onChange={() => toggleApplicableStandard(std)}
+                    style={{ marginTop: '2px' }}
+                  />
+                  <span style={{ color: '#1e293b' }}>
+                    <strong style={{ color: '#b91c1c' }}>{std.split(' ')[0]} {std.split(' ')[1]}</strong> {std.split(' ').slice(2).join(' ')}
+                  </span>
+                </label>
+              ))}
             </div>
           </div>
 

@@ -25,6 +25,7 @@ import {
   STANDARD_CRITERIA_LIST,
   INITIAL_NOTIFICATIONS
 } from './data/mockData';
+import { getSuggestedStandards } from './data/standardsRules';
 
 import { 
   saveInspectionRequest, 
@@ -627,10 +628,11 @@ export default function App() {
 
   // 1. Khi ĐVTC TẠO PHIẾU MỚI: Tự động khởi tạo cả Phiếu yêu cầu & Biên bản nghiệm thu
   const handleCreateRequest = async (newRequest) => {
+    const isMaterial = newRequest.inspectionType === 'MATERIAL';
     const newReportId = `rep_${Date.now()}`;
     const reportNum = newRequest.requestNumber 
-      ? newRequest.requestNumber.replace('PYC', 'BBNT') 
-      : `0${Math.floor(Math.random() * 80) + 10}/BBNT-APG`;
+      ? newRequest.requestNumber.replace('PYC', isMaterial ? 'BBNT-VL' : 'BBNT-APG') 
+      : `0${Math.floor(Math.random() * 80) + 10}/${isMaterial ? 'BBNT-VL' : 'BBNT-APG'}`;
     const docNum = `TLCC-0${Math.floor(Math.random() * 80) + 10}/2026`;
     const today = new Date();
     const cityDate = `Cần Thơ, ngày ${String(today.getDate()).padStart(2, '0')} tháng ${String(today.getMonth() + 1).padStart(2, '0')} năm ${today.getFullYear()}`;
@@ -639,6 +641,10 @@ export default function App() {
     const tvgsRecipient = newRequest.assignedRecipients?.find(r => r.role === 'SUPERVISOR');
     const cdtRecipient = newRequest.assignedRecipients?.find(r => r.role === 'INVESTOR');
 
+    const appliedStandards = (newRequest.standardsApplied && newRequest.standardsApplied.length > 0)
+      ? newRequest.standardsApplied
+      : getSuggestedStandards(newRequest.taskContent || newRequest.itemName, isMaterial ? 'MATERIAL' : 'WORK');
+
     const newReport = {
       id: newReportId,
       requestId: newRequest.id,
@@ -646,13 +652,18 @@ export default function App() {
       reportNumber: reportNum,
       referenceDocNumber: docNum,
       cityDate: cityDate,
+      inspectionType: newRequest.inspectionType || 'WORK',
+      reportTemplate: isMaterial ? 'FORM_12' : 'CONSTRUCTION_WORK',
+      materialDetails: newRequest.materialDetails || null,
       projectInfo: {
         projectName: newRequest.projectName,
         buildingName: newRequest.buildingName,
         itemName: newRequest.itemName,
         location: newRequest.location
       },
-      inspectionObject: newRequest.taskContent,
+      inspectionObject: isMaterial 
+        ? `Nghiệm thu vật liệu đầu vào: ${newRequest.materialDetails?.name || newRequest.taskContent}` 
+        : newRequest.taskContent,
       time: {
         startTime: newRequest.startTime || `${newRequest.scheduledTime}`,
         endTime: newRequest.endTime || `16h30, ${newRequest.scheduledTime?.includes(' ') ? newRequest.scheduledTime.split(' ')[1] : 'hôm nay'}`,
@@ -678,13 +689,7 @@ export default function App() {
           signed: true
         }
       },
-      standardsApplied: [
-        'TCVN 5637:1991 Quản lý chất lượng xây lắp công trình xây dựng – Nguyên tắc cơ bản.',
-        'TCVN 9398:2012 Công tác trắc địa trong xây dựng công trình – Yêu cầu chung.',
-        'TCVN 4055:2012 Công trình xây dựng - Tổ chức thi công.',
-        'QCVN 18:2021/BXD về An toàn trong thi công xây dựng.',
-        'TCVN 4453:1995 Kết cấu bê tông và bê tông cốt thép - Thi công và nghiệm thu.'
-      ],
+      standardsApplied: appliedStandards,
       qualityAssessment: { matchDesign: true, matchStandards: true, matchTechnical: true, otherOpinions: 'Không' },
       conclusion: { isAccepted: true, repairRequired: 'Không có', otherRequirements: 'Không có' },
       status: 'PENDING_APPROVAL',
@@ -800,64 +805,31 @@ export default function App() {
       const isCompleted = rep.status === 'COMPLETED' || 
         (Boolean(rep.attendees?.supervisor?.signed) && Boolean(rep.attendees?.investor?.signed));
       if (!isCompleted) {
-        const isReqRectified = targetReq?.status === 'RECTIFIED' || Boolean(targetReq?.rectificationNotes);
-        const isRepRectified = rep.status === 'RECTIFIED' || Boolean(rep.rectification);
+        if (rep.status === 'RECTIFIED' || targetReq?.status === 'RECTIFIED') {
+          const actualPhotos = (Array.isArray(rep.rectification?.photos) && rep.rectification.photos.length > 0)
+            ? rep.rectification.photos
+            : (Array.isArray(targetReq?.rectificationPhotos) && targetReq.rectificationPhotos.length > 0)
+            ? targetReq.rectificationPhotos
+            : [];
 
-        if (isReqRectified || isRepRectified) {
-        const defaultPhotos = [
-          {
-            id: `rec_sample_1_${Date.now()}`,
-            url: 'https://images.unsplash.com/photo-1541888946425-d0fbb18615b3?auto=format&fit=crop&w=800&q=80',
-            caption: `Đã hoàn thành khắc phục: ${rep.rectification?.description || targetReq?.rectificationNotes || 'Nắn chỉnh đai thép và kê con kê bê tông'}`,
-            gps: '10.0076° N, 105.7823° E (Tầng 2 Tháp A - Trục 1-13/A-D)',
-            time: '16:00 hôm nay',
-            photographer: `${currentUser?.fullName || 'KS. Lê Văn Kỹ Thuật'} (ĐVTC An Phú Gia)`
-          },
-          {
-            id: `rec_sample_2_${Date.now()}`,
-            url: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=800&q=80',
-            caption: 'Đã kê bổ sung con kê bảo vệ dày 25mm và vệ sinh sạch đáy cốp pha',
-            gps: '10.0078° N, 105.7825° E (Khu vực đáy dầm sàn Tòa A)',
-            time: '16:15 hôm nay',
-            photographer: `${currentUser?.fullName || 'KS. Lê Văn Kỹ Thuật'} (ĐVTC An Phú Gia)`
-          }
-        ];
-
-        // Ưu tiên: Ảnh thực tế đã lưu trong report -> Ảnh thực tế trong request -> Ảnh mẫu fallback
-        const validPhotos = (Array.isArray(rep.rectification?.photos) && rep.rectification.photos.length > 0)
-          ? rep.rectification.photos
-          : (Array.isArray(targetReq?.rectificationPhotos) && targetReq.rectificationPhotos.length > 0)
-          ? targetReq.rectificationPhotos
-          : defaultPhotos;
-
-        rep = {
-          ...rep,
-          status: 'RECTIFIED',
-          rectification: {
-            description: rep.rectification?.description || targetReq?.rectificationNotes || 'Đã sửa chữa khắc phục theo đúng yêu cầu',
-            photos: validPhotos,
-            suggestedTime: rep.rectification?.suggestedTime || '16h30 ngày hôm nay',
-            submittedBy: rep.rectification?.submittedBy || {
-              name: targetReq?.createdByName || 'KS. Lê Văn Kỹ Thuật',
-              role: 'CONTRACTOR',
-              roleTitle: 'Kỹ Thuật Đơn Vị Thi Công',
-              company: 'Công ty CP Xây dựng An Phú Gia',
-              timestamp: targetReq?.updatedAt || new Date().toISOString()
-            }
-          },
-          updatedAt: new Date().toISOString()
-        };
-
-        setReports(prev => {
-          const matchFn = r => r.id === rep.id || r.requestId === rep.requestId || (rep.reportNumber && r.reportNumber === rep.reportNumber);
-          const filtered = prev.filter(r => !matchFn(r));
-          const next = [rep, ...filtered];
-          safeSaveLocalStorage(REPORTS_STORAGE_KEY, next);
-          return next;
-        });
-
-        saveInspectionReport(rep).catch(console.warn);
-      }
+          rep = {
+            ...rep,
+            status: 'RECTIFIED',
+            rectification: {
+              description: rep.rectification?.description || targetReq?.rectificationNotes || 'Đã sửa chữa khắc phục theo đúng yêu cầu',
+              photos: actualPhotos,
+              suggestedTime: rep.rectification?.suggestedTime || '16h30 ngày hôm nay',
+              submittedBy: rep.rectification?.submittedBy || {
+                name: targetReq?.createdByName || 'KS. Lê Văn Kỹ Thuật',
+                role: 'CONTRACTOR',
+                roleTitle: 'Kỹ Thuật Đơn Vị Thi Công',
+                company: 'Công ty CP Xây dựng An Phú Gia',
+                timestamp: targetReq?.updatedAt || new Date().toISOString()
+              }
+            },
+            updatedAt: rep.updatedAt || new Date().toISOString()
+          };
+        }
       }
 
       setSelectedReport(rep);
@@ -871,20 +843,32 @@ export default function App() {
     if (!targetReq) return;
 
     const newReportId = `rep_${Date.now()}`;
+    const isMaterial = targetReq.inspectionType === 'MATERIAL';
+    const appliedStandards = (targetReq.standardsApplied && targetReq.standardsApplied.length > 0)
+      ? targetReq.standardsApplied
+      : getSuggestedStandards(targetReq.taskContent || targetReq.itemName, isMaterial ? 'MATERIAL' : 'WORK');
+
     const newReport = {
       id: newReportId,
       requestId: targetReq.id,
       requestNumber: targetReq.requestNumber,
-      reportNumber: targetReq.requestNumber ? targetReq.requestNumber.replace('PYC', 'BBNT') : `0${Math.floor(Math.random() * 80) + 10}/BBNT-APG`,
+      reportNumber: targetReq.requestNumber 
+        ? targetReq.requestNumber.replace('PYC', isMaterial ? 'BBNT-VL' : 'BBNT-APG') 
+        : `0${Math.floor(Math.random() * 80) + 10}/${isMaterial ? 'BBNT-VL' : 'BBNT-APG'}`,
       referenceDocNumber: `TLCC-0${Math.floor(Math.random() * 80) + 10}/2026`,
       cityDate: `Cần Thơ, ngày ${new Date().getDate()} tháng ${new Date().getMonth() + 1} năm ${new Date().getFullYear()}`,
+      inspectionType: targetReq.inspectionType || 'WORK',
+      reportTemplate: isMaterial ? 'FORM_12' : 'CONSTRUCTION_WORK',
+      materialDetails: targetReq.materialDetails || null,
       projectInfo: {
         projectName: targetReq.projectName,
         buildingName: targetReq.buildingName,
         itemName: targetReq.itemName,
         location: targetReq.location
       },
-      inspectionObject: targetReq.taskContent,
+      inspectionObject: isMaterial 
+        ? `Nghiệm thu vật liệu đầu vào: ${targetReq.materialDetails?.name || targetReq.taskContent}` 
+        : targetReq.taskContent,
       time: {
         startTime: targetReq.startTime || `${targetReq.scheduledTime}`,
         endTime: targetReq.endTime || `16h30, ${targetReq.scheduledTime?.includes(' ') ? targetReq.scheduledTime.split(' ')[1] : 'hôm nay'}`,
@@ -895,18 +879,13 @@ export default function App() {
         supervisor: { company: 'Công ty CP TVXD và TM GELICON', person: 'KS. Võ Văn Tón', position: 'Cán bộ tư vấn giám sát', signed: false },
         contractor: { company: 'Công ty CP Xây dựng An Phú Gia', person: targetReq.createdByName || 'KS. Lê Văn Kỹ Thuật', position: targetReq.createdByRole || 'Kỹ thuật hiện trường', signed: true }
       },
-      standardsApplied: [
-        'TCVN 5637:1991 Quản lý chất lượng xây lắp công trình xây dựng – Nguyên tắc cơ bản.',
-        'TCVN 9398:2012 Công tác trắc địa trong xây dựng công trình – Yêu cầu chung.',
-        'TCVN 4055:2012 Công trình xây dựng - Tổ chức thi công.',
-        'QCVN 18:2021/BXD về An toàn trong thi công xây dựng.',
-        'TCVN 4453:1995 Kết cấu bê tông và bê tông cốt thép - Thi công và nghiệm thu.'
-      ],
+      standardsApplied: appliedStandards,
       qualityAssessment: { matchDesign: true, matchStandards: true, matchTechnical: true, otherOpinions: 'Không' },
       conclusion: { isAccepted: true, repairRequired: 'Không có', otherRequirements: 'Không có' },
       status: 'PENDING_APPROVAL',
       defectPhotos: [],
       evidencePhotos: targetReq.evidencePhotos || [],
+      rectification: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -1367,29 +1346,10 @@ export default function App() {
     // TVGS từ chối -> ĐVTC sửa -> TVGS duyệt lại!
     const targetReviewer = rectificationData?.target || (targetReport.conclusion?.rejectedBy?.role === 'INVESTOR' ? 'INVESTOR' : 'SUPERVISOR');
 
-    // Đảm bảo luôn có danh sách ảnh hiện trường sau khi sửa
-    const defaultSamplePhotos = [
-      {
-        id: `rec_sample_1_${Date.now()}`,
-        url: 'https://images.unsplash.com/photo-1541888946425-d0fbb18615b3?auto=format&fit=crop&w=800&q=80',
-        caption: `Đã hoàn thành khắc phục: ${rectificationData?.description || 'Nắn chỉnh cốt thép đai dầm đúng thiết kế'}`,
-        gps: '10.0076° N, 105.7823° E (Tầng 2 Tháp A - Trục 1-13/A-D)',
-        time: `${new Date().toLocaleTimeString('vi-VN')} hôm nay`,
-        photographer: `${currentUser?.fullName || 'KS. Lê Văn Kỹ Thuật'} (ĐVTC An Phú Gia)`
-      },
-      {
-        id: `rec_sample_2_${Date.now()}`,
-        url: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=800&q=80',
-        caption: 'Đã kê bổ sung con kê bê tông bảo vệ dày 25mm và dọn sạch hộc cốp pha',
-        gps: '10.0078° N, 105.7825° E (Khu vực đáy dầm sàn Tòa A)',
-        time: `${new Date().toLocaleTimeString('vi-VN')} hôm nay`,
-        photographer: `${currentUser?.fullName || 'KS. Lê Văn Kỹ Thuật'} (ĐVTC An Phú Gia)`
-      }
-    ];
-
+    // Chỉ lưu ảnh thực tế ĐVTC đã chụp / tải lên
     const safePhotos = (Array.isArray(rectificationData?.photos) && rectificationData.photos.length > 0)
       ? rectificationData.photos
-      : defaultSamplePhotos;
+      : [];
 
     const safeRectificationData = {
       ...rectificationData,

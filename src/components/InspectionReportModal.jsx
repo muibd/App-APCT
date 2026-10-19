@@ -5,39 +5,11 @@ import {
   Zap, RotateCcw, FileWarning, Eye, User, Wrench, Send, ChevronRight, XCircle
 } from 'lucide-react';
 import { STANDARD_CRITERIA_LIST } from '../data/mockData';
+import { getSuggestedStandards, GENERAL_MANDATORY_STANDARDS } from '../data/standardsRules';
 import { triggerSafeConfetti } from '../utils/confettiHelper';
 import { compressImageFile } from '../utils/storageHelper';
 
-const SAMPLE_DEFECT_IMAGES = [
-  {
-    url: 'https://images.unsplash.com/photo-1590069261209-f8e9b8642343?auto=format&fit=crop&w=800&q=80',
-    caption: 'Cốt thép đai dầm bị xô lệch khoảng cách a220mm (yêu cầu thiết kế a150mm)',
-    gps: '10.0076° N, 105.7823° E (Tầng 2 Tháp A - Trục 1-13/A-D)',
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1541888946425-d0fbb18615b3?auto=format&fit=crop&w=800&q=80',
-    caption: 'Mép cốp pha đáy dầm bị hở 15mm, chưa dọn sạch mạt sắt & rác hộc cốp pha',
-    gps: '10.0078° N, 105.7825° E (Đáy dầm trục D Tòa A)',
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=800&q=80',
-    caption: 'Thiếu con kê bảo vệ dầm sàn, cốt thép chạm ván khuôn không đảm bảo 25mm',
-    gps: '10.0075° N, 105.7821° E (Khu vực ô sàn S2 Tòa A)',
-  }
-];
 
-const SAMPLE_RECTIFIED_IMAGES = [
-  {
-    url: 'https://images.unsplash.com/photo-1541888946425-d0fbb18615b3?auto=format&fit=crop&w=800&q=80',
-    caption: 'Đã nắn chỉnh đai thép dầm D1 về đúng khoảng cách a150 theo bản vẽ BVTC-KC-12',
-    gps: '10.0076° N, 105.7823° E (Tầng 2 Tháp A - Trục 1-13/A-D)',
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=800&q=80',
-    caption: 'Đã kê bổ sung con kê bê tông bảo vệ dày 25mm và vệ sinh sạch đáy cốp pha',
-    gps: '10.0078° N, 105.7825° E (Khu vực đáy dầm sàn Tòa A)',
-  }
-];
 
 const COMMON_DEFECT_CHIPS = [
   'Cốt thép sai khoảng cách, đai dầm a200 thay vì a150',
@@ -82,9 +54,22 @@ export default function InspectionReportModal({
     contractor: report?.attendees?.contractor?.signed || true
   });
 
-  const [selectedStandards, setSelectedStandards] = useState(
-    report?.standardsApplied || STANDARD_CRITERIA_LIST.map(s => `${s.code} ${s.title}`)
+  const isMaterialReport = Boolean(
+    report?.reportTemplate === 'FORM_12' || 
+    report?.inspectionType === 'MATERIAL' ||
+    reportState?.reportTemplate === 'FORM_12' ||
+    reportState?.inspectionType === 'MATERIAL'
   );
+
+  const [selectedStandards, setSelectedStandards] = useState(() => {
+    if (report?.standardsApplied && Array.isArray(report.standardsApplied) && report.standardsApplied.length > 0) {
+      return report.standardsApplied;
+    }
+    return getSuggestedStandards(
+      report?.inspectionObject || report?.projectInfo?.itemName || '', 
+      (report?.reportTemplate === 'FORM_12' || report?.inspectionType === 'MATERIAL') ? 'MATERIAL' : 'WORK'
+    );
+  });
 
   // Modal Từ chối nghiệm thu state
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
@@ -142,9 +127,15 @@ export default function InspectionReportModal({
   const [includePhotosInPrint, setIncludePhotosInPrint] = useState(false);
   const totalPhotos = (evidencePhotos?.length || 0) + (defectPhotos?.length || 0) + (rectifyPhotos?.length || 0);
 
+  // Tham chiếu ID của biên bản trước đó để tránh wipe ảnh khi component re-render cùng 1 biên bản
+  const prevReportIdRef = useRef(null);
+
   // Sync when report prop changes
   useEffect(() => {
     if (!report) return;
+    const isDifferentReport = prevReportIdRef.current !== report.id;
+    prevReportIdRef.current = report.id;
+
     setReportState(report);
 
     // Đồng bộ lại chữ ký theo dữ liệu report hiện hành
@@ -165,51 +156,45 @@ export default function InspectionReportModal({
     setRepairDeadline(report.conclusion?.deadline || 'Trước 17h00 ngày hôm nay');
     setDefectPhotos(report.defectPhotos || []);
 
-    // Đồng bộ thông tin đã khắc phục (nếu có)
-    if (report.rectification) {
-      setRectifyDesc(report.rectification.description || '');
-      const existingPhotos = report.rectification?.photos;
-      const validPhotos = (Array.isArray(existingPhotos) && existingPhotos.length > 0)
-        ? existingPhotos
-        : SAMPLE_RECTIFIED_IMAGES;
-      setRectifyPhotos(validPhotos);
-      setSuggestedTime(report.rectification?.suggestedTime || '');
+    if (report.standardsApplied && Array.isArray(report.standardsApplied) && report.standardsApplied.length > 0) {
+      setSelectedStandards(report.standardsApplied);
     }
 
-    // NẾU REPORT ĐÃ HOÀN TẤT HOẶC ĐANG CHỜ CĐT PHÊ DUYỆT:
-    // Tuyệt đối giữ nguyên trạng thái, không ép thành RECTIFIED!
-    if (report.status === 'COMPLETED' || report.status === 'WAITING_INVESTOR') {
-      setIsRectifyModalOpen(false);
-      return;
-    }
-
-    if (report.status === 'RECTIFIED') {
-      const desc = report.rectification?.description || report.rectificationNotes || 'Đã sửa chữa khắc phục theo đúng yêu cầu';
-      setRectifyDesc(desc);
-
-      const existingPhotos = report.rectification?.photos;
-      const validPhotos = (Array.isArray(existingPhotos) && existingPhotos.length > 0)
-        ? existingPhotos
-        : SAMPLE_RECTIFIED_IMAGES;
-
-      setRectifyPhotos(validPhotos);
-      setSuggestedTime(report.rectification?.suggestedTime || '16h30 ngày hôm nay');
-      
-      setActiveTab('RECTIFIED');
-      setIsRectifyModalOpen(false);
-    } else if (report.status === 'REJECTED' || report.conclusion?.isAccepted === false) {
-      setRectifyDesc('');
-      setRectifyPhotos([]);
-      setActiveTab('DOCUMENT');
-      if (initialOpenRectify) {
-        setIsRectifyModalOpen(true);
+    // ĐỒNG BỘ TRẠNG THÁI SỬA CHỮA / KHẮC PHỤC KHI ĐỔI BIÊN BẢN:
+    if (isDifferentReport) {
+      if (report.status === 'RECTIFIED' && report.rectification) {
+        setRectifyDesc(report.rectification.description || '');
+        setRectifyPhotos(Array.isArray(report.rectification.photos) ? report.rectification.photos : []);
+        setSuggestedTime(report.rectification.suggestedTime || '16h30 ngày hôm nay');
+        setActiveTab('DOCUMENT');
+        setIsRectifyModalOpen(false);
+      } else if (report.status === 'REJECTED' || report.conclusion?.isAccepted === false) {
+        const existingPhotos = report.rectification?.photos;
+        setRectifyPhotos(Array.isArray(existingPhotos) ? existingPhotos : []);
+        setRectifyDesc(report.rectification?.description || '');
+        setActiveTab('DOCUMENT');
+        setIsRectifyModalOpen(Boolean(initialOpenRectify));
       } else {
+        // TẤT CẢ CÁC TRƯỜNG HỢP CÒN LẠI (TẠO MỚI, CHỜ DUYỆT, HOÀN TẤT, CHỜ CĐT...):
+        // Bắt buộc reset về rỗng, TUYỆT ĐỐI không để lọt ảnh demo hay ảnh rác từ biên bản khác!
+        const existingPhotos = report.rectification?.photos;
+        setRectifyPhotos(Array.isArray(existingPhotos) ? existingPhotos : []);
+        setRectifyDesc(report.rectification?.description || '');
+        setActiveTab('DOCUMENT');
         setIsRectifyModalOpen(false);
       }
-    } else if (initialOpenRectify) {
-      setIsRectifyModalOpen(true);
     } else {
-      setIsRectifyModalOpen(false);
+      // CÙNG 1 BIÊN BẢN: Nếu cloud cập nhật trạng thái RECTIFIED thì đồng bộ mượt mà
+      if (report.status === 'RECTIFIED' && reportState.status !== 'RECTIFIED') {
+        const existingPhotos = report.rectification?.photos;
+        if (Array.isArray(existingPhotos) && existingPhotos.length > 0) {
+          setRectifyPhotos(existingPhotos);
+        }
+        if (report.rectification?.description) {
+          setRectifyDesc(report.rectification.description);
+        }
+        setIsRectifyModalOpen(false);
+      }
     }
   }, [report, initialOpenRectify]);
 
@@ -374,72 +359,23 @@ export default function InspectionReportModal({
           ...reportState,
           rectification: {
             ...(reportState.rectification || {}),
-            photos: next
+            photos: next,
+            description: rectifyDesc || reportState.rectification?.description || ''
           },
           updatedAt: new Date().toISOString()
         };
         setReportState(updated);
-        if (onSaveReport) onSaveReport(updated);
+        // CHỈ đồng bộ cloud nếu đã ở trạng thái RECTIFIED; nếu đang trong REJECTED thì chỉ lưu khi bấm Gửi
+        if (reportState.status === 'RECTIFIED' && onSaveReport) {
+          onSaveReport(updated);
+        }
         return next;
       });
     }
     e.target.value = '';
   };
 
-  // Thêm ảnh mẫu lỗi
-  const handleAddSampleDefectPhoto = () => {
-    const sample = SAMPLE_DEFECT_IMAGES[defectPhotos.length % SAMPLE_DEFECT_IMAGES.length];
-    const now = new Date();
-    const timeStr = `${now.toLocaleTimeString('vi-VN')} ngày ${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
-    const newPhoto = {
-      id: `defect_sample_${Date.now()}`,
-      url: sample.url,
-      caption: sample.caption,
-      gps: sample.gps,
-      time: timeStr,
-      photographer: `${currentUser?.fullName || 'Kỹ sư'} (${currentRole === 'SUPERVISOR' ? 'TVGS' : currentRole === 'INVESTOR' ? 'CĐT' : 'QLDA'})`
-    };
-    setDefectPhotos(prev => {
-      const next = [newPhoto, ...prev];
-      const updated = {
-        ...reportState,
-        defectPhotos: next,
-        updatedAt: new Date().toISOString()
-      };
-      setReportState(updated);
-      if (onSaveReport) onSaveReport(updated);
-      return next;
-    });
-  };
 
-  // Thêm ảnh mẫu đã sửa chữa (kèm GPS)
-  const handleAddSampleRectifyPhoto = () => {
-    const sample = SAMPLE_RECTIFIED_IMAGES[rectifyPhotos.length % SAMPLE_RECTIFIED_IMAGES.length];
-    const now = new Date();
-    const timeStr = `${now.toLocaleTimeString('vi-VN')} ngày ${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
-    const newPhoto = {
-      id: `rectify_sample_${Date.now()}`,
-      url: sample.url,
-      caption: sample.caption,
-      gps: sample.gps,
-      time: timeStr,
-      photographer: `${currentUser?.fullName || 'KS. Lê Văn Kỹ Thuật'} (ĐVTC An Phú Gia)`
-    };
-    setRectifyPhotos(prev => {
-      const next = [newPhoto, ...prev];
-      const updated = {
-        ...reportState,
-        rectification: {
-          ...(reportState.rectification || {}),
-          photos: next
-        },
-        updatedAt: new Date().toISOString()
-      };
-      setReportState(updated);
-      if (onSaveReport) onSaveReport(updated);
-      return next;
-    });
-  };
 
   const handleDeletePhoto = (photoId) => {
     setDefectPhotos(prev => {
@@ -467,7 +403,9 @@ export default function InspectionReportModal({
         updatedAt: new Date().toISOString()
       };
       setReportState(updated);
-      if (onSaveReport) onSaveReport(updated);
+      if (reportState.status === 'RECTIFIED' && onSaveReport) {
+        onSaveReport(updated);
+      }
       return next;
     });
   };
@@ -500,26 +438,7 @@ export default function InspectionReportModal({
     e.target.value = '';
   };
 
-  const handleAddSampleEvidencePhoto = () => {
-    const sample = SAMPLE_DEFECT_IMAGES[evidencePhotos.length % SAMPLE_DEFECT_IMAGES.length] || SAMPLE_RECTIFIED_IMAGES[0];
-    const now = new Date();
-    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} ${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
-    const newPhoto = {
-      id: `evidence_sample_${Date.now()}`,
-      url: sample.url,
-      caption: sample.caption,
-      gps: sample.gps,
-      time: timeStr,
-      photographer: `${currentUser?.fullName || 'Kỹ sư'} (${currentRole === 'SUPERVISOR' ? 'TVGS' : currentRole === 'INVESTOR' ? 'CĐT' : 'ĐVTC'})`
-    };
-    setEvidencePhotos(prev => {
-      const next = [...prev, newPhoto];
-      const updated = { ...reportState, evidencePhotos: next };
-      setReportState(updated);
-      if (onSaveReport) onSaveReport(updated);
-      return next;
-    });
-  };
+
 
   const handleDeleteEvidencePhoto = (photoId) => {
     setEvidencePhotos(prev => {
@@ -651,15 +570,8 @@ export default function InspectionReportModal({
     // TVGS từ chối -> gửi cho TVGS
     const targetReviewer = reportState?.conclusion?.rejectedBy?.role === 'INVESTOR' ? 'INVESTOR' : 'SUPERVISOR';
 
-    // Đảm bảo luôn có ảnh đính kèm (nếu chưa tải -> tự động lấy ảnh mẫu hiện trường làm bằng chứng)
-    const finalPhotos = (rectifyPhotos && rectifyPhotos.length > 0)
-      ? rectifyPhotos
-      : SAMPLE_RECTIFIED_IMAGES.map((img, i) => ({
-          ...img,
-          id: `rectify_auto_${Date.now()}_${i}`,
-          time: timeStr,
-          photographer: `${currentUser?.fullName || 'KS. Lê Văn Kỹ Thuật'} (ĐVTC An Phú Gia)`
-        }));
+    // Chỉ lấy ảnh hiện trường thực tế đã chụp / tải lên
+    const finalPhotos = Array.isArray(rectifyPhotos) ? rectifyPhotos : [];
 
     const rectificationPayload = {
       description: rectifyDesc.trim(),
@@ -810,6 +722,16 @@ export default function InspectionReportModal({
       handleReinspectSupervisor();
     }
   };
+
+  const displayStandards = (selectedStandards && selectedStandards.length > 0)
+    ? selectedStandards
+    : (reportState?.standardsApplied?.length > 0
+        ? reportState.standardsApplied
+        : getSuggestedStandards(
+            reportState?.inspectionObject || reportState?.projectInfo?.itemName || '', 
+            isMaterialReport ? 'MATERIAL' : 'WORK'
+          )
+      );
 
   if (!isOpen || !report) return null;
 
@@ -988,8 +910,8 @@ export default function InspectionReportModal({
             </button>
           )}
 
-          {/* TAB BẰNG CHỨNG ĐÃ KHẮC PHỤC SỬA CHỮA (MỚI) */}
-          {(isRectified || Boolean(reportState?.rectification) || Boolean(report?.rectification) || rectifyPhotos.length > 0 || Boolean(rectifyDesc)) && (
+          {/* TAB BẰNG CHỨNG ĐÃ KHẮC PHỤC SỬA CHỮA: CHỈ HIỆN KHI ĐÃ SỬA CHỮA HOẶC HOÀN THÀNH SAU SỬA */}
+          {(isRectified || reportState?.status === 'RECTIFIED' || (isCompleted && Boolean(reportState?.rectification?.description))) && (
             <button 
               style={{
                 padding: '10px 18px',
@@ -1018,7 +940,7 @@ export default function InspectionReportModal({
             /* TRÌNH BÀY CHUẨN BIÊN BẢN KHỔ A4 */
             <div className="document-paper" style={{ maxWidth: '800px', margin: '0 auto', fontSize: '0.92rem' }}>
               {/* THÔNG BÁO HOÀN TẤT NẾU ĐÃ NGHIỆM THU ĐẠT SAU SỬA CHỮA */}
-              {isCompleted && (reportState?.rectification || report?.rectification) ? (
+              {isCompleted && Boolean(reportState?.rectification?.description || report?.rectification?.description) ? (
                 <div className="no-print" style={{
                   background: '#ecfdf5',
                   border: '1.5px solid #a7f3d0',
@@ -1173,27 +1095,31 @@ export default function InspectionReportModal({
 
               {/* Tiêu đề biên bản */}
               <div className="doc-main-title" style={{ textAlign: 'center', margin: '14px 0 20px 0' }}>
-                <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', margin: '0 0 4px 0', textTransform: 'uppercase' }}>
-                  BIÊN BẢN NGHIỆM THU CÔNG VIỆC XÂY DỰNG
+                <h2 style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: '0 0 4px 0', textTransform: 'uppercase', lineHeight: 1.4 }}>
+                  {isMaterialReport 
+                    ? 'BIÊN BẢN NGHIỆM THU VẬT LIỆU, THIẾT BỊ, SẢN PHẨM CHẾ TẠO SẴN TRƯỚC KHI ĐƯA VÀO SỬ DỤNG'
+                    : 'BIÊN BẢN NGHIỆM THU CÔNG VIỆC XÂY DỰNG'}
                 </h2>
-                <div style={{ fontSize: '0.85rem', fontStyle: 'italic' }}>
-                  (Căn cứ Nghị định số 06/2021/NĐ-CP ngày 26/01/2021 của Chính phủ)
+                <div style={{ fontSize: '0.85rem', fontStyle: 'italic', color: '#475569' }}>
+                  {isMaterialReport 
+                    ? '(Mẫu số 12 - Danh mục tiêu chuẩn vật liệu nghiệm thu)'
+                    : '(Căn cứ Nghị định số 06/2021/NĐ-CP ngày 26/01/2021 của Chính phủ)'}
                 </div>
               </div>
 
               {/* Thông tin dự án */}
               <div style={{ marginBottom: '14px' }}>
-                <div><strong>Dự án:</strong> {reportState.projectInfo?.projectName}</div>
-                <div><strong>Công trình:</strong> {reportState.projectInfo?.buildingName}</div>
-                <div><strong>Hạng mục:</strong> {reportState.projectInfo?.itemName}</div>
-                <div><strong>Địa điểm xây dựng:</strong> {reportState.projectInfo?.location}</div>
+                <div><strong>Dự án:</strong> {reportState.projectInfo?.projectName || 'Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City'}</div>
+                <div><strong>Công trình:</strong> {reportState.projectInfo?.buildingName || 'Chung cư nhà ở xã hội 2'}</div>
+                <div><strong>Hạng mục:</strong> {reportState.projectInfo?.itemName || 'Thi công phần hoàn thiện Tòa A & Tòa B'}</div>
+                <div><strong>Địa điểm xây dựng:</strong> {reportState.projectInfo?.location || 'Đường Trương Vĩnh Nguyên, Phường Cái Răng, TP. Cần Thơ'}</div>
               </div>
 
               {/* 1. Đối tượng nghiệm thu */}
               <div style={{ marginBottom: '14px' }}>
                 <strong>1. Đối tượng nghiệm thu:</strong>
                 <div style={{ paddingLeft: '20px', fontWeight: 'bold', color: '#1e3a8a' }}>
-                  - {reportState.inspectionObject}
+                  - {reportState.inspectionObject || (isMaterialReport ? `Nghiệm thu vật liệu: ${reportState.materialDetails?.name || 'Vật tư thi công'}` : 'Nghiệm thu công việc xây dựng')}
                 </div>
               </div>
 
@@ -1231,96 +1157,189 @@ export default function InspectionReportModal({
                 </div>
               </div>
 
-              {/* 4. Đánh giá công việc xây dựng đã thực hiện */}
-              <div style={{ marginBottom: '14px' }}>
-                <strong>4. Đánh giá công việc xây dựng đã thực hiện:</strong>
-                <div style={{ paddingLeft: '16px', marginTop: '4px' }}>
-                  <div><strong>4.1. Tài liệu căn cứ nghiệm thu:</strong></div>
-                  <div style={{ paddingLeft: '16px' }}>
-                    4.1.1 Phiếu yêu cầu nghiệm thu của nhà thầu thi công số: <strong>{reportState.requestNumber || (reportState.requestId && !reportState.requestId.startsWith('req_') ? reportState.requestId : null) || '01/PYC-APG'}</strong><br />
-                    4.1.2 Hồ sơ thiết kế BVTC (đã được Chủ đầu tư phê duyệt ngày 16/12/2025):<br />
-                    &nbsp;&nbsp;&nbsp;&nbsp;+ Tên hồ sơ thiết kế: Hồ sơ thiết kế xây dựng triển khai sau hồ sơ TKCS.<br />
-                    &nbsp;&nbsp;&nbsp;&nbsp;+ Những thay đổi thiết kế đã được chấp thuận: Không.<br />
-                    4.1.3 Biện pháp thi công đã được phê duyệt: Biện pháp thi công số 01/BPTC-APG.<br />
-                    4.1.4 Quy chuẩn, tiêu chuẩn xây dựng được áp dụng:
-                    <div className="doc-standards-list" style={{ paddingLeft: '16px', color: '#b91c1c' }}>
-                      {STANDARD_CRITERIA_LIST.map((std, idx) => (
-                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '2px 0' }}>
-                          <input 
-                            type="checkbox" 
-                            checked={selectedStandards.includes(`${std.code} ${std.title}`)} 
-                            onChange={() => toggleStandard(`${std.code} ${std.title}`)}
-                          />
-                          <span>+ {std.code} {std.title}</span>
-                        </div>
-                      ))}
+              {/* 4. Nội dung và đánh giá nghiệm thu */}
+              {isMaterialReport ? (
+                /* NỘI DUNG MẪU SỐ 12: NGHIỆM THU VẬT LIỆU ĐẦU VÀO */
+                <div style={{ marginBottom: '14px' }}>
+                  <strong>4. Nội dung và kết quả kiểm tra (Theo Mẫu số 12):</strong>
+                  <div style={{ paddingLeft: '16px', marginTop: '4px' }}>
+                    <div><strong>4.1. Các tài liệu làm căn cứ nghiệm thu:</strong></div>
+                    <div style={{ paddingLeft: '16px' }}>
+                      - Phiếu yêu cầu nghiệm thu của nhà thầu thi công xây dựng số: <strong>{reportState.requestNumber || (reportState.requestId && !reportState.requestId.startsWith('req_') ? reportState.requestId : null) || '01/PYC-APG'}</strong><br />
+                      - Hồ sơ thiết kế bản vẽ thi công được chủ đầu tư phê duyệt.<br />
+                      - Tiêu chuẩn, quy phạm xây dựng được áp dụng (Động theo file Excel DANH MỤC TIÊU CHUẨN NGHIỆM THU.xls):
+                      <div className="doc-standards-list" style={{ paddingLeft: '16px', color: '#b91c1c' }}>
+                        {displayStandards.map((stdStr, idx) => (
+                          <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', margin: '2px 0' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={selectedStandards.includes(stdStr)} 
+                              onChange={() => toggleStandard(stdStr)}
+                              style={{ marginTop: '3px' }}
+                            />
+                            <span>+ {stdStr}</span>
+                          </div>
+                        ))}
+                      </div>
+                      - Hồ sơ thầu và hợp đồng xây dựng số: 0203/HĐXD/APCT-GHVP ký ngày 02 tháng 03 năm 2026.<br />
+                      - Hồ sơ xuất xứ, Chứng chỉ kỹ thuật xuất xưởng: <strong>{reportState.materialDetails?.certificateNumber || 'Số CCXX-2026/VL-APG'}</strong><br />
+                      - Kết quả thí nghiệm mẫu kiểm nghiệm chất lượng: Đạt yêu cầu.<br />
+                      - Danh mục tính năng kỹ thuật của các đối tượng nghiệm thu.<br />
+                      - Nhật ký thi công: Đã ghi chép đầy đủ theo quy định.
                     </div>
-                    4.1.5 Biên bản nghiệm thu vật liệu đầu vào: Đạt yêu cầu.<br />
-                    4.1.6 Các kết quả kiểm tra, thí nghiệm chất lượng vật liệu, thiết bị: Đạt yêu cầu.<br />
-                    4.1.7 Nhật ký thi công: Đã ghi đầy đủ theo quy định.
-                  </div>
 
-                  <div style={{ marginTop: '6px' }}><strong>4.2. Chất lượng công việc xây dựng:</strong></div>
-                  <div style={{ paddingLeft: '16px' }}>
-                    - Đối chiếu với hồ sơ thiết kế được duyệt: <strong>[X] Đạt yêu cầu</strong><br />
-                    - Đánh giá sự phù hợp của công việc xây dựng so với TCXD:{' '}
-                    <strong style={{ color: (isCompleted && (reportState?.rectification || report?.rectification)) || isRectified ? '#059669' : isRejected ? '#dc2626' : 'inherit' }}>
-                      {(isCompleted && (reportState?.rectification || report?.rectification)) || isRectified ? '[X] ĐÃ SỬA CHỮA ĐẠT YÊU CẦU' : isRejected ? '[X] KHÔNG ĐẠT YÊU CẦU' : '[X] Đạt yêu cầu'}
-                    </strong><br />
-                    - Kiểm tra việc thực hiện theo yêu cầu kỹ thuật của công trình xây dựng:{' '}
-                    <strong style={{ color: (isCompleted && (reportState?.rectification || report?.rectification)) || isRectified ? '#059669' : isRejected ? '#dc2626' : 'inherit' }}>
-                      {(isCompleted && (reportState?.rectification || report?.rectification)) || isRectified ? '[X] ĐÃ KHẮC PHỤC XONG' : isRejected ? '[X] CẦN SỬA CHỮA KHẮC PHỤC' : '[X] Đạt yêu cầu'}
-                    </strong>
-                  </div>
+                    <div style={{ marginTop: '12px' }}>
+                      <strong>4.2. Bảng kết quả kiểm tra vật liệu đối chiếu thực tế:</strong>
+                      <div style={{ overflowX: 'auto', marginTop: '6px' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', fontSize: '0.86rem' }}>
+                          <thead>
+                            <tr style={{ background: '#f8fafc', fontWeight: 700, color: '#334155' }}>
+                              <th style={{ border: '1px solid #94a3b8', padding: '6px' }}>STT</th>
+                              <th style={{ border: '1px solid #94a3b8', padding: '6px' }}>Chủng loại vật liệu</th>
+                              <th style={{ border: '1px solid #94a3b8', padding: '6px' }}>Xuất xứ</th>
+                              <th style={{ border: '1px solid #94a3b8', padding: '6px' }}>Đơn vị</th>
+                              <th style={{ border: '1px solid #94a3b8', padding: '6px' }}>Khối lượng</th>
+                              <th style={{ border: '1px solid #94a3b8', padding: '6px' }}>Đánh giá</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr>
+                              <td style={{ border: '1px solid #cbd5e1', padding: '8px' }}>1</td>
+                              <td style={{ border: '1px solid #cbd5e1', padding: '8px', fontWeight: 600, textAlign: 'left' }}>
+                                {reportState.materialDetails?.name || reportState.inspectionObject?.replace(/^Nghiệm thu vật liệu đầu vào:\s*/i, '') || 'Vật tư thi công'}
+                              </td>
+                              <td style={{ border: '1px solid #cbd5e1', padding: '8px' }}>
+                                {reportState.materialDetails?.origin || 'Nhà máy sản xuất chính hãng'}
+                              </td>
+                              <td style={{ border: '1px solid #cbd5e1', padding: '8px' }}>
+                                {reportState.materialDetails?.unit || 'Lô'}
+                              </td>
+                              <td style={{ border: '1px solid #cbd5e1', padding: '8px', fontWeight: 600 }}>
+                                {reportState.materialDetails?.quantity || '01 Lô nghiệm thu'}
+                              </td>
+                              <td style={{ border: '1px solid #cbd5e1', padding: '8px' }}>
+                                <strong style={{ color: (isCompleted && (reportState?.rectification || report?.rectification)) || isRectified ? '#059669' : isRejected ? '#dc2626' : '#059669' }}>
+                                  {isRejected ? '[ ] Đạt  [X] Không đạt' : '[X] Đạt  [ ] Không đạt'}
+                                </strong>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
 
-                  <div style={{ marginTop: '6px' }}><strong>4.3. Các ý kiến khác nếu có:</strong> <em>{(isCompleted && (reportState?.rectification || report?.rectification)) ? 'ĐVTC đã nắn chỉnh và khắc phục lỗi đạt yêu cầu TVGS' : isRectified ? 'ĐVTC đã nắn chỉnh và khắc phục lỗi' : isRejected ? 'Có tồn tại khiếm khuyết' : 'Không'}</em></div>
+                    <div style={{ marginTop: '10px' }}>
+                      <strong>4.3. Các ý kiến khác nếu có:</strong> <em>{(isCompleted && (reportState?.rectification || report?.rectification)) ? 'ĐVTC đã bổ sung đầy đủ hồ sơ kiểm định chất lượng' : isRectified ? 'ĐVTC đã bổ sung hồ sơ và chứng chỉ' : isRejected ? 'Chưa đủ chứng chỉ xuất xưởng hoặc kết quả thí nghiệm' : 'Không'}</em>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* NỘI DUNG BIÊN BẢN CÔNG VIỆC XÂY DỰNG */
+                <div style={{ marginBottom: '14px' }}>
+                  <strong>4. Đánh giá công việc xây dựng đã thực hiện:</strong>
+                  <div style={{ paddingLeft: '16px', marginTop: '4px' }}>
+                    <div><strong>4.1. Tài liệu căn cứ nghiệm thu:</strong></div>
+                    <div style={{ paddingLeft: '16px' }}>
+                      4.1.1 Phiếu yêu cầu nghiệm thu của nhà thầu thi công số: <strong>{reportState.requestNumber || (reportState.requestId && !reportState.requestId.startsWith('req_') ? reportState.requestId : null) || '01/PYC-APG'}</strong><br />
+                      4.1.2 Hồ sơ thiết kế BVTC (đã được Chủ đầu tư phê duyệt ngày 16/12/2025):<br />
+                      &nbsp;&nbsp;&nbsp;&nbsp;+ Tên hồ sơ thiết kế: Hồ sơ thiết kế xây dựng triển khai sau hồ sơ TKCS.<br />
+                      &nbsp;&nbsp;&nbsp;&nbsp;+ Những thay đổi thiết kế đã được chấp thuận: Không.<br />
+                      4.1.3 Biện pháp thi công đã được phê duyệt: Biện pháp thi công số 01/BPTC-APG.<br />
+                      4.1.4 Quy chuẩn, tiêu chuẩn xây dựng được áp dụng (Động theo file Excel):
+                      <div className="doc-standards-list" style={{ paddingLeft: '16px', color: '#b91c1c' }}>
+                        {displayStandards.map((stdStr, idx) => (
+                          <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', margin: '2px 0' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={selectedStandards.includes(stdStr)} 
+                              onChange={() => toggleStandard(stdStr)}
+                              style={{ marginTop: '3px' }}
+                            />
+                            <span>+ {stdStr}</span>
+                          </div>
+                        ))}
+                      </div>
+                      4.1.5 Biên bản nghiệm thu vật liệu đầu vào: Đạt yêu cầu.<br />
+                      4.1.6 Các kết quả kiểm tra, thí nghiệm chất lượng vật liệu, thiết bị: Đạt yêu cầu.<br />
+                      4.1.7 Nhật ký thi công: Đã ghi đầy đủ theo quy định.
+                    </div>
+
+                    <div style={{ marginTop: '6px' }}><strong>4.2. Chất lượng công việc xây dựng:</strong></div>
+                    <div style={{ paddingLeft: '16px' }}>
+                      - Đối chiếu với hồ sơ thiết kế được duyệt: <strong>[X] Đạt yêu cầu</strong><br />
+                      - Đánh giá sự phù hợp của công việc xây dựng so với TCXD:{' '}
+                      <strong style={{ color: (isCompleted && (reportState?.rectification || report?.rectification)) || isRectified ? '#059669' : isRejected ? '#dc2626' : 'inherit' }}>
+                        {(isCompleted && (reportState?.rectification || report?.rectification)) || isRectified ? '[X] ĐÃ SỬA CHỮA ĐẠT YÊU CẦU' : isRejected ? '[X] KHÔNG ĐẠT YÊU CẦU' : '[X] Đạt yêu cầu'}
+                      </strong><br />
+                      - Kiểm tra việc thực hiện theo yêu cầu kỹ thuật của công trình xây dựng:{' '}
+                      <strong style={{ color: (isCompleted && (reportState?.rectification || report?.rectification)) || isRectified ? '#059669' : isRejected ? '#dc2626' : 'inherit' }}>
+                        {(isCompleted && (reportState?.rectification || report?.rectification)) || isRectified ? '[X] ĐÃ KHẮC PHỤC XONG' : isRejected ? '[X] CẦN SỬA CHỮA KHẮC PHỤC' : '[X] Đạt yêu cầu'}
+                      </strong>
+                    </div>
+
+                    <div style={{ marginTop: '6px' }}><strong>4.3. Các ý kiến khác nếu có:</strong> <em>{(isCompleted && (reportState?.rectification || report?.rectification)) ? 'ĐVTC đã nắn chỉnh và khắc phục lỗi đạt yêu cầu TVGS' : isRectified ? 'ĐVTC đã nắn chỉnh và khắc phục lỗi' : isRejected ? 'Có tồn tại khiếm khuyết' : 'Không'}</em></div>
+                  </div>
+                </div>
+              )}
 
               {/* 5. Kết luận */}
               <div style={{ marginBottom: '20px' }}>
                 <strong>5. Kết luận:</strong>
                 <div style={{ paddingLeft: '20px', marginTop: '4px' }}>
-                  <div>
-                    - Chấp thuận nghiệm thu, đồng ý cho triển khai công việc tiếp theo:{' '}
-                    {isCompleted ? (
-                      <span>
-                        <strong style={{ 
-                          color: '#059669', 
-                          background: '#ecfdf5', 
-                          padding: '3px 10px', 
-                          borderRadius: '4px', 
-                          border: '1.5px solid #a7f3d0' 
-                        }}>
-                          ☑ ĐỒNG Ý NGHIỆM THU (ĐÃ PHÊ DUYỆT ĐẠT{(reportState?.rectification || report?.rectification) ? ' SAU SỬA CHỮA' : ''})
-                        </strong>
-                      </span>
-                    ) : isRectified ? (
-                      <span>
-                        <strong style={{ color: '#059669', background: '#ecfdf5', padding: '3px 10px', borderRadius: '4px', border: '1.5px solid #a7f3d0' }}>
-                          ☑ ĐÃ KHẮC PHỤC (CHỜ DUYỆT LẠI)
-                        </strong>
-                      </span>
-                    ) : isRejected ? (
-                      <span>
-                        ☐ Đồng ý &nbsp;&nbsp;&nbsp;&nbsp;
-                        <strong style={{ 
-                          color: '#dc2626', 
-                          background: '#fee2e2', 
-                          padding: '3px 10px', 
-                          borderRadius: '4px', 
-                          border: '1.5px solid #f87171' 
-                        }}>
-                          ☑ KHÔNG ĐỒNG Ý
-                        </strong>
-                      </span>
-                    ) : (
-                      <span><strong>☑ Đồng ý</strong> &nbsp;&nbsp; ☐ Không đồng ý</span>
-                    )}
-                  </div>
+                  {isMaterialReport ? (
+                    <div style={{ lineHeight: 1.6 }}>
+                      {isRejected ? (
+                        <div style={{ color: '#dc2626', fontWeight: 700 }}>
+                          ❌ Chưa chấp thuận nghiệm thu. Yêu cầu ĐVTC cung cấp bổ sung đầy đủ chứng chỉ xuất xưởng, kết quả thí nghiệm hoặc khắc phục trước khi mời nghiệm thu lại.
+                        </div>
+                      ) : (
+                        <div>
+                          Đối với các loại vật liệu, thiết bị, sản phẩm chế tạo sẵn liệt kê trong bảng nêu trên được đánh giá là <strong style={{ color: '#059669' }}>đạt yêu cầu</strong> và được chấp thuận đưa vào sử dụng cho công trình.
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      - Chấp thuận nghiệm thu, đồng ý cho triển khai công việc tiếp theo:{' '}
+                      {isCompleted ? (
+                        <span>
+                          <strong style={{ 
+                            color: '#059669', 
+                            background: '#ecfdf5', 
+                            padding: '3px 10px', 
+                            borderRadius: '4px', 
+                            border: '1.5px solid #a7f3d0' 
+                          }}>
+                            ☑ ĐỒNG Ý NGHIỆM THU (ĐÃ PHÊ DUYỆT ĐẠT{(reportState?.rectification || report?.rectification) ? ' SAU SỬA CHỮA' : ''})
+                          </strong>
+                        </span>
+                      ) : isRectified ? (
+                        <span>
+                          <strong style={{ color: '#059669', background: '#ecfdf5', padding: '3px 10px', borderRadius: '4px', border: '1.5px solid #a7f3d0' }}>
+                            ☑ ĐÃ KHẮC PHỤC (CHỜ DUYỆT LẠI)
+                          </strong>
+                        </span>
+                      ) : isRejected ? (
+                        <span>
+                          ☐ Đồng ý &nbsp;&nbsp;&nbsp;&nbsp;
+                          <strong style={{ 
+                            color: '#dc2626', 
+                            background: '#fee2e2', 
+                            padding: '3px 10px', 
+                            borderRadius: '4px', 
+                            border: '1.5px solid #f87171' 
+                          }}>
+                            ☑ KHÔNG ĐỒNG Ý
+                          </strong>
+                        </span>
+                      ) : (
+                        <span><strong>☑ Đồng ý</strong> &nbsp;&nbsp; ☐ Không đồng ý</span>
+                      )}
+                    </div>
+                  )}
 
                   {/* NỘI DUNG SỬA CHỮA HOẶC LÝ DO TỪ CHỐI */}
-                  {(reportState.rectification || report?.rectification) ? (
+                  {((isRectified || reportState.status === 'RECTIFIED' || isCompleted) && Boolean(reportState.rectification?.description || report?.rectification?.description)) ? (
                     <div style={{ 
                       marginTop: '8px', 
                       background: isCompleted ? '#ecfdf5' : '#f5f3ff', 
@@ -1909,15 +1928,6 @@ export default function InspectionReportModal({
                     </button>
                     <button 
                       type="button"
-                      className="btn-secondary" 
-                      style={{ borderColor: '#fca5a5', color: '#991b1b', background: '#fef2f2', padding: '8px 12px', fontSize: '0.82rem' }}
-                      onClick={handleAddSampleDefectPhoto}
-                    >
-                      <Zap size={14} />
-                      <span>⚡ Mẫu Lỗi</span>
-                    </button>
-                    <button 
-                      type="button"
                       className="btn-danger" 
                       style={{ padding: '8px 14px', fontSize: '0.82rem' }}
                       onClick={() => {
@@ -1955,14 +1965,6 @@ export default function InspectionReportModal({
                       onClick={() => fileInputRef.current?.click()}
                     >
                       <ImagePlus size={16} /> <span>📁 Tải Ảnh Lên</span>
-                    </button>
-                    <button 
-                      type="button" 
-                      className="btn-secondary" 
-                      style={{ borderColor: '#fca5a5', color: '#991b1b', background: '#fef2f2' }}
-                      onClick={handleAddSampleDefectPhoto}
-                    >
-                      <Zap size={16} /> <span>⚡ Dùng Ảnh Mẫu Lỗi (Demo)</span>
                     </button>
                   </div>
                 </div>
@@ -2154,15 +2156,7 @@ export default function InspectionReportModal({
                     Bấm nút bên dưới để tải ảnh chụp sửa chữa hoặc chèn ảnh mẫu hiện trường làm bằng chứng nghiệm thu.
                   </div>
                   <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                    <button 
-                      type="button"
-                      className="btn-secondary" 
-                      style={{ borderColor: '#a855f7', color: '#7c3aed', background: '#faf5ff' }}
-                      onClick={handleAddSampleRectifyPhoto}
-                    >
-                      <Zap size={16} />
-                      <span>⚡ Tự Động Lấy Ảnh Mẫu Đã Sửa (Demo)</span>
-                    </button>
+
                     {(currentRole === 'CONTRACTOR' || currentRole === 'ADMIN') && (
                       <button 
                         type="button"
@@ -2750,9 +2744,6 @@ export default function InspectionReportModal({
                   <button type="button" className="btn-secondary" style={{ justifyContent: 'center' }} onClick={() => fileInputRef.current?.click()}>
                     <ImagePlus size={16} /> <span>📁 Tải Ảnh Từ Máy</span>
                   </button>
-                  <button type="button" className="btn-secondary" style={{ borderColor: '#fca5a5', color: '#991b1b', background: '#fef2f2', justifyContent: 'center' }} onClick={handleAddSampleDefectPhoto}>
-                    <Zap size={16} /> <span>⚡ Dùng Ảnh Mẫu (Demo)</span>
-                  </button>
                 </div>
 
                 {defectPhotos.length > 0 && (
@@ -2871,9 +2862,6 @@ export default function InspectionReportModal({
                   </button>
                   <button type="button" className="btn-secondary" style={{ justifyContent: 'center' }} onClick={() => fileRectifyRef.current?.click()}>
                     <ImagePlus size={16} /> <span>📁 Tải Ảnh Từ Máy</span>
-                  </button>
-                  <button type="button" className="btn-secondary" style={{ borderColor: '#a855f7', color: '#7c3aed', background: '#faf5ff', justifyContent: 'center' }} onClick={handleAddSampleRectifyPhoto}>
-                    <Zap size={16} /> <span>⚡ Dùng Ảnh Mẫu (Demo)</span>
                   </button>
                 </div>
 

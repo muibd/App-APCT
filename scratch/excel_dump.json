@@ -1,0 +1,213 @@
+{
+  "SGV": [],
+  "DANH MỤC TIÊU CHUẨN NGHIỆM THU": [
+    [
+      "STT",
+      "CÔNG VIỆC/ VẬT LIỆU",
+      "TCVN - NT"
+    ],
+    [
+      "A",
+      "CÔNG VIỆC XÂY DỰNG"
+    ],
+    [
+      1,
+      "Cốt thép, ván khuôn, bê tông",
+      "+ TCVN 4453:1995 Kết cấu bê tông và bê tông cốt thép  -Thi công và nghiệm thu"
+    ],
+    [
+      2,
+      "Xây tường",
+      "+ TCVN 4085:2025 Thi công kết cấu khối xây - Yêu cầu kỹ thuật\n+ TCVN 4314:2022 Vữa xây dựng - Yêu cầu kỹ thuật"
+    ],
+    [
+      3,
+      "Trát tường",
+      "+ TCVN 4085:2025 Thi công kết cấu khối xây - Yêu cầu kỹ thuật\n+ TCVN 9377-2:2012 Công tác hoàn thiện trong xây dựng - Thi công và nghiệm thu - Phần 2: Công tác trát trong xây dựng"
+    ],
+    [
+      4,
+      "Chống thấm",
+      "+ TCVN 9345:2012 – Kết cấu bê tông và bê tông cốt thép – Hưỡng dẫn kỹ thuật phòng chống nứt dưới tác động của khí hậu nóng ẩm;"
+    ],
+    [
+      5,
+      "Cán nền",
+      "+ TCVN 9377-1:2012: Công tác hoàn thiện trong xây dựng - Thi công và nghiệm thu - Phần 1: Công tác lát và láng trong xây dựng\n+ TCVN 4314:2022 Vữa xây dựng - Yêu cầu kỹ thuật."
+    ],
+    [
+      6,
+      "Ốp lát gạch",
+      "+ TCVN 9377-1:2012: Công tác hoàn thiện trong xây dựng - Thi công và nghiệm thu - Phần 1: Công tác lát và láng trong xây dựng\n+ TCVN 9377-3:2012 Công tác hoàn thiện trong xây dựng - Thi công và nghiệm thu - Phần 3: Công tác ốp trong xây dựng.\n+ TCVN 8264:2009 Gạch ốp lát - Quy phạm thi công và nghiệm thu.\n+ TCVN 4314:2022 Vữa xây dựng - Yêu cầu kỹ thuật."
+    ],
+    [
+      7,
+      "Ốp lát đá",
+      "+ TCVN 9377-1:2012 Công tác hoàn thiện trong xây dựng - Thi công và nghiệm thu - Phần 1: Công tác lát và láng trong xây dựng.\n+ TCVN 9377-3:2012 Công tác hoàn thiện trong xây dựng - Thi công và nghiệm thu - Phần 3: Công tác ốp trong xây dựng."
+    ],
+    [
+      8,
+      "Ốp bậc nhựa giả gỗ",
+      "+ TCVN 9377-1:2012 Công tác hoàn thiện trong xây dựng - Thi công và nghiệm thu - Phần 1: Công tác lát và láng trong xây dựng.\n+ TCVN 7955:2008 Lắp đặt ván sàn - Quy phạm thi công và nghiệm thu."
+    ],
+    [
+      9,
+      "Lắp đặt trần thạch cao",
+      "+ TCVN 10701:2016 Tấm thạch cao - Yêu cầu lắp đặt, hoàn thiện"
+    ],
+    [
+      10,
+      "Lắp đặt cửa nhôm kính",
+      "+ TCVN 9366-2:2012 Cửa đi, cửa sổ - Phần 2: Cửa kim loại"
+    ],
+    [
+      11,
+      "Lắp đặt cửa gỗ",
+      "+ TCVN 9366-1:2012 Cửa đi, cửa sổ - Phần 1: Cửa gỗ"
+    ],
+    [
+      12,
+      "Bả matit",
+      "+ TCVN 7239:2014 Bột bả tường gốc xi măng poóc lăng."
+    ],
+    [
+      13,
+      "Sơn lót, sơn hoàn thiện",
+      "+ TCVN 8652:2020 Sơn tường dạng nhũ tương -Yêu cầu kỹ thuật"
+    ],
+    [
+      14,
+      "Lắp đặt lan can",
+      "+ TCVN 4431:1987 Lan can an toàn - Điều kiện kĩ thuật"
+    ],
+    [
+      15,
+      "Chống mối",
+      "+ TCVN 7958:2017 Bảo vệ công trình xây dựng - Phòng chống mối cho công trình xây dựng mới"
+    ],
+    [
+      "B",
+      "VẬT LIỆU ĐẦU VÀO"
+    ],
+    [
+      1,
+      "Gạch ống, gạch thẻ không nung",
+      "+ QCVN 16:2023/BXD Sản phẩm, hàng hóa vật liệu xây dựng;\n+ TCVN 6477:2016 Gạch bê tông;\n+ TCVN 6355:2009 Gạch xây - Phương pháp thử;"
+    ],
+    [
+      2,
+      "Gạch ống, gạch thẻ đất sét nung",
+      "+ QCVN 16:2023/BXD Sản phẩm, hàng hóa vật liệu xây dựng;\n+ TCVN 1451:1998 Gạch đặc đất sét nung;\n+ TCVN 6355:2009 Gạch xây - Phương pháp thử;"
+    ],
+    [
+      3,
+      "Xi măng",
+      "+ QCVN 16:2023/BXD Sản phẩm, hàng hóa vật liệu xây dựng.\n+ TCVN 4787:2009 Lấy mẫu xi măng.\n+ TCVN 9202:2009 Xi măng xây trát.\n+ TCVN 6016:2011 Xi măng - Phương pháp thử - Xác định cường độ.\n+ TCVN 4314:2022 Vữa xây dựng - Yêu cầu kỹ thuật"
+    ],
+    [
+      4,
+      "Cát xây trát",
+      "+ QCVN 16:2023/BXD Sản phẩm, hàng hóa vật liệu xây dựng;\n+ TCVN 7570:2006 Cốt liệu cho bê tông và vữa - Yêu cầu kỹ thuật;\n+ TCVN 7572:2006 Cốt liệu cho bê tông và vữa - Phương pháp thử;\n+ TCVN 4314:2022 Vữa xây dựng - Yêu cầu kỹ thuật;"
+    ],
+    [
+      5,
+      "Keo khoan cấy",
+      "+ TCVN 9490:2012 Bê tông - Xác định cường độ kéo nhổ."
+    ],
+    [
+      6,
+      "Gạch ốp lát ",
+      "+ QCVN 16:2023/BXD Sản phẩm, hàng hóa vật liệu xây dựng.\n+ TCVN 7745:2007 Gạch gốm ốp lát ép bán khô - Yêu cầu kỹ thuật\n+ TCVN 6415:2016 Gạch gốm ốp, lát - Phương pháp thử\n+ TCVN 8264:2009 Gạch ốp lát - Quy phạm thi công và nghiệm thu"
+    ],
+    [
+      7,
+      "Keo chà ron ",
+      "+ TCVN 7899:2008 Gạch gốm ốp lát - Vữa, keo chít mạch và dán gạch\n+ TCVN 8264:2009 Gạch ốp lát - Quy phạm thi công và nghiệm thu"
+    ],
+    [
+      8,
+      "Sàn nhựa giả gỗ",
+      "+ TCVN 11352:2016 Ván sàn composite gỗ nhựa"
+    ],
+    [
+      9,
+      "Đá granite tự nhiên",
+      "+ QCVN 16:2023/BXD Sản phẩm, hàng hóa vật liệu xây dựng.\n+ TCVN 4732:2016 Đá ốp, lát tự nhiên"
+    ],
+    [
+      10,
+      "Bột bả matit ",
+      "+ TCVN 7239:2014 Bột bả tường gốc xi măng Poóc Lăng."
+    ],
+    [
+      11,
+      "Sơn lót, sơn hoàn thiện ",
+      "+ QCVN 16:2023/BXD Sản phẩm, hàng hóa vật liệu xây dựng.\n+ TCVN 8652:2012 Sơn tường dạng nhũ tương - Yêu cầu kỹ thuật.\n+ TCVN 8653:2012 Sơn tường dạng nhũ tương - Phương pháp thử.\n+ TCVN 9404:2012 Sơn xây dựng - Phân loại"
+    ],
+    [
+      12,
+      "Khung xương trần, tấm trần thạch cao ",
+      "+ QCVN 16:2023/BXD Sản phẩm, hàng hóa vật liệu xây dựng.\n+ TCVN 8256:2022 Tấm thạch cao - Yêu cầu kỹ thuật\n+ TCVN 8257:2022 Tấm thạch cao - Phương pháp thử"
+    ],
+    [
+      13,
+      "Tấm cemboard ",
+      "+ QCVN 16:2023/BXD Sản phẩm, hàng hóa vật liệu xây dựng.\n+ TCVN 8258:2009 Tấm xi măng sợi - Yêu cầu kỹ thuật\n+ TCVN 8259:2009 Tấm xi măng sợi - Phương pháp thử"
+    ],
+    [
+      14,
+      "Chống thấm gốc xi măng",
+      "+ TCVN 9204:2012 Vữa xi măng khô trộn sẵn không co;\n+ TCVN 12692:2020 Vật liệu chống thấm nước thi công dạng lỏng sử dụng bên dưới lớp chất kết kính dính dán gạch gốm ốp lát - Yêu cầu kỹ thuật, phương pháp thử;"
+    ],
+    [
+      15,
+      "Chống thấm gốc bitum",
+      "+ TCVN 9065:2012 Vật liệu chống thấm - Sơn nhũ tương Bitum"
+    ],
+    [
+      16,
+      "Chống mối",
+      "+ TCVN 7958:2017 Bảo vệ công trình xây dựng - Phòng chống mối cho công trình xây dựng mới"
+    ],
+    [
+      17,
+      "Cửa nhôm kính",
+      "+ TCVN 5838:1994 Nhôm và hợp kim nhôm – Thanh, thỏi, ống và profin – Yêu cầu kỹ thuật chung\n+ TCVN 12513:2018 Nhôm và hợp kim nhôm gia công áp lực - Que/thanh, ống và sản phẩm định hình ép đùn\n+ QCVN 16:2023/BXD Sản phẩm, hàng hóa vật liệu xây dựng.\n+ TCVN 7218:2018 Kính tấm xây dựng - Kính nổi - Yêu cầu kĩ thuật\n+ TCVN 7219:2018 Kính tấm xây dựng - Phương pháp xác định kích thước và khuyết tật ngoại quan\n+ TCVN 7364:2018 Kính xây dựng - Kính dán nhiều lớp và kính an toàn nhiều lớp - Phương pháp thử\n+ TCVN 7368:2012 Kính xây dựng - Kính dán an toàn nhiều lớp - Phương pháp thử độ bền va đập"
+    ],
+    [
+      18,
+      "Lam nhôm",
+      "+ TCVN 5838:1994 Nhôm và hợp kim nhôm – Thanh, thỏi, ống và profin – Yêu cầu kỹ thuật chung\n+ TCVN 13065:2020 Nhôm và hợp kim nhôm gia công áp lực – Tấm mỏng, băng và tấm"
+    ],
+    [
+      19,
+      "Cửa gỗ ",
+      "+ TCVN 11903:2017 Ván gỗ nhân tạo - Lấy mẫu và cắt mẫu thử\n+ TCVN 7756:2007 Ván gỗ nhân tạo - Phương pháp thử nghiệm\n+ TCVN 9383:2012 Thử nghiệm khả năng chịu lửa của cửa đi và cửa chắn ngăn cháy"
+    ],
+    [
+      20,
+      "Cửa thép chống cháy",
+      "+ QCVN 06/2021 Quy chuẩn kỹ thuật quốc gia về an toàn cháy cho nhà và công trình\n+ TCVN 9383:2012 Thử nghiệm khả năng chịu lửa của cửa đi và cửa chắn ngăn cháy"
+    ],
+    [
+      21,
+      "Lan can",
+      "+ TCVN 4431:1987 Lan can an toàn - Điều kiện kỹ thuật"
+    ],
+    [
+      22,
+      "Thép",
+      "+ QCVN 16:2023/BXD Sản phẩm, hàng hóa vật liệu xây dựng.\n+ TCVN 1651:2018 Vật liệu thép cốt thép bê tông"
+    ],
+    [
+      23,
+      "Tủ bếp",
+      "+ TCVN 11903:2017 Ván gỗ nhân tạo - Lấy mẫu và cắt mẫu thử\n+ TCVN 7756:2007 Ván gỗ nhân tạo - Phương pháp thử nghiệm"
+    ],
+    [
+      24,
+      "Giàn giáo bao che",
+      "+ TCVN 4431:1987 Lan can an toàn - Điều kiện kỹ thuật;\n+ TCXDVN 296:2004 Giàn giáo các yêu cầu về an toàn;"
+    ]
+  ]
+}
