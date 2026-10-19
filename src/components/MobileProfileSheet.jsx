@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
   X, UserCircle, ShieldCheck, BellRing, LogOut, Building, 
-  HardHat, Eye, Briefcase, CheckCircle2, ChevronRight, Sparkles, RotateCcw 
+  HardHat, Eye, Briefcase, CheckCircle2, ChevronRight, Sparkles, RotateCcw, Award 
 } from 'lucide-react';
 import { isIOSDevice, isStandalonePWA } from '../services/notificationService';
 
@@ -46,6 +46,14 @@ export default function MobileProfileSheet({
           color: '#047857',
           desc: 'Trực tiếp đánh giá tại hiện trường, duyệt hoặc từ chối NT'
         };
+      case 'LEAD_SUPERVISOR':
+        return { 
+          name: 'Tư Vấn Giám Sát Trưởng', 
+          icon: Award, 
+          bg: '#f0fdf4', 
+          color: '#15803d',
+          desc: 'Xem tất cả phiếu thuộc TVGS, xác nhận/hủy phiếu mình phụ trách'
+        };
       case 'INVESTOR':
         return { 
           name: 'Chủ Đầu Tư (Ban QLDA)', 
@@ -53,6 +61,14 @@ export default function MobileProfileSheet({
           bg: '#fffbeb', 
           color: '#b45309',
           desc: 'Giám sát chủ quản, ký xác nhận & phê duyệt hoàn tất'
+        };
+      case 'LEAD_INVESTOR':
+        return { 
+          name: 'Đại Diện Chủ Đầu Tư Trưởng', 
+          icon: Award, 
+          bg: '#fef3c7', 
+          color: '#b45309',
+          desc: 'Xem tất cả phiếu thuộc CĐT, phê duyệt/hủy phiếu mình phụ trách'
         };
       default:
         return { 

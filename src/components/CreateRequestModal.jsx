@@ -15,12 +15,12 @@ import {
 
 
 
-export default function CreateRequestModal({ isOpen, onClose, users, currentUser, onSubmitRequest }) {
+export default function CreateRequestModal({ isOpen, onClose, users, currentUser, onSubmitRequest, showAlert }) {
   if (!isOpen) return null;
 
   // Filter recipient groups
-  const supervisorList = users.filter(u => u.role === 'SUPERVISOR');
-  const investorList = users.filter(u => u.role === 'INVESTOR');
+  const supervisorList = users.filter(u => u.role === 'SUPERVISOR' || u.role === 'LEAD_SUPERVISOR');
+  const investorList = users.filter(u => u.role === 'INVESTOR' || u.role === 'LEAD_INVESTOR');
 
   // Form State
   const [requestNumber, setRequestNumber] = useState(`0${Math.floor(Math.random() * 80) + 10}/PYC-APG`);
@@ -274,8 +274,8 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
 
   useEffect(() => {
     if (selectedRecipients.length === 0 && users.length > 0) {
-      const s = users.filter(u => u.role === 'SUPERVISOR');
-      const i = users.filter(u => u.role === 'INVESTOR');
+      const s = users.filter(u => u.role === 'SUPERVISOR' || u.role === 'LEAD_SUPERVISOR');
+      const i = users.filter(u => u.role === 'INVESTOR' || u.role === 'LEAD_INVESTOR');
       setSelectedRecipients([s[0]?.uid, i[0]?.uid].filter(Boolean));
     }
   }, [users, isOpen]);
@@ -301,7 +301,15 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
     e.preventDefault();
 
     if (selectedRecipients.length === 0) {
-      alert('Vui lòng chọn ít nhất 1 cán bộ TVGS hoặc CĐT để nhận thông báo!');
+      if (showAlert) {
+        showAlert({
+          type: 'warning',
+          title: 'Chưa Chọn Người Nhận',
+          message: 'Vui lòng chọn ít nhất 1 cán bộ TVGS hoặc CĐT để nhận thông báo nghiệm thu!'
+        });
+      } else {
+        alert('Vui lòng chọn ít nhất 1 cán bộ TVGS hoặc CĐT để nhận thông báo!');
+      }
       return;
     }
 
@@ -310,7 +318,15 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
       : selectedItem;
 
     if (selectedItem === '__NEW_ITEM__' && !customItemInput.trim()) {
-      alert('Vui lòng nhập tên hạng mục mới!');
+      if (showAlert) {
+        showAlert({
+          type: 'warning',
+          title: 'Thiếu Tên Hạng Mục',
+          message: 'Vui lòng nhập tên hạng mục mới trước khi gửi!'
+        });
+      } else {
+        alert('Vui lòng nhập tên hạng mục mới!');
+      }
       return;
     }
 
@@ -320,6 +336,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
         uid: u?.uid || uid,
         fullName: u?.fullName || 'Cán bộ tiếp nhận',
         role: u?.role || 'SUPERVISOR',
+        leaderId: u?.leaderId || null,
         company: u?.company || 'Ban QLDA / GELICON',
         position: u?.position || 'Cán bộ giám sát',
         email: u?.email || '',
@@ -329,12 +346,13 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
 
     let finalRecipients = assignedRecipients;
     if (finalRecipients.length === 0) {
-      const sup = users.find(u => u.role === 'SUPERVISOR') || MOCK_USERS.find(u => u.role === 'SUPERVISOR');
-      const inv = users.find(u => u.role === 'INVESTOR') || MOCK_USERS.find(u => u.role === 'INVESTOR');
+      const sup = users.find(u => u.role === 'SUPERVISOR' || u.role === 'LEAD_SUPERVISOR') || MOCK_USERS.find(u => u.role === 'SUPERVISOR' || u.role === 'LEAD_SUPERVISOR');
+      const inv = users.find(u => u.role === 'INVESTOR' || u.role === 'LEAD_INVESTOR') || MOCK_USERS.find(u => u.role === 'INVESTOR' || u.role === 'LEAD_INVESTOR');
       finalRecipients = [sup, inv].filter(Boolean).map(u => ({
         uid: u.uid,
         fullName: u.fullName,
         role: u.role,
+        leaderId: u.leaderId || null,
         company: u.company || 'GELICON / An Phú Cần Thơ',
         position: u.position || 'Cán bộ nghiệm thu',
         email: u.email || '',
@@ -1070,7 +1088,14 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
                         {u.avatar}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: '700', fontSize: '0.88rem', color: '#0f172a' }}>{u.fullName}</div>
+                        <div style={{ fontWeight: '700', fontSize: '0.88rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>{u.fullName}</span>
+                          {u.role === 'LEAD_SUPERVISOR' && (
+                            <span style={{ fontSize: '0.68rem', background: '#dcfce7', color: '#15803d', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>
+                              Trưởng
+                            </span>
+                          )}
+                        </div>
                         <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{u.position} • {u.phone}</div>
                       </div>
                     </div>
@@ -1112,7 +1137,14 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
                         {u.avatar}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: '700', fontSize: '0.88rem', color: '#0f172a' }}>{u.fullName}</div>
+                        <div style={{ fontWeight: '700', fontSize: '0.88rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>{u.fullName}</span>
+                          {u.role === 'LEAD_INVESTOR' && (
+                            <span style={{ fontSize: '0.68rem', background: '#fef3c7', color: '#b45309', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>
+                              Trưởng
+                            </span>
+                          )}
+                        </div>
                         <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{u.position} • {u.phone}</div>
                       </div>
                     </div>

@@ -506,7 +506,7 @@ export default function ReportsListView({
                         <div>
                           {isRectified ? (
                             <span style={{ fontSize: '0.72rem', color: '#7c3aed', fontWeight: 600, background: '#f3e8ff', padding: '2px 8px', borderRadius: '4px' }}>Chờ duyệt lại</span>
-                          ) : isRejected && report.conclusion?.rejectedBy?.role === 'INVESTOR' ? (
+                          ) : isRejected && (report.conclusion?.rejectedBy?.role === 'INVESTOR' || report.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR') ? (
                             <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 700, background: '#fee2e2', padding: '2px 8px', borderRadius: '4px' }}>❌ Từ chối</span>
                           ) : investorSigned ? (
                             <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700, background: '#ecfdf5', padding: '2px 8px', borderRadius: '4px' }}>✓ Đã ký</span>
@@ -530,7 +530,7 @@ export default function ReportsListView({
                         <div>
                           {isRectified ? (
                             <span style={{ fontSize: '0.72rem', color: '#7c3aed', fontWeight: 600, background: '#f3e8ff', padding: '2px 8px', borderRadius: '4px' }}>Chờ nghiệm thu</span>
-                          ) : isRejected && report.conclusion?.rejectedBy?.role === 'SUPERVISOR' ? (
+                          ) : isRejected && (report.conclusion?.rejectedBy?.role === 'SUPERVISOR' || report.conclusion?.rejectedBy?.role === 'LEAD_SUPERVISOR') ? (
                             <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 700, background: '#fee2e2', padding: '2px 8px', borderRadius: '4px' }}>❌ Từ chối</span>
                           ) : supervisorSigned ? (
                             <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700, background: '#ecfdf5', padding: '2px 8px', borderRadius: '4px' }}>✓ Đã ký</span>
@@ -638,7 +638,7 @@ export default function ReportsListView({
                     {/* 1. NẾU ĐÃ SỬA CHỮA XONG (RECTIFIED) */}
                     {isRectified ? (
                       <>
-                        {(currentRole === 'SUPERVISOR' || currentRole === 'INVESTOR' || currentRole === 'ADMIN') ? (
+                        {(currentRole === 'SUPERVISOR' || currentRole === 'LEAD_SUPERVISOR' || currentRole === 'INVESTOR' || currentRole === 'LEAD_INVESTOR' || currentRole === 'ADMIN') ? (
                           <button 
                             className="btn-success"
                             style={{ padding: '8px 14px', fontSize: '0.84rem' }}

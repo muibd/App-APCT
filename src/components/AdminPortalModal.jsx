@@ -19,7 +19,8 @@ export default function AdminPortalModal({
   onDeleteUser,
   onUpdateUserRole,
   onToggleUserStatus,
-  onResetAllData
+  onResetAllData,
+  showAlert
 }) {
   if (!isOpen) return null;
 
@@ -46,9 +47,25 @@ export default function AdminPortalModal({
         if (parsed && (parsed.works.length > 0 || parsed.materials.length > 0)) {
           if (parsed.works.length > 0) setWorkStandardsList(parsed.works);
           if (parsed.materials.length > 0) setMaterialStandardsList(parsed.materials);
-          alert(`✅ Đã đồng bộ thành công tiêu chuẩn từ file Excel!\n• ${parsed.works.length} nhóm công việc xây dựng (Sheet A)\n• ${parsed.materials.length} loại vật liệu nghiệm thu (Sheet B)`);
+          if (showAlert) {
+            showAlert({
+              type: 'success',
+              title: 'Đồng Bộ Tiêu Chuẩn Thành Công',
+              message: `Đã nạp thành công tiêu chuẩn từ file Excel:\n• ${parsed.works.length} nhóm công việc xây dựng (Sheet A)\n• ${parsed.materials.length} loại vật liệu nghiệm thu (Sheet B)`
+            });
+          } else {
+            alert(`✅ Đã đồng bộ thành công tiêu chuẩn từ file Excel!\n• ${parsed.works.length} nhóm công việc xây dựng (Sheet A)\n• ${parsed.materials.length} loại vật liệu nghiệm thu (Sheet B)`);
+          }
         } else {
-          alert('Không thể đọc dữ liệu tiêu chuẩn từ file này. Vui lòng kiểm tra lại định dạng file Excel.');
+          if (showAlert) {
+            showAlert({
+              type: 'danger',
+              title: 'Lỗi Đọc File Excel',
+              message: 'Không thể đọc dữ liệu tiêu chuẩn từ file này. Vui lòng kiểm tra lại định dạng file Excel (.xls, .xlsx).'
+            });
+          } else {
+            alert('Không thể đọc dữ liệu tiêu chuẩn từ file này. Vui lòng kiểm tra lại định dạng file Excel.');
+          }
         }
       }
     };

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, HardHat, Eye, Briefcase, Bell, BellRing, Check } from 'lucide-react';
+import { Shield, HardHat, Eye, Briefcase, Bell, BellRing, Check, Award } from 'lucide-react';
 
 export default function RoleBanner({ 
   currentRole, 
@@ -10,9 +10,11 @@ export default function RoleBanner({
 }) {
   const roles = [
     { id: 'ADMIN', label: '1. Admin', sub: 'Quản trị hệ thống', icon: Shield, color: '#9333ea' },
-    { id: 'CONTRACTOR', label: '2. Đơn vị Thi công', sub: 'Chỉ role này tạo phiếu', icon: HardHat, color: '#2563eb' },
-    { id: 'SUPERVISOR', label: '3. TV Giám sát', sub: 'Nhận mời, duyệt TCVN', icon: Eye, color: '#059669' },
-    { id: 'INVESTOR', label: '4. Đại diện CĐT', sub: 'Ban QLDA phê duyệt', icon: Briefcase, color: '#d97706' },
+    { id: 'CONTRACTOR', label: '2. ĐV Thi công', sub: 'Tạo phiếu nghiệm thu', icon: HardHat, color: '#2563eb' },
+    { id: 'SUPERVISOR', label: '3. TV Giám sát', sub: 'Kiểm tra & ký duyệt', icon: Eye, color: '#059669' },
+    { id: 'LEAD_SUPERVISOR', label: '4. TVGS Trưởng', sub: 'Xem mọi phiếu TVGS & duyệt phiếu của mình', icon: Award, color: '#047857' },
+    { id: 'INVESTOR', label: '5. Đại diện CĐT', sub: 'Ban QLDA kiểm tra', icon: Briefcase, color: '#d97706' },
+    { id: 'LEAD_INVESTOR', label: '6. CĐT Trưởng', sub: 'Trưởng ban QLDA xem mọi phiếu CĐT & duyệt phiếu của mình', icon: Award, color: '#b45309' },
   ];
 
   return (

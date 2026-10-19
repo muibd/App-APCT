@@ -249,9 +249,9 @@ export default function InvitationDetailModal({
                       width: '32px', 
                       height: '32px', 
                       fontSize: '0.75rem',
-                      background: rec.role === 'SUPERVISOR' ? '#059669' : '#d97706' 
+                      background: (rec.role === 'SUPERVISOR' || rec.role === 'LEAD_SUPERVISOR') ? '#059669' : '#d97706' 
                     }}>
-                      {rec.role === 'SUPERVISOR' ? 'TV' : 'ĐT'}
+                      {(rec.role === 'SUPERVISOR' || rec.role === 'LEAD_SUPERVISOR') ? 'TV' : 'ĐT'}
                     </div>
                     <div>
                       <div style={{ fontWeight: '700', fontSize: '0.88rem', color: '#0f172a' }}>
@@ -269,7 +269,13 @@ export default function InvitationDetailModal({
                   </div>
 
                   <span className="badge-status badge-confirmed" style={{ fontSize: '0.75rem', padding: '3px 8px' }}>
-                    {rec.role === 'SUPERVISOR' ? 'Đại diện TVGS' : 'Đại diện CĐT'}
+                    {rec.role === 'LEAD_SUPERVISOR' 
+                      ? 'TVGS Trưởng' 
+                      : rec.role === 'SUPERVISOR' 
+                      ? 'Đại diện TVGS' 
+                      : rec.role === 'LEAD_INVESTOR' 
+                      ? 'CĐT Trưởng' 
+                      : 'Đại diện CĐT'}
                   </span>
                 </div>
               ))}

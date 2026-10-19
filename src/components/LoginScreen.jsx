@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   Building2, Mail, Lock, Eye, EyeOff, ArrowRight, 
-  AlertCircle, ShieldCheck, HardHat, Briefcase, CheckCircle2 
+  AlertCircle, ShieldCheck, HardHat, Briefcase, CheckCircle2, Award 
 } from 'lucide-react';
 import { MOCK_USERS } from '../data/mockData';
 
@@ -39,11 +39,27 @@ export default function LoginScreen({ onLogin, users = MOCK_USERS }) {
       bg: '#ecfdf5'
     },
     {
-      roleName: 'Đại Diện Chủ Đầu Tư (CĐT)',
-      email: 'ngoquylinh.anphuct@gmail.com',
+      roleName: 'TVGS Trưởng (Giám sát trưởng)',
+      email: 'dinhxuantham.gelicon@gmail.com',
+      pass: '123456',
+      icon: Award,
+      color: '#047857',
+      bg: '#ecfdf5'
+    },
+    {
+      roleName: 'Đại Diện CĐT (QLDA)',
+      email: 'nguyenhau.anphuct@gmail.com',
       pass: '123456',
       icon: Briefcase,
       color: '#d97706',
+      bg: '#fffbeb'
+    },
+    {
+      roleName: 'CĐT Trưởng (Trưởng ban QLDA)',
+      email: 'ngoquylinh.anphuct@gmail.com',
+      pass: '123456',
+      icon: Award,
+      color: '#b45309',
       bg: '#fffbeb'
     }
   ];

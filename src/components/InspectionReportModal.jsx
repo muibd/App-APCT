@@ -38,7 +38,8 @@ export default function InspectionReportModal({
   onRejectReport,
   onReinspectReport,
   onResubmitReport,
-  initialOpenRectify = false
+  initialOpenRectify = false,
+  showAlert
 }) {
   // Tabs: 'DOCUMENT' | 'EVIDENCE' | 'DEFECTS' | 'RECTIFIED'
   const isInitiallyRectified = report?.status === 'RECTIFIED';
@@ -114,6 +115,69 @@ export default function InspectionReportModal({
     reportState?.conclusion?.isAccepted === false
   );
   const rejectionInfo = reportState?.conclusion?.rejectedBy || null;
+
+  // Phân biệt vai trò và quyền duyệt / hủy ("xác nhận/hủy những phiếu mà mình là người duyệt"):
+  const isAdmin = currentRole === 'ADMIN';
+  const isSupervisorRole = currentRole === 'SUPERVISOR' || currentRole === 'LEAD_SUPERVISOR';
+  const isInvestorRole = currentRole === 'INVESTOR' || currentRole === 'LEAD_INVESTOR';
+
+  const supAttendee = reportState?.attendees?.supervisor;
+  const invAttendee = reportState?.attendees?.investor;
+
+  const curUid = currentUser?.uid;
+  const curEmail = (currentUser?.email || '').trim().toLowerCase();
+  const curName = (currentUser?.fullName || '').trim().toLowerCase();
+
+  const assignedSupRecipients = (reportState?.assignedRecipients || []).filter(
+    r => r.role === 'SUPERVISOR' || r.role === 'LEAD_SUPERVISOR'
+  );
+  const assignedInvRecipients = (reportState?.assignedRecipients || []).filter(
+    r => r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR'
+  );
+
+  // Người dùng có phải là người duyệt TVGS được chỉ định trên phiếu này không:
+  const isSupervisorReviewer = Boolean(
+    isAdmin ||
+    (isSupervisorRole && (
+      (supAttendee?.uid && curUid && supAttendee.uid === curUid) ||
+      (supAttendee?.email && curEmail && supAttendee.email.toLowerCase() === curEmail) ||
+      (supAttendee?.person && curName && (
+        supAttendee.person.toLowerCase().includes(curName) ||
+        curName.includes(supAttendee.person.toLowerCase())
+      )) ||
+      (assignedSupRecipients.some(r => 
+        (curUid && r.uid === curUid) ||
+        (curEmail && r.email && r.email.toLowerCase() === curEmail) ||
+        (curName && r.fullName && (
+          curName.includes(r.fullName.toLowerCase()) ||
+          r.fullName.toLowerCase().includes(curName)
+        ))
+      )) ||
+      (assignedSupRecipients.length === 0 && !supAttendee?.person)
+    ))
+  );
+
+  // Người dùng có phải là người duyệt CĐT được chỉ định trên phiếu này không:
+  const isInvestorReviewer = Boolean(
+    isAdmin ||
+    (isInvestorRole && (
+      (invAttendee?.uid && curUid && invAttendee.uid === curUid) ||
+      (invAttendee?.email && curEmail && invAttendee.email.toLowerCase() === curEmail) ||
+      (invAttendee?.person && curName && (
+        invAttendee.person.toLowerCase().includes(curName) ||
+        curName.includes(invAttendee.person.toLowerCase())
+      )) ||
+      (assignedInvRecipients.some(r => 
+        (curUid && r.uid === curUid) ||
+        (curEmail && r.email && r.email.toLowerCase() === curEmail) ||
+        (curName && r.fullName && (
+          curName.includes(r.fullName.toLowerCase()) ||
+          r.fullName.toLowerCase().includes(curName)
+        ))
+      )) ||
+      (assignedInvRecipients.length === 0 && !invAttendee?.person)
+    ))
+  );
 
   const cameraInputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -311,7 +375,7 @@ export default function InspectionReportModal({
         caption: file.name ? `Hiện trường lỗi: ${file.name.replace(/\.[^/.]+$/, '')}` : 'Hiện trường kiểm tra không đạt',
         gps: '10.0076° N, 105.7823° E (P. Thường Thạnh, TP. Cần Thơ)',
         time: timeStr,
-        photographer: `${currentUser?.fullName || 'Kỹ sư'} (${currentRole === 'SUPERVISOR' ? 'TVGS' : currentRole === 'INVESTOR' ? 'CĐT' : 'QLDA'})`
+        photographer: `${currentUser?.fullName || 'Kỹ sư'} (${currentRole === 'LEAD_SUPERVISOR' ? 'TVGS Trưởng' : currentRole === 'SUPERVISOR' ? 'TVGS' : currentRole === 'LEAD_INVESTOR' ? 'CĐT Trưởng' : currentRole === 'INVESTOR' ? 'CĐT' : 'QLDA'})`
       });
     }
 
@@ -425,7 +489,7 @@ export default function InspectionReportModal({
         caption: file.name ? `Hiện trường: ${file.name.replace(/\.[^/.]+$/, '')}` : 'Hình ảnh nghiệm thu hiện trường',
         gps: '10.0076° N, 105.7823° E (P. Thường Thạnh, TP. Cần Thơ)',
         time: timeStr,
-        photographer: `${currentUser?.fullName || 'Kỹ sư'} (${currentRole === 'SUPERVISOR' ? 'TVGS' : currentRole === 'INVESTOR' ? 'CĐT' : 'ĐVTC'})`
+        photographer: `${currentUser?.fullName || 'Kỹ sư'} (${currentRole === 'LEAD_SUPERVISOR' ? 'TVGS Trưởng' : currentRole === 'SUPERVISOR' ? 'TVGS' : currentRole === 'LEAD_INVESTOR' ? 'CĐT Trưởng' : currentRole === 'INVESTOR' ? 'CĐT' : 'ĐVTC'})`
       };
       setEvidencePhotos(prev => {
         const next = [...prev, newPhoto];
@@ -479,7 +543,15 @@ export default function InspectionReportModal({
   // Xác nhận Không đồng ý nghiệm thu
   const handleConfirmReject = () => {
     if (!rejectReason.trim()) {
-      alert('Vui lòng nhập lý do không nghiệm thu để lập biên bản!');
+      if (showAlert) {
+        showAlert({
+          type: 'warning',
+          title: 'Thiếu Lý Do Từ Chối',
+          message: 'Vui lòng nhập lý do không nghiệm thu để lập biên bản yêu cầu ĐVTC sửa chữa!'
+        });
+      } else {
+        alert('Vui lòng nhập lý do không nghiệm thu để lập biên bản!');
+      }
       return;
     }
 
@@ -493,7 +565,10 @@ export default function InspectionReportModal({
       rejectedBy: {
         name: currentUser?.fullName || 'Cán bộ kiểm tra',
         role: currentRole,
-        roleTitle: currentRole === 'SUPERVISOR' ? 'Tư Vấn Giám Sát' : currentRole === 'INVESTOR' ? 'Đại Diện Chủ Đầu Tư' : 'Quản Trị Viên',
+        roleTitle: currentRole === 'LEAD_SUPERVISOR' ? 'Tư Vấn Giám Sát Trưởng' :
+                   currentRole === 'SUPERVISOR' ? 'Tư Vấn Giám Sát' :
+                   currentRole === 'LEAD_INVESTOR' ? 'Đại Diện Chủ Đầu Tư Trưởng' :
+                   currentRole === 'INVESTOR' ? 'Đại Diện Chủ Đầu Tư' : 'Quản Trị Viên',
         company: currentUser?.company || 'Ban QLDA / GELICON',
         timestamp: timeStr
       },
@@ -510,7 +585,7 @@ export default function InspectionReportModal({
     // Nếu Chủ đầu tư từ chối: TVGS đã nghiệm thu đạt trước đó nên chữ ký của TVGS vẫn giữ nguyên!
     // Nếu TVGS từ chối: Cả TVGS và CĐT đều chưa ký.
     const isSupervisorAlreadySigned = Boolean(signatures.supervisor || reportState.attendees?.supervisor?.signed);
-    const keepSupervisorSigned = currentRole === 'INVESTOR' ? isSupervisorAlreadySigned : false;
+    const keepSupervisorSigned = isInvestorRole ? isSupervisorAlreadySigned : false;
 
     const updated = {
       ...reportState,
@@ -558,7 +633,15 @@ export default function InspectionReportModal({
   // Xác nhận ĐVTC Gửi ảnh sửa & Mời nghiệm thu lại
   const handleConfirmRectification = () => {
     if (!rectifyDesc.trim()) {
-      alert('Vui lòng nhập nội dung biện pháp đã sửa chữa, khắc phục!');
+      if (showAlert) {
+        showAlert({
+          type: 'warning',
+          title: 'Thiếu Nội Dung Khắc Phục',
+          message: 'Vui lòng nhập nội dung biện pháp đã sửa chữa, khắc phục trước khi gửi TVGS / CĐT!'
+        });
+      } else {
+        alert('Vui lòng nhập nội dung biện pháp đã sửa chữa, khắc phục!');
+      }
       return;
     }
 
@@ -568,7 +651,8 @@ export default function InspectionReportModal({
     // Xác định đúng người nhận theo sơ đồ hoạt động:
     // CĐT từ chối -> gửi trực tiếp cho CĐT
     // TVGS từ chối -> gửi cho TVGS
-    const targetReviewer = reportState?.conclusion?.rejectedBy?.role === 'INVESTOR' ? 'INVESTOR' : 'SUPERVISOR';
+    const isRejectedByInvestor = reportState?.conclusion?.rejectedBy?.role === 'INVESTOR' || reportState?.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR';
+    const targetReviewer = isRejectedByInvestor ? 'INVESTOR' : 'SUPERVISOR';
 
     // Chỉ lấy ảnh hiện trường thực tế đã chụp / tải lên
     const finalPhotos = Array.isArray(rectifyPhotos) ? rectifyPhotos : [];
@@ -714,7 +798,9 @@ export default function InspectionReportModal({
       reportState?.status === 'WAITING_INVESTOR' || 
       reportState?.rectification?.target === 'INVESTOR' || 
       reportState?.conclusion?.rejectedBy?.role === 'INVESTOR' || 
-      currentRole === 'INVESTOR';
+      reportState?.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR' || 
+      currentRole === 'INVESTOR' ||
+      currentRole === 'LEAD_INVESTOR';
 
     if (isInvestorReview) {
       handleReinspectInvestor();
@@ -1418,13 +1504,13 @@ export default function InspectionReportModal({
                           </div>
                         )}
                       </div>
-                    ) : isRejected && rejectionInfo?.role === 'INVESTOR' ? (
+                    ) : isRejected && (rejectionInfo?.role === 'INVESTOR' || rejectionInfo?.role === 'LEAD_INVESTOR') ? (
                       <div style={{ border: '2px dashed #dc2626', background: '#fef2f2', padding: '6px 10px', borderRadius: '6px', textAlign: 'center' }}>
                         <div style={{ color: '#dc2626', fontWeight: 800, fontSize: '0.85rem' }}>❌ TỪ CHỐI DUYỆT</div>
                         <div style={{ fontSize: '0.72rem', color: '#991b1b' }}>{rejectionInfo?.name}</div>
                         <div style={{ fontSize: '0.68rem', color: '#64748b' }}>{rejectionInfo?.timestamp}</div>
                       </div>
-                    ) : isRectified && (rejectionInfo?.role === 'INVESTOR' || reportState.rectification?.target === 'INVESTOR') ? (
+                    ) : isRectified && (rejectionInfo?.role === 'INVESTOR' || rejectionInfo?.role === 'LEAD_INVESTOR' || reportState.rectification?.target === 'INVESTOR') ? (
                       <span style={{ color: '#7c3aed', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ CĐT kiểm tra lại)</span>
                     ) : !isSupervisorSigned ? (
                       <span style={{ color: '#d97706', fontStyle: 'italic', fontSize: '0.8rem' }}>(Chờ TVGS duyệt trước)</span>
@@ -1452,13 +1538,13 @@ export default function InspectionReportModal({
                           </div>
                         )}
                       </div>
-                    ) : isRejected && rejectionInfo?.role === 'SUPERVISOR' ? (
+                    ) : isRejected && (rejectionInfo?.role === 'SUPERVISOR' || rejectionInfo?.role === 'LEAD_SUPERVISOR') ? (
                       <div style={{ border: '2px dashed #dc2626', background: '#fef2f2', padding: '6px 10px', borderRadius: '6px', textAlign: 'center' }}>
                         <div style={{ color: '#dc2626', fontWeight: 800, fontSize: '0.85rem' }}>❌ TỪ CHỐI NGHIỆM THU</div>
                         <div style={{ fontSize: '0.72rem', color: '#991b1b' }}>{rejectionInfo?.name}</div>
                         <div style={{ fontSize: '0.68rem', color: '#64748b' }}>{rejectionInfo?.timestamp}</div>
                       </div>
-                    ) : isRectified && (rejectionInfo?.role === 'SUPERVISOR' || reportState.rectification?.target === 'SUPERVISOR') ? (
+                    ) : isRectified && (rejectionInfo?.role === 'SUPERVISOR' || rejectionInfo?.role === 'LEAD_SUPERVISOR' || reportState.rectification?.target === 'SUPERVISOR') ? (
                       <span style={{ color: '#7c3aed', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ TVGS nghiệm thu lại)</span>
                     ) : (
                       <span style={{ color: '#059669', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ TVGS kiểm tra & ký)</span>
@@ -2116,35 +2202,58 @@ export default function InspectionReportModal({
                     </>
                   )}
 
-                  {(currentRole === 'SUPERVISOR' || currentRole === 'INVESTOR' || currentRole === 'ADMIN') && (
-                    <>
-                      <button 
-                        className="btn-danger" 
-                        style={{ padding: '8px 14px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-                        onClick={() => {
-                          setRejectReason('');
-                          setIsRejectModalOpen(true);
-                        }}
-                        title="Sau sửa chữa vẫn chưa đạt chuẩn, yêu cầu ĐVTC sửa lại tiếp"
-                      >
-                        <XCircle size={15} />
-                        <span>Không Đạt / Sửa Lại Tiếp</span>
-                      </button>
+                  {(() => {
+                    const targetReviewer = reportState?.rectification?.target || (
+                      (reportState?.conclusion?.rejectedBy?.role === 'INVESTOR' || reportState?.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR')
+                        ? 'INVESTOR'
+                        : 'SUPERVISOR'
+                    );
+                    const canReview = 
+                      (currentRole === 'ADMIN') ||
+                      (isSupervisorReviewer && targetReviewer === 'SUPERVISOR') ||
+                      (isInvestorReviewer && targetReviewer === 'INVESTOR');
 
-                      <button 
-                        className="btn-success" 
-                        style={{ padding: '8px 14px', fontSize: '0.82rem' }}
-                        onClick={handleReinspect}
-                      >
-                        <CheckCircle2 size={15} />
-                        <span>
-                          {currentRole === 'INVESTOR' 
-                            ? 'CĐT: Nghiệm Thu Đạt Sau Sửa' 
-                            : 'TVGS: Nghiệm Thu Đạt Sau Sửa & Chuyển CĐT'}
-                        </span>
-                      </button>
-                    </>
-                  )}
+                    if (!canReview) {
+                      if (isSupervisorRole || isInvestorRole) {
+                        return (
+                          <div style={{ color: '#475569', fontSize: '0.8rem', fontStyle: 'italic', padding: '6px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                            Phiếu do {targetReviewer === 'SUPERVISOR' ? (supAttendee?.person || 'Cán bộ TVGS') : (invAttendee?.person || 'Cán bộ CĐT')} kiểm tra lại sau sửa
+                          </div>
+                        );
+                      }
+                      return null;
+                    }
+
+                    return (
+                      <>
+                        <button 
+                          className="btn-danger" 
+                          style={{ padding: '8px 14px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                          onClick={() => {
+                            setRejectReason('');
+                            setIsRejectModalOpen(true);
+                          }}
+                          title="Sau sửa chữa vẫn chưa đạt chuẩn, yêu cầu ĐVTC sửa lại tiếp"
+                        >
+                          <XCircle size={15} />
+                          <span>Không Đạt / Sửa Lại Tiếp</span>
+                        </button>
+
+                        <button 
+                          className="btn-success" 
+                          style={{ padding: '8px 14px', fontSize: '0.82rem' }}
+                          onClick={handleReinspect}
+                        >
+                          <CheckCircle2 size={15} />
+                          <span>
+                            {targetReviewer === 'INVESTOR' 
+                              ? 'CĐT: Nghiệm Thu Đạt Sau Sửa' 
+                              : 'TVGS: Nghiệm Thu Đạt Sau Sửa & Chuyển CĐT'}
+                          </span>
+                        </button>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -2312,7 +2421,11 @@ export default function InspectionReportModal({
             ) : isRectified ? (
               /* 2. ĐÃ SỬA CHỮA - CHỜ DUYỆT LẠI */
               (() => {
-                const targetReviewer = reportState?.rectification?.target || (reportState?.conclusion?.rejectedBy?.role === 'INVESTOR' ? 'INVESTOR' : 'SUPERVISOR');
+                const targetReviewer = reportState?.rectification?.target || (
+                  (reportState?.conclusion?.rejectedBy?.role === 'INVESTOR' || reportState?.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR')
+                    ? 'INVESTOR'
+                    : 'SUPERVISOR'
+                );
                 return (
                   <>
                     <div style={{ 
@@ -2348,66 +2461,80 @@ export default function InspectionReportModal({
                     )}
 
                     {/* TVGS DUYỆT LẠI (Khi TVGS là người từ chối) */}
-                    {targetReviewer === 'SUPERVISOR' && (currentRole === 'SUPERVISOR' || currentRole === 'ADMIN') && (
-                      <>
-                        <button 
-                          className="btn-danger" 
-                          style={{ padding: '8px 14px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-                          onClick={() => {
-                            setRejectReason('');
-                            setIsRejectModalOpen(true);
-                          }}
-                          title="Sau sửa chữa vẫn chưa đạt chuẩn, TVGS yêu cầu ĐVTC sửa tiếp"
-                        >
-                          <XCircle size={16} />
-                          <span>TVGS: Không Đạt / Sửa Tiếp</span>
-                        </button>
+                    {targetReviewer === 'SUPERVISOR' && (
+                      isSupervisorReviewer ? (
+                        <>
+                          <button 
+                            className="btn-danger" 
+                            style={{ padding: '8px 14px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                            onClick={() => {
+                              setRejectReason('');
+                              setIsRejectModalOpen(true);
+                            }}
+                            title="Sau sửa chữa vẫn chưa đạt chuẩn, TVGS yêu cầu ĐVTC sửa tiếp"
+                          >
+                            <XCircle size={16} />
+                            <span>TVGS: Không Đạt / Sửa Tiếp</span>
+                          </button>
 
-                        <button 
-                          className="btn-success" 
-                          style={{ padding: '8px 16px', fontSize: '0.86rem' }}
-                          onClick={handleReinspectSupervisor}
-                        >
-                          <CheckCircle2 size={16} />
-                          <span>TVGS: Nghiệm Thu Đạt & Chuyển CĐT</span>
-                        </button>
-                      </>
+                          <button 
+                            className="btn-success" 
+                            style={{ padding: '8px 16px', fontSize: '0.86rem' }}
+                            onClick={handleReinspectSupervisor}
+                          >
+                            <CheckCircle2 size={16} />
+                            <span>TVGS: Nghiệm Thu Đạt & Chuyển CĐT</span>
+                          </button>
+                        </>
+                      ) : isSupervisorRole ? (
+                        <div style={{ color: '#15803d', fontSize: '0.82rem', fontWeight: 600, padding: '7px 12px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Eye size={15} color="#16a34a" />
+                          <span>Phiếu do <strong>{supAttendee?.person || 'Cán bộ TVGS'}</strong> kiểm tra lại • TVGS Trưởng giám sát tiến độ</span>
+                        </div>
+                      ) : null
                     )}
 
                     {/* CĐT DUYỆT LẠI (Khi CĐT là người từ chối trực tiếp) */}
-                    {targetReviewer === 'INVESTOR' && (currentRole === 'INVESTOR' || currentRole === 'ADMIN') && (
-                      <>
-                        <button 
-                          className="btn-danger" 
-                          style={{ padding: '8px 14px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-                          onClick={() => {
-                            setRejectReason('');
-                            setIsRejectModalOpen(true);
-                          }}
-                          title="Chủ đầu tư kiểm tra lại chưa đạt, yêu cầu ĐVTC sửa tiếp"
-                        >
-                          <XCircle size={16} />
-                          <span>CĐT: Không Đạt / Sửa Tiếp</span>
-                        </button>
+                    {targetReviewer === 'INVESTOR' && (
+                      isInvestorReviewer ? (
+                        <>
+                          <button 
+                            className="btn-danger" 
+                            style={{ padding: '8px 14px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                            onClick={() => {
+                              setRejectReason('');
+                              setIsRejectModalOpen(true);
+                            }}
+                            title="Chủ đầu tư kiểm tra lại chưa đạt, yêu cầu ĐVTC sửa tiếp"
+                          >
+                            <XCircle size={16} />
+                            <span>CĐT: Không Đạt / Sửa Tiếp</span>
+                          </button>
 
-                        <button 
-                          className="btn-success" 
-                          style={{ padding: '8px 16px', fontSize: '0.86rem' }}
-                          onClick={handleReinspectInvestor}
-                        >
-                          <CheckCircle2 size={16} />
-                          <span>CĐT: Nghiệm Thu Đạt & Ký Phê Duyệt</span>
-                        </button>
-                      </>
+                          <button 
+                            className="btn-success" 
+                            style={{ padding: '8px 16px', fontSize: '0.86rem' }}
+                            onClick={handleReinspectInvestor}
+                          >
+                            <CheckCircle2 size={16} />
+                            <span>CĐT: Nghiệm Thu Đạt & Ký Phê Duyệt</span>
+                          </button>
+                        </>
+                      ) : isInvestorRole ? (
+                        <div style={{ color: '#b45309', fontSize: '0.82rem', fontWeight: 600, padding: '7px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Eye size={15} color="#d97706" />
+                          <span>Phiếu do <strong>{invAttendee?.person || 'Cán bộ CĐT'}</strong> kiểm tra lại • Trưởng Ban QLDA giám sát</span>
+                        </div>
+                      ) : null
                     )}
 
                     {/* Thông báo tiến độ cho các bên khác */}
-                    {targetReviewer === 'SUPERVISOR' && currentRole === 'INVESTOR' && (
+                    {targetReviewer === 'SUPERVISOR' && isInvestorRole && (
                       <div style={{ color: '#64748b', fontSize: '0.82rem', fontStyle: 'italic', padding: '6px 10px', background: '#f8fafc', borderRadius: '6px' }}>
                         ⏳ Chờ TVGS kiểm tra lại ảnh sửa trước. CĐT sẽ duyệt sau khi TVGS đạt.
                       </div>
                     )}
-                    {targetReviewer === 'INVESTOR' && currentRole === 'SUPERVISOR' && (
+                    {targetReviewer === 'INVESTOR' && isSupervisorRole && (
                       <div style={{ color: '#047857', fontSize: '0.82rem', fontWeight: 600, padding: '6px 10px', background: '#ecfdf5', borderRadius: '6px' }}>
                         ✓ TVGS đã duyệt đạt. Chủ Đầu Tư đang trực tiếp kiểm tra lại kết quả sửa chữa.
                       </div>
@@ -2432,7 +2559,7 @@ export default function InspectionReportModal({
                 }}>
                   <AlertCircle size={16} />
                   <span>
-                    {rejectionInfo?.role === 'INVESTOR' 
+                    {rejectionInfo?.role === 'INVESTOR' || rejectionInfo?.role === 'LEAD_INVESTOR'
                       ? 'Chủ Đầu Tư yêu cầu sửa chữa. Đang chờ ĐVTC khắc phục.' 
                       : 'TVGS yêu cầu sửa chữa. Đang chờ ĐVTC khắc phục.'}
                   </span>
@@ -2447,7 +2574,7 @@ export default function InspectionReportModal({
                   >
                     <Wrench size={16} />
                     <span>
-                      {rejectionInfo?.role === 'INVESTOR'
+                      {rejectionInfo?.role === 'INVESTOR' || rejectionInfo?.role === 'LEAD_INVESTOR'
                         ? 'Sửa Chữa & Gửi Duyệt Trực Tiếp CĐT'
                         : 'Sửa Chữa & Gửi Duyệt Lại TVGS'}
                     </span>
@@ -2455,7 +2582,7 @@ export default function InspectionReportModal({
                 )}
 
                 {/* TVGS / CĐT chụp thêm ảnh lỗi */}
-                {(currentRole === 'SUPERVISOR' || currentRole === 'INVESTOR' || currentRole === 'ADMIN') && (
+                {((isSupervisorRole && isSupervisorReviewer) || (isInvestorRole && isInvestorReviewer) || currentRole === 'ADMIN') && (
                   <button 
                     className="btn-danger" 
                     style={{ padding: '8px 14px', fontSize: '0.84rem' }}
@@ -2472,7 +2599,7 @@ export default function InspectionReportModal({
                 {/* GIAI ĐOẠN 1: TVGS KIỂM TRA & DUYỆT TRƯỚC */}
                 {!isSupervisorSigned ? (
                   <>
-                    {(currentRole === 'SUPERVISOR' || currentRole === 'ADMIN') ? (
+                    {isSupervisorReviewer ? (
                       <>
                         <button 
                           className="btn-danger" 
@@ -2493,7 +2620,25 @@ export default function InspectionReportModal({
                           <span>✓ TVGS: Xác Nhận Nghiệm Thu Đạt & Ký Số</span>
                         </button>
                       </>
-                    ) : currentRole === 'INVESTOR' ? (
+                    ) : isSupervisorRole ? (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: '#f0fdf4',
+                        border: '1.5px solid #86efac',
+                        color: '#166534',
+                        padding: '8px 14px',
+                        borderRadius: '8px',
+                        fontSize: '0.84rem',
+                        fontWeight: 600
+                      }}>
+                        <Eye size={16} color="#15803d" />
+                        <span>
+                          👁️ Phiếu do <strong>{supAttendee?.person || 'Cán bộ TVGS'}</strong> phụ trách duyệt • Bạn đang xem với quyền TVGS Trưởng
+                        </span>
+                      </div>
+                    ) : isInvestorRole ? (
                       <div style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -2532,7 +2677,7 @@ export default function InspectionReportModal({
                   <>
                     {!isInvestorSigned ? (
                       <>
-                        {(currentRole === 'INVESTOR' || currentRole === 'ADMIN') ? (
+                        {isInvestorReviewer ? (
                           <>
                             <button 
                               className="btn-danger" 
@@ -2553,6 +2698,24 @@ export default function InspectionReportModal({
                               <span>✓ CĐT: Nghiệm Thu Đạt & Ký Phê Duyệt</span>
                             </button>
                           </>
+                        ) : isInvestorRole ? (
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            background: '#fffbeb',
+                            border: '1.5px solid #fde68a',
+                            color: '#b45309',
+                            padding: '8px 14px',
+                            borderRadius: '8px',
+                            fontSize: '0.84rem',
+                            fontWeight: 600
+                          }}>
+                            <Eye size={16} color="#d97706" />
+                            <span>
+                              👁️ Phiếu do <strong>{invAttendee?.person || 'Cán bộ CĐT'}</strong> phụ trách phê duyệt • Bạn đang xem với quyền CĐT Trưởng
+                            </span>
+                          </div>
                         ) : (
                           <div style={{
                             display: 'flex',
@@ -2665,7 +2828,7 @@ export default function InspectionReportModal({
                 </div>
                 <div>
                   <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#991b1b' }}>
-                    {currentRole === 'INVESTOR'
+                    {isInvestorRole
                       ? (isRectified ? 'Chủ Đầu Tư: Không Đồng Ý Sau Sửa & Yêu Cầu Sửa Tiếp' : 'Chủ Đầu Tư: Không Đồng Ý Phê Duyệt & Yêu Cầu Sửa Chữa')
                       : (isRectified ? 'TVGS: Không Đồng Ý Sau Sửa & Yêu Cầu Sửa Tiếp' : 'TVGS: Không Đồng Ý Nghiệm Thu & Yêu Cầu Sửa Chữa')}
                   </h3>
@@ -2684,7 +2847,7 @@ export default function InspectionReportModal({
                 <User size={18} color="#64748b" />
                 <div>
                   <span>Cán bộ lập: <strong>{currentUser?.fullName}</strong></span>
-                  <span style={{ color: '#64748b' }}> ({currentRole === 'SUPERVISOR' ? 'Tư Vấn Giám Sát' : currentRole === 'INVESTOR' ? 'Đại Diện Ban QLDA' : 'Quản Trị'})</span>
+                  <span style={{ color: '#64748b' }}> ({currentRole === 'LEAD_SUPERVISOR' ? 'Tư Vấn Giám Sát Trưởng' : currentRole === 'SUPERVISOR' ? 'Tư Vấn Giám Sát' : currentRole === 'LEAD_INVESTOR' ? 'Đại Diện CĐT Trưởng' : currentRole === 'INVESTOR' ? 'Đại Diện Ban QLDA' : 'Quản Trị'})</span>
                 </div>
               </div>
 
@@ -2768,7 +2931,7 @@ export default function InspectionReportModal({
               <button type="button" className="btn-secondary" onClick={() => setIsRejectModalOpen(false)}>Hủy bỏ</button>
               <button type="button" className="btn-danger" onClick={handleConfirmReject}>
                 <AlertTriangle size={16} /> <span>
-                  {currentRole === 'INVESTOR'
+                  {isInvestorRole
                     ? (isRectified ? 'CĐT: Xác Nhận Không Đạt & Bắt Buộc Sửa Lại' : 'CĐT: Xác Nhận Không Đồng Ý & Gửi ĐVTC Sửa')
                     : (isRectified ? 'TVGS: Xác Nhận Không Đạt & Bắt Buộc Sửa Lại' : 'TVGS: Xác Nhận Không Đồng Ý & Gửi ĐVTC Sửa')}
                 </span>
@@ -2791,12 +2954,12 @@ export default function InspectionReportModal({
                 </div>
                 <div>
                   <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#6b21a8' }}>
-                    {reportState.conclusion?.rejectedBy?.role === 'INVESTOR'
+                    {(reportState.conclusion?.rejectedBy?.role === 'INVESTOR' || reportState.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR')
                       ? 'Báo Cáo Sửa Chữa Khắc Phục & Gửi Trực Tiếp Cho Chủ Đầu Tư'
                       : 'Báo Cáo Sửa Chữa Khắc Phục & Gửi Cho TVGS Duyệt Lại'}
                   </h3>
                   <p style={{ margin: 0, fontSize: '0.8rem', color: '#7e22ce' }}>
-                    Người nhận duyệt: <strong>{reportState.conclusion?.rejectedBy?.role === 'INVESTOR' ? 'Đại Diện Chủ Đầu Tư' : 'Tư Vấn Giám Sát'}</strong> • Biên bản: {reportState.reportNumber}
+                    Người nhận duyệt: <strong>{(reportState.conclusion?.rejectedBy?.role === 'INVESTOR' || reportState.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR') ? 'Đại Diện Chủ Đầu Tư' : 'Tư Vấn Giám Sát'}</strong> • Biên bản: {reportState.reportNumber}
                   </p>
                 </div>
               </div>
@@ -2816,7 +2979,7 @@ export default function InspectionReportModal({
                 fontSize: '0.84rem'
               }}>
                 <div style={{ color: '#991b1b', fontWeight: 700, marginBottom: '2px' }}>
-                  ⚠️ Yêu cầu sửa chữa từ {reportState.conclusion?.rejectedBy?.role === 'INVESTOR' ? 'Chủ Đầu Tư' : 'TVGS'} ({reportState.conclusion?.rejectedBy?.name || 'Cán bộ kiểm tra'}):
+                  ⚠️ Yêu cầu sửa chữa từ {(reportState.conclusion?.rejectedBy?.role === 'INVESTOR' || reportState.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR') ? 'Chủ Đầu Tư' : 'TVGS'} ({reportState.conclusion?.rejectedBy?.name || 'Cán bộ kiểm tra'}):
                 </div>
                 <div style={{ color: '#7f1d1d' }}>
                   "{reportState.conclusion?.rejectionReason || 'Cần nắn chỉnh và kiểm tra lại vị trí kỹ thuật'}"
@@ -2895,7 +3058,7 @@ export default function InspectionReportModal({
               {/* 3. THỜI GIAN ĐỀ NGHỊ NGHIỆM THU LẠI */}
               <div className="form-group">
                 <label className="form-label">
-                  3. Thời gian đề nghị {reportState.conclusion?.rejectedBy?.role === 'INVESTOR' ? 'Chủ Đầu Tư' : 'TVGS'} kiểm tra lại:
+                  3. Thời gian đề nghị {(reportState.conclusion?.rejectedBy?.role === 'INVESTOR' || reportState.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR') ? 'Chủ Đầu Tư' : 'TVGS'} kiểm tra lại:
                 </label>
                 <input type="text" className="form-input" value={suggestedTime} onChange={(e) => setSuggestedTime(e.target.value)} placeholder="Ví dụ: 16h30 ngày hôm nay / 09h00 sáng mai" />
               </div>
@@ -2910,7 +3073,7 @@ export default function InspectionReportModal({
                 onClick={handleConfirmRectification}
               >
                 <Send size={16} /> <span>
-                  {reportState.conclusion?.rejectedBy?.role === 'INVESTOR'
+                  {(reportState.conclusion?.rejectedBy?.role === 'INVESTOR' || reportState.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR')
                     ? 'Xác Nhận Đã Sửa & Gửi Trực Tiếp Cho Chủ Đầu Tư Duyệt'
                     : 'Xác Nhận Đã Sửa & Gửi Cho TVGS Duyệt Lại'}
                 </span>

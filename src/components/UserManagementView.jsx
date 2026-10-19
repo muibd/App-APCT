@@ -3,7 +3,7 @@ import {
   Users, UserPlus, Search, Filter, Mail, Lock, Phone, Building, 
   Briefcase, ShieldCheck, HardHat, Eye, EyeOff, Edit3, Trash2, 
   KeyRound, Check, Copy, AlertTriangle, X, ShieldAlert, CheckCircle2,
-  ToggleLeft, ToggleRight, Sparkles, RefreshCw
+  ToggleLeft, ToggleRight, Sparkles, RefreshCw, Award
 } from 'lucide-react';
 
 export default function UserManagementView({ 
@@ -76,7 +76,9 @@ export default function UserManagementView({
     total: users.length,
     contractor: users.filter(u => u.role === 'CONTRACTOR').length,
     supervisor: users.filter(u => u.role === 'SUPERVISOR').length,
+    leadSupervisor: users.filter(u => u.role === 'LEAD_SUPERVISOR').length,
     investor: users.filter(u => u.role === 'INVESTOR').length,
+    leadInvestor: users.filter(u => u.role === 'LEAD_INVESTOR').length,
     admin: users.filter(u => u.role === 'ADMIN').length
   }), [users]);
 
@@ -89,8 +91,12 @@ export default function UserManagementView({
         return { label: 'Đơn vị thi công (ĐVTC)', bg: '#eff6ff', color: '#2563eb', border: '#bfdbfe', icon: HardHat };
       case 'SUPERVISOR':
         return { label: 'Tư vấn giám sát (TVGS)', bg: '#ecfdf5', color: '#059669', border: '#a7f3d0', icon: Eye };
+      case 'LEAD_SUPERVISOR':
+        return { label: 'TVGS Trưởng (Giám sát trưởng)', bg: '#f0fdf4', color: '#15803d', border: '#86efac', icon: Award };
       case 'INVESTOR':
         return { label: 'Đại diện CĐT (Ban QLDA)', bg: '#fffbeb', color: '#d97706', border: '#fde68a', icon: Briefcase };
+      case 'LEAD_INVESTOR':
+        return { label: 'Đại diện CĐT Trưởng (Trưởng Ban QLDA)', bg: '#fef3c7', color: '#b45309', border: '#fcd34d', icon: Award };
       default:
         return { label: role, bg: '#f1f5f9', color: '#475569', border: '#e2e8f0', icon: Users };
     }
@@ -238,7 +244,9 @@ export default function UserManagementView({
             <option value="ADMIN">Quản trị viên ({stats.admin})</option>
             <option value="CONTRACTOR">Đơn vị thi công ({stats.contractor})</option>
             <option value="SUPERVISOR">Tư vấn giám sát ({stats.supervisor})</option>
+            <option value="LEAD_SUPERVISOR">TVGS Trưởng ({stats.leadSupervisor})</option>
             <option value="INVESTOR">Đại diện CĐT ({stats.investor})</option>
+            <option value="LEAD_INVESTOR">Đại diện CĐT Trưởng ({stats.leadInvestor})</option>
           </select>
 
           <select
@@ -357,10 +365,80 @@ export default function UserManagementView({
                           {isActive ? '● Hoạt động' : '○ Tạm khóa'}
                         </span>
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
-                        <Phone size={12} />
-                        <span>{user.phone || 'Chưa có SĐT'}</span>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '4px', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 600, color: '#334155' }}>{user.position || 'Cán bộ'}</span>
+                        <span>•</span>
+                        <span>{user.company}</span>
+                        <span>•</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          <Phone size={11} /> {user.phone || 'Chưa có SĐT'}
+                        </span>
                       </div>
+
+                      {/* Hiển thị quan hệ Trưởng - Cấp dưới trực thuộc */}
+                      {user.role === 'LEAD_SUPERVISOR' && (
+                        <div style={{ marginTop: '5px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '0.73rem', background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', padding: '2px 8px', borderRadius: '6px', fontWeight: 700 }}>
+                            👥 Quản lý: {
+                              users.filter(u => (user.subordinateIds && user.subordinateIds.includes(u.uid)) || u.leaderId === user.uid).length
+                            } TVGS dưới quyền
+                          </span>
+                          <span style={{ fontSize: '0.73rem', color: '#64748b' }}>
+                            ({
+                              users.filter(u => (user.subordinateIds && user.subordinateIds.includes(u.uid)) || u.leaderId === user.uid).map(u => u.fullName).join(', ') || 'Chưa gán cán bộ'
+                            })
+                          </span>
+                        </div>
+                      )}
+
+                      {user.role === 'LEAD_INVESTOR' && (
+                        <div style={{ marginTop: '5px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '0.73rem', background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', padding: '2px 8px', borderRadius: '6px', fontWeight: 700 }}>
+                            👥 Quản lý: {
+                              users.filter(u => (user.subordinateIds && user.subordinateIds.includes(u.uid)) || u.leaderId === user.uid).length
+                            } CĐT dưới quyền
+                          </span>
+                          <span style={{ fontSize: '0.73rem', color: '#64748b' }}>
+                            ({
+                              users.filter(u => (user.subordinateIds && user.subordinateIds.includes(u.uid)) || u.leaderId === user.uid).map(u => u.fullName).join(', ') || 'Chưa gán cán bộ'
+                            })
+                          </span>
+                        </div>
+                      )}
+
+                      {user.role === 'SUPERVISOR' && (
+                        <div style={{ marginTop: '5px' }}>
+                          {(() => {
+                            const leader = users.find(u => u.uid === user.leaderId || (u.subordinateIds && u.subordinateIds.includes(user.uid)));
+                            return leader ? (
+                              <span style={{ fontSize: '0.73rem', background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                                👑 TVGS Trưởng: <strong>{leader.fullName}</strong>
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '0.73rem', background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', padding: '2px 8px', borderRadius: '6px' }}>
+                                ⚠️ Chưa gán TVGS Trưởng phụ trách
+                              </span>
+                            );
+                          })()}
+                        </div>
+                      )}
+
+                      {user.role === 'INVESTOR' && (
+                        <div style={{ marginTop: '5px' }}>
+                          {(() => {
+                            const leader = users.find(u => u.uid === user.leaderId || (u.subordinateIds && u.subordinateIds.includes(user.uid)));
+                            return leader ? (
+                              <span style={{ fontSize: '0.73rem', background: '#fffbeb', color: '#92400e', border: '1px solid #fde68a', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                                👑 CĐT Trưởng: <strong>{leader.fullName}</strong>
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '0.73rem', background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', padding: '2px 8px', borderRadius: '6px' }}>
+                                ⚠️ Chưa gán CĐT Trưởng phụ trách
+                              </span>
+                            );
+                          })()}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -453,7 +531,9 @@ export default function UserManagementView({
                       <option value="ADMIN">ADMIN (Quản trị viên)</option>
                       <option value="CONTRACTOR">CONTRACTOR (Đơn vị thi công)</option>
                       <option value="SUPERVISOR">SUPERVISOR (Tư vấn giám sát)</option>
+                      <option value="LEAD_SUPERVISOR">LEAD_SUPERVISOR (TVGS Trưởng)</option>
                       <option value="INVESTOR">INVESTOR (Đại diện CĐT)</option>
+                      <option value="LEAD_INVESTOR">LEAD_INVESTOR (CĐT Trưởng)</option>
                     </select>
                   </div>
 
@@ -585,7 +665,7 @@ export default function UserManagementView({
 // ============================================================================
 // SUB-MODAL: THÊM MỚI CÁN BỘ
 // ============================================================================
-function AddUserModal({ isOpen, onClose, onSave, existingUsers }) {
+function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('123456');
@@ -597,13 +677,35 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers }) {
   const [status, setStatus] = useState('ACTIVE');
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Quan hệ phân cấp Trưởng - Cán bộ dưới quyền:
+  const [leaderId, setLeaderId] = useState('');
+  const [subordinateIds, setSubordinateIds] = useState([]);
+
+  const candidateSupervisors = useMemo(() => {
+    return (existingUsers || []).filter(u => u.role === 'SUPERVISOR');
+  }, [existingUsers]);
+
+  const candidateInvestors = useMemo(() => {
+    return (existingUsers || []).filter(u => u.role === 'INVESTOR');
+  }, [existingUsers]);
+
+  const leadSupervisors = useMemo(() => {
+    return (existingUsers || []).filter(u => u.role === 'LEAD_SUPERVISOR');
+  }, [existingUsers]);
+
+  const leadInvestors = useMemo(() => {
+    return (existingUsers || []).filter(u => u.role === 'LEAD_INVESTOR');
+  }, [existingUsers]);
+
   if (!isOpen) return null;
 
   // Gợi ý nhanh các công ty trong dự án
   const companyPresets = [
     { label: 'ĐVTC: Công ty CP Xây dựng An Phú Gia', name: 'Công ty CP Xây dựng An Phú Gia', role: 'CONTRACTOR', pos: 'Kỹ thuật hiện trường' },
     { label: 'TVGS: Công ty CP TVXD và TM GELICON', name: 'Công ty CP Tư vấn Xây dựng và Thương mại GELICON', role: 'SUPERVISOR', pos: 'Cán bộ tư vấn giám sát' },
+    { label: 'TVGS Trưởng: GELICON', name: 'Công ty CP Tư vấn Xây dựng và Thương mại GELICON', role: 'LEAD_SUPERVISOR', pos: 'Tư vấn giám sát trưởng' },
     { label: 'CĐT: Công ty TNHH An Phú Cần Thơ', name: 'Công ty TNHH An Phú Cần Thơ', role: 'INVESTOR', pos: 'Cán bộ ban QLDA' },
+    { label: 'CĐT Trưởng: Ban QLDA An Phú', name: 'Công ty TNHH An Phú Cần Thơ', role: 'LEAD_INVESTOR', pos: 'Trưởng Ban QLDA' },
     { label: 'Admin: Ban Quản Trị Hệ Thống APCT', name: 'Ban Quản Trị Hệ Thống APCT', role: 'ADMIN', pos: 'Quản trị viên Hệ thống' }
   ];
 
@@ -611,6 +713,8 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers }) {
     setCompany(preset.name);
     setRole(preset.role);
     setPosition(preset.pos);
+    if (preset.role !== 'SUPERVISOR' && preset.role !== 'INVESTOR') setLeaderId('');
+    if (preset.role !== 'LEAD_SUPERVISOR' && preset.role !== 'LEAD_INVESTOR') setSubordinateIds([]);
   };
 
   const handleGeneratePassword = () => {
@@ -673,7 +777,9 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers }) {
       phone: phone.trim() || 'Chưa cập nhật',
       status,
       avatar,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      ...((role === 'SUPERVISOR' || role === 'INVESTOR') && leaderId ? { leaderId } : {}),
+      ...((role === 'LEAD_SUPERVISOR' || role === 'LEAD_INVESTOR') ? { subordinateIds } : {})
     };
 
     onSave(newUser);
@@ -835,7 +941,9 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers }) {
                 >
                   <option value="CONTRACTOR">CONTRACTOR (Đơn vị thi công - Tạo phiếu)</option>
                   <option value="SUPERVISOR">SUPERVISOR (Tư vấn giám sát - Ký duyệt)</option>
+                  <option value="LEAD_SUPERVISOR">LEAD_SUPERVISOR (Tư vấn giám sát trưởng)</option>
                   <option value="INVESTOR">INVESTOR (Đại diện chủ đầu tư - QLDA)</option>
+                  <option value="LEAD_INVESTOR">LEAD_INVESTOR (Đại diện chủ đầu tư trưởng)</option>
                   <option value="ADMIN">ADMIN (Quản trị viên toàn hệ thống)</option>
                 </select>
               </div>
@@ -885,6 +993,210 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers }) {
                   onChange={(e) => setPosition(e.target.value)}
                 />
               </div>
+
+              {/* 1. NẾU TẠO CÁN BỘ TVGS THƯỜNG -> CHỌN TVGS TRƯỞNG PHỤ TRÁCH */}
+              {role === 'SUPERVISOR' && (
+                <div className="form-group" style={{ gridColumn: 'span 2', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '10px', padding: '12px 14px' }}>
+                  <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 700, color: '#15803d', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                    <Award size={15} color="#16a34a" />
+                    <span>Chỉ định TVGS Trưởng trực tiếp quản lý cán bộ này:</span>
+                  </label>
+                  <select
+                    className="form-select"
+                    value={leaderId}
+                    onChange={(e) => setLeaderId(e.target.value)}
+                    style={{ background: '#ffffff', borderColor: '#86efac', fontWeight: 600, color: '#0f172a' }}
+                  >
+                    <option value="">-- Chưa chỉ định (Không trực thuộc ai) --</option>
+                    {leadSupervisors.map(ls => (
+                      <option key={ls.uid} value={ls.uid}>
+                        👑 {ls.fullName} ({ls.position} • {ls.company})
+                      </option>
+                    ))}
+                  </select>
+                  <div style={{ fontSize: '0.74rem', color: '#166534', marginTop: '4px' }}>
+                    💡 Khi cán bộ này được chỉ định kiểm tra nghiệm thu, vị TVGS Trưởng được chọn ở trên sẽ tự động xem được phiếu.
+                  </div>
+                </div>
+              )}
+
+              {/* 2. NẾU TẠO CÁN BỘ CĐT THƯỜNG -> CHỌN CĐT TRƯỞNG (TRƯỞNG BAN QLDA) PHỤ TRÁCH */}
+              {role === 'INVESTOR' && (
+                <div className="form-group" style={{ gridColumn: 'span 2', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', padding: '12px 14px' }}>
+                  <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 700, color: '#b45309', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                    <Award size={15} color="#d97706" />
+                    <span>Chỉ định CĐT Trưởng (Trưởng Ban QLDA) trực tiếp quản lý cán bộ này:</span>
+                  </label>
+                  <select
+                    className="form-select"
+                    value={leaderId}
+                    onChange={(e) => setLeaderId(e.target.value)}
+                    style={{ background: '#ffffff', borderColor: '#fde68a', fontWeight: 600, color: '#0f172a' }}
+                  >
+                    <option value="">-- Chưa chỉ định (Không trực thuộc ai) --</option>
+                    {leadInvestors.map(li => (
+                      <option key={li.uid} value={li.uid}>
+                        👑 {li.fullName} ({li.position} • {li.company})
+                      </option>
+                    ))}
+                  </select>
+                  <div style={{ fontSize: '0.74rem', color: '#92400e', marginTop: '4px' }}>
+                    💡 Khi cán bộ này được chỉ định phê duyệt nghiệm thu, vị CĐT Trưởng được chọn ở trên sẽ tự động xem được phiếu.
+                  </div>
+                </div>
+              )}
+
+              {/* 3. NẾU TẠO TVGS TRƯỞNG -> TICK CÁC CHECKBOX TVGS DƯỚI QUYỀN */}
+              {role === 'LEAD_SUPERVISOR' && (
+                <div className="form-group" style={{ gridColumn: 'span 2', background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: '12px', padding: '14px 16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                    <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: 700, color: '#15803d', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Award size={16} color="#16a34a" />
+                      <span>Tick chọn các Cán bộ Tư Vấn Giám Sát dưới quyền quản lý:</span>
+                    </label>
+                    {candidateSupervisors.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (subordinateIds.length === candidateSupervisors.length) {
+                            setSubordinateIds([]);
+                          } else {
+                            setSubordinateIds(candidateSupervisors.map(c => c.uid));
+                          }
+                        }}
+                        style={{ background: 'none', border: 'none', color: '#16a34a', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}
+                      >
+                        {subordinateIds.length === candidateSupervisors.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: '#475569', marginBottom: '10px' }}>
+                    💡 TVGS Trưởng này sẽ xem được tất cả các phiếu yêu cầu & biên bản nghiệm thu do những cán bộ được tick chọn dưới đây phụ trách:
+                  </div>
+                  {candidateSupervisors.length === 0 ? (
+                    <div style={{ padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px dashed #86efac', fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic' }}>
+                      Chưa có cán bộ TVGS thường nào trong hệ thống. Hãy tạo cán bộ TVGS trước hoặc bổ sung sau.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '8px' }}>
+                      {candidateSupervisors.map(sub => {
+                        const isChecked = subordinateIds.includes(sub.uid);
+                        return (
+                          <label
+                            key={sub.uid}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '10px',
+                              padding: '8px 12px',
+                              background: isChecked ? '#dcfce7' : '#ffffff',
+                              border: isChecked ? '1.5px solid #16a34a' : '1px solid #cbd5e1',
+                              borderRadius: '8px',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => {
+                                setSubordinateIds(prev => 
+                                  prev.includes(sub.uid) ? prev.filter(id => id !== sub.uid) : [...prev, sub.uid]
+                                );
+                              }}
+                              style={{ width: '16px', height: '16px', accentColor: '#16a34a' }}
+                            />
+                            <div style={{ overflow: 'hidden' }}>
+                              <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#0f172a' }}>
+                                {sub.fullName}
+                              </div>
+                              <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                                {sub.position} • {sub.email}
+                              </div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 4. NẾU TẠO CĐT TRƯỞNG -> TICK CÁC CHECKBOX CĐT DƯỚI QUYỀN */}
+              {role === 'LEAD_INVESTOR' && (
+                <div className="form-group" style={{ gridColumn: 'span 2', background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: '12px', padding: '14px 16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                    <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: 700, color: '#b45309', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Award size={16} color="#d97706" />
+                      <span>Tick chọn các Cán bộ Chủ Đầu Tư dưới quyền quản lý:</span>
+                    </label>
+                    {candidateInvestors.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (subordinateIds.length === candidateInvestors.length) {
+                            setSubordinateIds([]);
+                          } else {
+                            setSubordinateIds(candidateInvestors.map(c => c.uid));
+                          }
+                        }}
+                        style={{ background: 'none', border: 'none', color: '#b45309', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}
+                      >
+                        {subordinateIds.length === candidateInvestors.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: '#475569', marginBottom: '10px' }}>
+                    💡 CĐT Trưởng này sẽ xem được tất cả các phiếu yêu cầu & biên bản nghiệm thu do những cán bộ được tick chọn dưới đây phụ trách:
+                  </div>
+                  {candidateInvestors.length === 0 ? (
+                    <div style={{ padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px dashed #fde68a', fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic' }}>
+                      Chưa có cán bộ CĐT thường nào trong hệ thống. Hãy tạo cán bộ CĐT trước hoặc bổ sung sau.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '8px' }}>
+                      {candidateInvestors.map(sub => {
+                        const isChecked = subordinateIds.includes(sub.uid);
+                        return (
+                          <label
+                            key={sub.uid}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '10px',
+                              padding: '8px 12px',
+                              background: isChecked ? '#fef3c7' : '#ffffff',
+                              border: isChecked ? '1.5px solid #d97706' : '1px solid #cbd5e1',
+                              borderRadius: '8px',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => {
+                                setSubordinateIds(prev => 
+                                  prev.includes(sub.uid) ? prev.filter(id => id !== sub.uid) : [...prev, sub.uid]
+                                );
+                              }}
+                              style={{ width: '16px', height: '16px', accentColor: '#d97706' }}
+                            />
+                            <div style={{ overflow: 'hidden' }}>
+                              <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#0f172a' }}>
+                                {sub.fullName}
+                              </div>
+                              <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                                {sub.position} • {sub.email}
+                              </div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Trạng thái hoạt động */}
               <div className="form-group" style={{ gridColumn: 'span 2' }}>
@@ -937,7 +1249,7 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers }) {
 // ============================================================================
 // SUB-MODAL: CHỈNH SỬA CÁN BỘ
 // ============================================================================
-function EditUserModal({ user, onClose, onSave, existingUsers }) {
+function EditUserModal({ user, onClose, onSave, existingUsers = [] }) {
   const [fullName, setFullName] = useState(user.fullName || '');
   const [email, setEmail] = useState(user.email || '');
   const [password, setPassword] = useState(user.password || '123456');
@@ -948,6 +1260,36 @@ function EditUserModal({ user, onClose, onSave, existingUsers }) {
   const [phone, setPhone] = useState(user.phone || '');
   const [status, setStatus] = useState(user.status || 'ACTIVE');
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Quan hệ Trưởng - Cấp dưới:
+  const initialLeaderId = user.leaderId || (
+    existingUsers.find(u => Array.isArray(u.subordinateIds) && u.subordinateIds.includes(user.uid))?.uid || ''
+  );
+  const [leaderId, setLeaderId] = useState(initialLeaderId);
+
+  const initialSubordinates = useMemo(() => {
+    const fromUser = Array.isArray(user.subordinateIds) ? user.subordinateIds : [];
+    const fromSubs = (existingUsers || []).filter(u => u.leaderId === user.uid).map(u => u.uid);
+    return Array.from(new Set([...fromUser, ...fromSubs]));
+  }, [user, existingUsers]);
+
+  const [subordinateIds, setSubordinateIds] = useState(initialSubordinates);
+
+  const candidateSupervisors = useMemo(() => {
+    return (existingUsers || []).filter(u => u.role === 'SUPERVISOR' && u.uid !== user.uid);
+  }, [existingUsers, user]);
+
+  const candidateInvestors = useMemo(() => {
+    return (existingUsers || []).filter(u => u.role === 'INVESTOR' && u.uid !== user.uid);
+  }, [existingUsers, user]);
+
+  const leadSupervisors = useMemo(() => {
+    return (existingUsers || []).filter(u => u.role === 'LEAD_SUPERVISOR' && u.uid !== user.uid);
+  }, [existingUsers, user]);
+
+  const leadInvestors = useMemo(() => {
+    return (existingUsers || []).filter(u => u.role === 'LEAD_INVESTOR' && u.uid !== user.uid);
+  }, [existingUsers, user]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -985,7 +1327,9 @@ function EditUserModal({ user, onClose, onSave, existingUsers }) {
       company: company.trim(),
       position: position.trim(),
       phone: phone.trim(),
-      status
+      status,
+      leaderId: (role === 'SUPERVISOR' || role === 'INVESTOR') ? (leaderId || null) : null,
+      subordinateIds: (role === 'LEAD_SUPERVISOR' || role === 'LEAD_INVESTOR') ? subordinateIds : []
     };
 
     onSave(updatedUser);
@@ -1107,7 +1451,9 @@ function EditUserModal({ user, onClose, onSave, existingUsers }) {
                 >
                   <option value="CONTRACTOR">CONTRACTOR (Đơn vị thi công)</option>
                   <option value="SUPERVISOR">SUPERVISOR (Tư vấn giám sát)</option>
+                  <option value="LEAD_SUPERVISOR">LEAD_SUPERVISOR (Tư vấn giám sát trưởng)</option>
                   <option value="INVESTOR">INVESTOR (Đại diện chủ đầu tư)</option>
+                  <option value="LEAD_INVESTOR">LEAD_INVESTOR (Đại diện chủ đầu tư trưởng)</option>
                   <option value="ADMIN">ADMIN (Quản trị viên)</option>
                 </select>
               </div>
@@ -1154,6 +1500,210 @@ function EditUserModal({ user, onClose, onSave, existingUsers }) {
                   onChange={(e) => setPosition(e.target.value)}
                 />
               </div>
+
+              {/* 1. NẾU SỬA CÁN BỘ TVGS THƯỜNG -> CHỌN TVGS TRƯỞNG PHỤ TRÁCH */}
+              {role === 'SUPERVISOR' && (
+                <div className="form-group" style={{ gridColumn: 'span 2', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '10px', padding: '12px 14px' }}>
+                  <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 700, color: '#15803d', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                    <Award size={15} color="#16a34a" />
+                    <span>Chỉ định TVGS Trưởng trực tiếp quản lý cán bộ này:</span>
+                  </label>
+                  <select
+                    className="form-select"
+                    value={leaderId}
+                    onChange={(e) => setLeaderId(e.target.value)}
+                    style={{ background: '#ffffff', borderColor: '#86efac', fontWeight: 600, color: '#0f172a' }}
+                  >
+                    <option value="">-- Chưa chỉ định (Không trực thuộc ai) --</option>
+                    {leadSupervisors.map(ls => (
+                      <option key={ls.uid} value={ls.uid}>
+                        👑 {ls.fullName} ({ls.position} • {ls.company})
+                      </option>
+                    ))}
+                  </select>
+                  <div style={{ fontSize: '0.74rem', color: '#166534', marginTop: '4px' }}>
+                    💡 Khi cán bộ này được chỉ định kiểm tra nghiệm thu, vị TVGS Trưởng được chọn ở trên sẽ tự động xem được phiếu.
+                  </div>
+                </div>
+              )}
+
+              {/* 2. NẾU SỬA CÁN BỘ CĐT THƯỜNG -> CHỌN CĐT TRƯỞNG (TRƯỞNG BAN QLDA) PHỤ TRÁCH */}
+              {role === 'INVESTOR' && (
+                <div className="form-group" style={{ gridColumn: 'span 2', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', padding: '12px 14px' }}>
+                  <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 700, color: '#b45309', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                    <Award size={15} color="#d97706" />
+                    <span>Chỉ định CĐT Trưởng (Trưởng Ban QLDA) trực tiếp quản lý cán bộ này:</span>
+                  </label>
+                  <select
+                    className="form-select"
+                    value={leaderId}
+                    onChange={(e) => setLeaderId(e.target.value)}
+                    style={{ background: '#ffffff', borderColor: '#fde68a', fontWeight: 600, color: '#0f172a' }}
+                  >
+                    <option value="">-- Chưa chỉ định (Không trực thuộc ai) --</option>
+                    {leadInvestors.map(li => (
+                      <option key={li.uid} value={li.uid}>
+                        👑 {li.fullName} ({li.position} • {li.company})
+                      </option>
+                    ))}
+                  </select>
+                  <div style={{ fontSize: '0.74rem', color: '#92400e', marginTop: '4px' }}>
+                    💡 Khi cán bộ này được chỉ định phê duyệt nghiệm thu, vị CĐT Trưởng được chọn ở trên sẽ tự động xem được phiếu.
+                  </div>
+                </div>
+              )}
+
+              {/* 3. NẾU SỬA TVGS TRƯỞNG -> TICK CÁC CHECKBOX TVGS DƯỚI QUYỀN */}
+              {role === 'LEAD_SUPERVISOR' && (
+                <div className="form-group" style={{ gridColumn: 'span 2', background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: '12px', padding: '14px 16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                    <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: 700, color: '#15803d', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Award size={16} color="#16a34a" />
+                      <span>Tick chọn các Cán bộ Tư Vấn Giám Sát dưới quyền quản lý:</span>
+                    </label>
+                    {candidateSupervisors.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (subordinateIds.length === candidateSupervisors.length) {
+                            setSubordinateIds([]);
+                          } else {
+                            setSubordinateIds(candidateSupervisors.map(c => c.uid));
+                          }
+                        }}
+                        style={{ background: 'none', border: 'none', color: '#16a34a', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}
+                      >
+                        {subordinateIds.length === candidateSupervisors.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: '#475569', marginBottom: '10px' }}>
+                    💡 TVGS Trưởng này sẽ xem được tất cả các phiếu yêu cầu & biên bản nghiệm thu do những cán bộ được tick chọn dưới đây phụ trách:
+                  </div>
+                  {candidateSupervisors.length === 0 ? (
+                    <div style={{ padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px dashed #86efac', fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic' }}>
+                      Chưa có cán bộ TVGS thường nào trong hệ thống. Hãy tạo cán bộ TVGS trước hoặc bổ sung sau.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '8px' }}>
+                      {candidateSupervisors.map(sub => {
+                        const isChecked = subordinateIds.includes(sub.uid);
+                        return (
+                          <label
+                            key={sub.uid}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '10px',
+                              padding: '8px 12px',
+                              background: isChecked ? '#dcfce7' : '#ffffff',
+                              border: isChecked ? '1.5px solid #16a34a' : '1px solid #cbd5e1',
+                              borderRadius: '8px',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => {
+                                setSubordinateIds(prev => 
+                                  prev.includes(sub.uid) ? prev.filter(id => id !== sub.uid) : [...prev, sub.uid]
+                                );
+                              }}
+                              style={{ width: '16px', height: '16px', accentColor: '#16a34a' }}
+                            />
+                            <div style={{ overflow: 'hidden' }}>
+                              <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#0f172a' }}>
+                                {sub.fullName}
+                              </div>
+                              <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                                {sub.position} • {sub.email}
+                              </div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 4. NẾU SỬA CĐT TRƯỞNG -> TICK CÁC CHECKBOX CĐT DƯỚI QUYỀN */}
+              {role === 'LEAD_INVESTOR' && (
+                <div className="form-group" style={{ gridColumn: 'span 2', background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: '12px', padding: '14px 16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                    <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: 700, color: '#b45309', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Award size={16} color="#d97706" />
+                      <span>Tick chọn các Cán bộ Chủ Đầu Tư dưới quyền quản lý:</span>
+                    </label>
+                    {candidateInvestors.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (subordinateIds.length === candidateInvestors.length) {
+                            setSubordinateIds([]);
+                          } else {
+                            setSubordinateIds(candidateInvestors.map(c => c.uid));
+                          }
+                        }}
+                        style={{ background: 'none', border: 'none', color: '#b45309', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}
+                      >
+                        {subordinateIds.length === candidateInvestors.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: '#475569', marginBottom: '10px' }}>
+                    💡 CĐT Trưởng này sẽ xem được tất cả các phiếu yêu cầu & biên bản nghiệm thu do những cán bộ được tick chọn dưới đây phụ trách:
+                  </div>
+                  {candidateInvestors.length === 0 ? (
+                    <div style={{ padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px dashed #fde68a', fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic' }}>
+                      Chưa có cán bộ CĐT thường nào trong hệ thống. Hãy tạo cán bộ CĐT trước hoặc bổ sung sau.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '8px' }}>
+                      {candidateInvestors.map(sub => {
+                        const isChecked = subordinateIds.includes(sub.uid);
+                        return (
+                          <label
+                            key={sub.uid}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '10px',
+                              padding: '8px 12px',
+                              background: isChecked ? '#fef3c7' : '#ffffff',
+                              border: isChecked ? '1.5px solid #d97706' : '1px solid #cbd5e1',
+                              borderRadius: '8px',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => {
+                                setSubordinateIds(prev => 
+                                  prev.includes(sub.uid) ? prev.filter(id => id !== sub.uid) : [...prev, sub.uid]
+                                );
+                              }}
+                              style={{ width: '16px', height: '16px', accentColor: '#d97706' }}
+                            />
+                            <div style={{ overflow: 'hidden' }}>
+                              <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#0f172a' }}>
+                                {sub.fullName}
+                              </div>
+                              <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                                {sub.position} • {sub.email}
+                              </div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Trạng thái hoạt động */}
               <div className="form-group" style={{ gridColumn: 'span 2' }}>
