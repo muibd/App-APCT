@@ -76,19 +76,26 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
   const [certificateNumber, setCertificateNumber] = useState('CCXX-2026/01/ĐN');
 
   // Tiêu chuẩn áp dụng (Tự động cập nhật theo file Excel DANH MỤC TIÊU CHUẨN NGHIỆM THU.xls)
-  const [applicableStandards, setApplicableStandards] = useState(() => {
+  const [suggestedStandardsList, setSuggestedStandardsList] = useState(() => {
     return getSuggestedStandards(CONSTRUCTION_WORK_STANDARDS[0]?.name || 'Cốt thép, ván khuôn, bê tông', 'WORK');
   });
+  const [selectedStandards, setSelectedStandards] = useState(() => {
+    return getSuggestedStandards(CONSTRUCTION_WORK_STANDARDS[0]?.name || 'Cốt thép, ván khuôn, bê tông', 'WORK');
+  });
+
+  const updateStandards = (query, type) => {
+    const suggested = getSuggestedStandards(query, type);
+    setSuggestedStandardsList(suggested);
+    setSelectedStandards(suggested);
+  };
 
   const handleInspectionTypeChange = (type) => {
     setInspectionType(type);
     if (type === 'MATERIAL') {
-      const suggested = getSuggestedStandards(materialName || selectedMaterialGroup, 'MATERIAL');
-      setApplicableStandards(suggested);
+      updateStandards(materialName || selectedMaterialGroup, 'MATERIAL');
     } else {
       const currentTask = customTask.trim() || taskContent || selectedWorkGroup;
-      const suggested = getSuggestedStandards(currentTask, 'WORK');
-      setApplicableStandards(suggested);
+      updateStandards(currentTask, 'WORK');
     }
   };
 
@@ -97,8 +104,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
     if (groupName !== '__CUSTOM_WORK__') {
       setTaskContent(`Nghiệm thu công tác ${groupName.toLowerCase()}`);
       setCustomTask('');
-      const suggested = getSuggestedStandards(groupName, 'WORK');
-      setApplicableStandards(suggested);
+      updateStandards(groupName, 'WORK');
     }
   };
 
@@ -106,8 +112,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
     setTaskContent(task);
     setCustomTask('');
     if (task !== '__custom__') {
-      const suggested = getSuggestedStandards(task, 'WORK');
-      setApplicableStandards(suggested);
+      updateStandards(task, 'WORK');
     }
   };
 
@@ -115,13 +120,12 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
     setSelectedMaterialGroup(matName);
     if (matName !== '__CUSTOM_MAT__') {
       setMaterialName(matName);
-      const suggested = getSuggestedStandards(matName, 'MATERIAL');
-      setApplicableStandards(suggested);
+      updateStandards(matName, 'MATERIAL');
     }
   };
 
   const toggleApplicableStandard = (std) => {
-    setApplicableStandards(prev => 
+    setSelectedStandards(prev => 
       prev.includes(std) ? prev.filter(s => s !== std) : [...prev, std]
     );
   };
@@ -397,7 +401,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
       evidencePhotos: evidencePhotos,
       // DỮ LIỆU ĐỘNG THEO EXCEL & MẪU SỐ 12:
       inspectionType, // 'WORK' | 'MATERIAL'
-      standardsApplied: applicableStandards,
+      standardsApplied: selectedStandards,
       reportTemplate: inspectionType === 'MATERIAL' ? 'FORM_12' : 'CONSTRUCTION_WORK',
       materialDetails: inspectionType === 'MATERIAL' ? {
         name: materialName,
@@ -423,9 +427,6 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
             </div>
             <div>
               <h3 style={{ margin: 0, fontSize: '1.2rem' }}>Lập Phiếu Yêu Cầu Nghiệm Thu</h3>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>
-                Chỉ dành riêng cho: <strong>Đại diện Đơn vị Thi công (ĐVTC)</strong>
-              </p>
             </div>
           </div>
           <button className="modal-close-btn" onClick={onClose}><X size={20} /></button>
@@ -463,7 +464,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
               }}
             >
               <span>🏗️</span>
-              <span>1. Biên Bản Công Việc Xây Dựng (Sheet A)</span>
+              <span>1. Biên Bản Công Việc Xây Dựng</span>
             </button>
             <button
               type="button"
@@ -487,7 +488,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
               }}
             >
               <Package size={17} color={inspectionType === 'MATERIAL' ? '#059669' : '#64748b'} />
-              <span>2. Vật Liệu Đầu Vào - Mẫu Số 12 (Sheet B)</span>
+              <span>2. Vật Liệu Đầu Vào</span>
             </button>
           </div>
 
@@ -540,7 +541,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
                       }}
                     >
                       <Plus size={13} />
-                      <span>{isAddingBuilding ? 'Hủy thêm' : '+ Thêm công trình'}</span>
+                      <span>{isAddingBuilding ? 'Hủy thêm' : 'Thêm công trình'}</span>
                     </button>
                   </div>
                   <select 
@@ -613,7 +614,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
               {/* Chọn Nhóm Tiêu Chuẩn Công Việc Xây Dựng (Sheet A - 15 nhóm) */}
               <div className="form-group" style={{ marginBottom: '14px' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span>Nhóm công việc theo file Excel (Sheet A - Tự động gắn TCVN):</span>
+                  <span>Nhóm công việc:</span>
                   <span style={{ color: '#16a34a', fontSize: '0.74rem', fontWeight: 600 }}>⚡ 15 nhóm tiêu chuẩn</span>
                 </label>
                 <select 
@@ -633,7 +634,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
 
               {/* Công tác xây dựng yêu cầu nghiệm thu chi tiết */}
               <div className="form-group">
-                <label className="form-label">Nội dung công việc nghiệm thu chi tiết (*):</label>
+                <label className="form-label">Nội dung chi tiết (*):</label>
                 {availableTasks.length > 0 && selectedItem !== '__NEW_ITEM__' ? (
                   <select 
                     className="form-select" 
@@ -657,7 +658,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
                     onChange={(e) => {
                       setCustomTask(e.target.value);
                       if (e.target.value.trim().length > 3) {
-                        setApplicableStandards(getSuggestedStandards(e.target.value, 'WORK'));
+                        updateStandards(e.target.value, 'WORK');
                       }
                     }}
                     required
@@ -671,7 +672,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                 <Package size={18} color="#16a34a" />
                 <strong style={{ fontSize: '0.96rem', color: '#166534' }}>
-                  Thông Tin Vật Liệu Đầu Vào (Theo Mẫu số 12 & Sheet B Excel)
+                  Thông Tin Vật Liệu Đầu Vào
                 </strong>
               </div>
 
@@ -690,7 +691,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
                 </div>
 
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Danh mục vật liệu từ Excel (Sheet B - 24 loại):</label>
+                  <label className="form-label">Danh mục vật liệu:</label>
                   <select 
                     className="form-select" 
                     value={selectedMaterialGroup} 
@@ -718,7 +719,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
                     onChange={(e) => {
                       setMaterialName(e.target.value);
                       if (e.target.value.trim().length > 2) {
-                        setApplicableStandards(getSuggestedStandards(e.target.value, 'MATERIAL'));
+                        updateStandards(e.target.value, 'MATERIAL');
                       }
                     }} 
                     placeholder="VD: Xi măng PCB 40 Vicem Hà Tiên"
@@ -778,10 +779,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
           {/* Thời gian nghiệm thu: Giờ bắt đầu (giờ tạo phiếu) & Giờ kết thúc (cho điền) */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginBottom: '18px' }}>
             <div className="form-group" style={{ margin: 0 }}>
-              <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span>Giờ bắt đầu:</span>
-                <span style={{ fontSize: '0.72rem', color: '#16a34a', fontWeight: 600 }}>⚡ Giờ tạo phiếu</span>
-              </label>
+              <label className="form-label">Giờ bắt đầu:</label>
               <input 
                 type="time" 
                 className="form-input" 
@@ -792,10 +790,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
               />
             </div>
             <div className="form-group" style={{ margin: 0 }}>
-              <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span>Giờ kết thúc:</span>
-                <span style={{ fontSize: '0.72rem', color: '#2563eb', fontWeight: 600 }}>✍️ Tự điền</span>
-              </label>
+              <label className="form-label">Giờ kết thúc:</label>
               <input 
                 type="time" 
                 className="form-input" 
@@ -834,34 +829,29 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
             padding: '14px 16px',
             marginBottom: '18px'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <FileSpreadsheet size={18} color="#b45309" />
-                <strong style={{ fontSize: '0.92rem', color: '#92400e' }}>
-                  Tiêu Chuẩn & Quy Chuẩn Áp Dụng (Tự động theo Excel: {applicableStandards.length} tiêu chuẩn)
-                </strong>
-              </div>
-              <span style={{ fontSize: '0.75rem', background: '#fef3c7', color: '#b45309', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                {inspectionType === 'MATERIAL' ? 'Theo Sheet B - Mẫu số 12' : 'Theo Sheet A - Công việc XD'}
-              </span>
-            </div>
-            <div style={{ fontSize: '0.8rem', color: '#78350f', marginBottom: '8px' }}>
-              Hệ thống tự động tra cứu và gắn tiêu chuẩn quy phạm TCVN / QCVN tương ứng theo đúng file <strong>DANH MỤC TIÊU CHUẨN NGHIỆM THU.xls</strong>:
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <FileSpreadsheet size={18} color="#b45309" />
+              <strong style={{ fontSize: '0.92rem', color: '#92400e' }}>
+                Tiêu Chuẩn & Quy Chuẩn Áp Dụng
+              </strong>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', maxHeight: '180px', overflowY: 'auto', background: '#ffffff', padding: '10px', borderRadius: '8px', border: '1px solid #fef08a' }}>
-              {applicableStandards.map((std, idx) => (
-                <label key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '0.82rem', cursor: 'pointer', lineHeight: 1.4 }}>
-                  <input 
-                    type="checkbox" 
-                    checked={applicableStandards.includes(std)} 
-                    onChange={() => toggleApplicableStandard(std)}
-                    style={{ marginTop: '2px' }}
-                  />
-                  <span style={{ color: '#1e293b' }}>
-                    <strong style={{ color: '#b91c1c' }}>{std.split(' ')[0]} {std.split(' ')[1]}</strong> {std.split(' ').slice(2).join(' ')}
-                  </span>
-                </label>
-              ))}
+              {suggestedStandardsList.map((std, idx) => {
+                const isChecked = selectedStandards.includes(std);
+                return (
+                  <label key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '0.82rem', cursor: 'pointer', lineHeight: 1.4 }}>
+                    <input 
+                      type="checkbox" 
+                      checked={isChecked} 
+                      onChange={() => toggleApplicableStandard(std)}
+                      style={{ marginTop: '2px', cursor: 'pointer' }}
+                    />
+                    <span style={{ color: isChecked ? '#1e293b' : '#64748b' }}>
+                      <strong style={{ color: isChecked ? '#b91c1c' : '#94a3b8' }}>{std.split(' ')[0]} {std.split(' ')[1]}</strong> {std.split(' ').slice(2).join(' ')}
+                    </span>
+                  </label>
+                );
+              })}
             </div>
           </div>
 
@@ -880,9 +870,6 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
                   <strong style={{ fontSize: '0.95rem', color: '#1e293b' }}>
                     Ảnh Chụp Hiện Trường Thi Công ({evidencePhotos.length} ảnh)
                   </strong>
-                  <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                    Chụp hoặc tải ảnh hiện trường công việc sẵn sàng nghiệm thu (kèm GPS & thời gian)
-                  </div>
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -1059,7 +1046,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
             <div style={{ marginBottom: '14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
                 <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#047857', textTransform: 'uppercase' }}>
-                  1. Cán bộ Tư Vấn Giám Sát (TVGS GELICON):
+                  1. Cán bộ Tư Vấn Giám Sát:
                 </span>
                 <button 
                   type="button" 
@@ -1108,7 +1095,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
                 <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#b45309', textTransform: 'uppercase' }}>
-                  2. Đại Diện Chủ Đầu Tư (Ban QLDA An Phú Cần Thơ):
+                  2. Đại Diện Chủ Đầu Tư:
                 </span>
                 <button 
                   type="button" 

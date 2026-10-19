@@ -809,17 +809,21 @@ export default function InspectionReportModal({
     }
   };
 
-  const displayStandards = (selectedStandards && selectedStandards.length > 0)
-    ? selectedStandards
-    : (reportState?.standardsApplied?.length > 0
-        ? reportState.standardsApplied
+  if (!isOpen || !report) return null;
+
+  const initialStandardsList = (reportState?.standardsApplied && reportState.standardsApplied.length > 0)
+    ? reportState.standardsApplied
+    : (report?.standardsApplied && report.standardsApplied.length > 0)
+        ? report.standardsApplied
         : getSuggestedStandards(
             reportState?.inspectionObject || reportState?.projectInfo?.itemName || '', 
             isMaterialReport ? 'MATERIAL' : 'WORK'
-          )
-      );
+          );
 
-  if (!isOpen || !report) return null;
+  const displayStandards = Array.from(new Set([
+    ...initialStandardsList,
+    ...(selectedStandards || [])
+  ]));
 
   return (
     <div className="modal-overlay">
