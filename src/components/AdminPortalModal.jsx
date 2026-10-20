@@ -19,6 +19,7 @@ export default function AdminPortalModal({
   onDeleteUser,
   onUpdateUserRole,
   onToggleUserStatus,
+  onSyncAllUsersToCloud,
   onResetAllData,
   showAlert
 }) {
@@ -178,6 +179,7 @@ export default function AdminPortalModal({
               onDeleteUser={onDeleteUser}
               onUpdateUserRole={onUpdateUserRole}
               onToggleUserStatus={onToggleUserStatus}
+              onSyncAllUsersToCloud={onSyncAllUsersToCloud}
             />
           )}
 

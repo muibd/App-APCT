@@ -44,6 +44,7 @@ import {
   subscribeToUsers,
   saveSystemUser,
   deleteSystemUser,
+  seedOfficialUsersToCloud,
   clearAllCloudInspectionData
 } from './services/firestoreService';
 import { 
@@ -70,7 +71,7 @@ const NOTIF_STORAGE_KEY = 'apct_notifications_list';
 const REQUESTS_STORAGE_KEY = 'apct_requests_list';
 const REPORTS_STORAGE_KEY = 'apct_reports_list';
 const DATA_VERSION_KEY = 'apct_data_version';
-const CURRENT_DATA_VERSION = '20261019_clean_fresh_v1';
+const CURRENT_DATA_VERSION = '20261020_excel_users_v2';
 
 // Tự động dọn dẹp các biên bản/phiếu cũ từ phiên kiểm thử trước để bắt đầu sạch sẽ
 if (typeof window !== 'undefined' && window.localStorage) {
@@ -80,6 +81,8 @@ if (typeof window !== 'undefined' && window.localStorage) {
       localStorage.removeItem(REQUESTS_STORAGE_KEY);
       localStorage.removeItem(REPORTS_STORAGE_KEY);
       localStorage.removeItem(NOTIF_STORAGE_KEY);
+      localStorage.removeItem(USERS_STORAGE_KEY);
+      localStorage.removeItem('apct_logged_user');
       localStorage.setItem(DATA_VERSION_KEY, CURRENT_DATA_VERSION);
       clearAllFromIndexedDB('requests');
       clearAllFromIndexedDB('reports');
@@ -96,7 +99,7 @@ export default function App() {
       const saved = localStorage.getItem(USERS_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed) && parsed.length >= MOCK_USERS.length) {
           return parsed.map(u => {
             const mock = MOCK_USERS.find(m => m.uid === u.uid);
             return {
@@ -370,22 +373,19 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // 4. Đồng bộ Real-Time Danh sách Cán bộ từ Firestore (Admin thêm người sẽ lưu trữ và sync real-time)
+  // 4. Đồng bộ Real-Time Danh sách Cán bộ từ Firestore (Lấy Firestore Cloud làm chuẩn)
   useEffect(() => {
     const unsubscribe = subscribeToUsers((cloudUsers) => {
       if (cloudUsers && cloudUsers.length > 0) {
-        setUsers(prev => {
-          const merged = [...prev];
-          cloudUsers.forEach(cu => {
-            const idx = merged.findIndex(u => u.uid === cu.uid);
-            if (idx >= 0) {
-              merged[idx] = { ...merged[idx], ...cu };
-            } else {
-              merged.push(cu);
-            }
-          });
-          return merged;
-        });
+        setUsers(cloudUsers);
+        try {
+          localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(cloudUsers));
+        } catch (e) {
+          console.warn('Lỗi lưu users vào cache:', e);
+        }
+      } else if (isFirebaseConfigured) {
+        // Tự động seed lên Firestore nếu trên cloud chưa có
+        seedOfficialUsersToCloud(MOCK_USERS).catch(console.warn);
       }
     });
     return () => unsubscribe();
@@ -695,6 +695,19 @@ export default function App() {
     }
   };
 
+  // Đồng bộ toàn bộ 39 cán bộ lên Google Firestore Cloud
+  const handleSyncAllUsersToCloud = async () => {
+    try {
+      await seedOfficialUsersToCloud(MOCK_USERS);
+      setUsers(MOCK_USERS);
+      safeSaveLocalStorage(USERS_STORAGE_KEY, MOCK_USERS);
+      return true;
+    } catch (e) {
+      console.warn('Lỗi đồng bộ cán bộ lên Cloud:', e);
+      return false;
+    }
+  };
+
   // Modal xác nhận & thông báo tùy chỉnh chuẩn APCT (Thay thế 100% window.confirm và alert)
   const [confirmDialog, setConfirmDialog] = useState({
     isOpen: false,
@@ -849,24 +862,24 @@ export default function App() {
       attendees: {
         investor: {
           company: cdtRecipient?.company || 'Công ty TNHH An Phú Cần Thơ',
-          person: cdtRecipient?.fullName || 'Ông Bành Nguyễn Hậu',
-          position: cdtRecipient?.position || 'Cán bộ ban QLDA',
+          person: cdtRecipient?.fullName || 'Ngô Quý Linh',
+          position: cdtRecipient?.position || 'Trưởng Ban QLDA',
           email: cdtRecipient?.email || '',
           uid: cdtRecipient?.uid || '',
           signed: false
         },
         supervisor: {
-          company: tvgsRecipient?.company || 'Công ty CP TVXD và TM GELICON',
-          person: tvgsRecipient?.fullName || 'KS. Võ Văn Tón',
-          position: tvgsRecipient?.position || 'Cán bộ tư vấn giám sát',
+          company: tvgsRecipient?.company || 'Công ty CP Tư vấn Xây dựng và Thương mại GELICON',
+          person: tvgsRecipient?.fullName || 'Đinh Xuân Thám',
+          position: tvgsRecipient?.position || 'Tư vấn giám sát trưởng',
           email: tvgsRecipient?.email || '',
           uid: tvgsRecipient?.uid || '',
           signed: false
         },
         contractor: {
-          company: newRequest.contractorCompany || 'Công ty CP Xây dựng An Phú Gia',
-          person: newRequest.createdByName || 'KS. Lê Văn Kỹ Thuật',
-          position: newRequest.createdByRole || 'Kỹ thuật hiện trường',
+          company: newRequest.contractorCompany || currentUser?.company || 'Công ty CP Xây dựng An Phú Gia',
+          person: newRequest.createdByName || currentUser?.fullName || 'Phạm Thanh Nhàn',
+          position: newRequest.createdByRole || currentUser?.position || 'Chỉ huy trưởng',
           signed: true
         }
       },
@@ -2232,6 +2245,7 @@ export default function App() {
                   onDeleteUser={handleDeleteUser}
                   onUpdateUserRole={handleUpdateUserRole}
                   onToggleUserStatus={handleToggleUserStatus}
+                  onSyncAllUsersToCloud={handleSyncAllUsersToCloud}
                 />
               ) : (
                 <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px' }}>
@@ -2750,6 +2764,7 @@ export default function App() {
         onDeleteUser={handleDeleteUser}
         onUpdateUserRole={handleUpdateUserRole}
         onToggleUserStatus={handleToggleUserStatus}
+        onSyncAllUsersToCloud={handleSyncAllUsersToCloud}
         onResetAllData={handleResetAllData}
         showAlert={showAlert}
       />

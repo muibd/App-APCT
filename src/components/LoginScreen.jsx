@@ -23,40 +23,48 @@ export default function LoginScreen({ onLogin, users = MOCK_USERS }) {
       bg: '#faf5ff'
     },
     {
-      roleName: 'Đơn Vị Thi Công (ĐVTC)',
-      email: 'kythuat.anphugia@gmail.com',
+      roleName: 'ĐVTC: Cty Bình Hoà (CHT Khương)',
+      email: 'pkhuong03@gmail.com',
       pass: '123456',
       icon: HardHat,
       color: '#2563eb',
       bg: '#eff6ff'
     },
     {
+      roleName: 'ĐVTC: An Phú Gia (CHT Nhàn)',
+      email: 'phamnhanktxd2014@gmail.com',
+      pass: '123456',
+      icon: HardHat,
+      color: '#1d4ed8',
+      bg: '#eff6ff'
+    },
+    {
       roleName: 'Tư Vấn Giám Sát (TVGS)',
-      email: 'vovanton.gelicon@gmail.com',
+      email: 'dongvug@gmail.com',
       pass: '123456',
       icon: Eye,
       color: '#059669',
       bg: '#ecfdf5'
     },
     {
-      roleName: 'TVGS Trưởng (Giám sát trưởng)',
-      email: 'dinhxuantham.gelicon@gmail.com',
+      roleName: 'TVGS Trưởng (Đinh Xuân Thám)',
+      email: 'tham.dinhxuan@gelicon.vn',
       pass: '123456',
       icon: Award,
       color: '#047857',
       bg: '#ecfdf5'
     },
     {
-      roleName: 'Đại Diện CĐT (QLDA)',
-      email: 'nguyenhau.anphuct@gmail.com',
+      roleName: 'Đại Diện CĐT (CB MEP Trung)',
+      email: 'trungnguyenme1984@gmail.com',
       pass: '123456',
       icon: Briefcase,
       color: '#d97706',
       bg: '#fffbeb'
     },
     {
-      roleName: 'CĐT Trưởng (Trưởng ban QLDA)',
-      email: 'ngoquylinh.anphuct@gmail.com',
+      roleName: 'CĐT Trưởng (Ngô Quý Linh)',
+      email: 'linh.ngoquy@cncmi.vn',
       pass: '123456',
       icon: Award,
       color: '#b45309',

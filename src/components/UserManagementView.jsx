@@ -13,12 +13,14 @@ export default function UserManagementView({
   onUpdateUser, 
   onDeleteUser, 
   onUpdateUserRole,
-  onToggleUserStatus
+  onToggleUserStatus,
+  onSyncAllUsersToCloud
 }) {
   // Filter & Search states
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Password visibility map { [uid]: boolean }
   const [visiblePasswords, setVisiblePasswords] = useState({});
@@ -35,6 +37,23 @@ export default function UserManagementView({
   const showToast = (text) => {
     setToastMessage(text);
     setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const handleSyncCloud = async () => {
+    if (!onSyncAllUsersToCloud) return;
+    setIsSyncing(true);
+    try {
+      const ok = await onSyncAllUsersToCloud();
+      if (ok) {
+        showToast('☁️ Đã đồng bộ thành công toàn bộ cán bộ lên Google Firestore!');
+      } else {
+        showToast('⚠️ Lỗi khi đồng bộ lên Firestore!');
+      }
+    } catch {
+      showToast('⚠️ Lỗi kết nối Firestore!');
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   // Toggle reveal password for a specific user
@@ -163,22 +182,50 @@ export default function UserManagementView({
           </div>
         </div>
 
-        {/* Nút Thêm Mới Cán Bộ */}
-        <button
-          type="button"
-          className="btn-primary"
-          onClick={() => setIsAddModalOpen(true)}
-          style={{
-            background: 'linear-gradient(135deg, #7e22ce 0%, #6b21a8 100%)',
-            boxShadow: '0 4px 14px rgba(126, 34, 206, 0.35)',
-            padding: '10px 20px',
-            fontSize: '0.92rem',
-            borderRadius: '12px'
-          }}
-        >
-          <UserPlus size={18} />
-          <span>Thêm Mới Cán Bộ</span>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {onSyncAllUsersToCloud && (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={handleSyncCloud}
+              disabled={isSyncing}
+              style={{
+                background: '#faf5ff',
+                borderColor: '#c084fc',
+                color: '#7e22ce',
+                fontWeight: 700,
+                padding: '10px 18px',
+                fontSize: '0.88rem',
+                borderRadius: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                boxShadow: '0 2px 8px rgba(126, 34, 206, 0.1)'
+              }}
+              title="Đồng bộ danh sách 39 cán bộ chính thức lên Google Firestore Cloud"
+            >
+              <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
+              <span>{isSyncing ? 'Đang đồng bộ...' : '☁️ Đồng Bộ 39 Cán Bộ Lên Cloud'}</span>
+            </button>
+          )}
+
+          {/* Nút Thêm Mới Cán Bộ */}
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => setIsAddModalOpen(true)}
+            style={{
+              background: 'linear-gradient(135deg, #7e22ce 0%, #6b21a8 100%)',
+              boxShadow: '0 4px 14px rgba(126, 34, 206, 0.35)',
+              padding: '10px 20px',
+              fontSize: '0.92rem',
+              borderRadius: '12px'
+            }}
+          >
+            <UserPlus size={18} />
+            <span>Thêm Mới Cán Bộ</span>
+          </button>
+        </div>
       </div>
 
       {/* Toolbar: Tìm kiếm & Lọc vai trò */}
@@ -701,6 +748,7 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
 
   // Gợi ý nhanh các công ty trong dự án
   const companyPresets = [
+    { label: 'ĐVTC: Cty TNHH TVTK Bình Hoà', name: 'Công ty TNHH Tư vấn Thiết kế Bình Hoà', role: 'CONTRACTOR', pos: 'Chỉ huy trưởng' },
     { label: 'ĐVTC: Công ty CP Xây dựng An Phú Gia', name: 'Công ty CP Xây dựng An Phú Gia', role: 'CONTRACTOR', pos: 'Kỹ thuật hiện trường' },
     { label: 'TVGS: Công ty CP TVXD và TM GELICON', name: 'Công ty CP Tư vấn Xây dựng và Thương mại GELICON', role: 'SUPERVISOR', pos: 'Cán bộ tư vấn giám sát' },
     { label: 'TVGS Trưởng: GELICON', name: 'Công ty CP Tư vấn Xây dựng và Thương mại GELICON', role: 'LEAD_SUPERVISOR', pos: 'Tư vấn giám sát trưởng' },

@@ -1552,7 +1552,7 @@ export default function InspectionReportModal({
                     {isInvestorSigned ? (
                       <div style={{ color: '#047857', fontWeight: 'bold', textAlign: 'center' }}>
                         <div style={{ fontSize: '1.2rem', fontFamily: 'cursive' }}>
-                          {reportState.attendees?.investor?.person || 'Ông Bành Nguyễn Hậu'}
+                          {reportState.attendees?.investor?.person || 'Ngô Quý Linh'}
                         </div>
                         <div style={{ fontSize: '0.72rem' }}>✓ Đã ký số điện tử</div>
                         {reportState.attendees?.investor?.signedAt && (
@@ -1575,7 +1575,7 @@ export default function InspectionReportModal({
                       <span style={{ color: '#d97706', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ CĐT ký duyệt)</span>
                     )}
                   </div>
-                  <strong>{reportState.attendees?.investor?.person || 'Ông Bành Nguyễn Hậu'}</strong>
+                  <strong>{reportState.attendees?.investor?.person || 'Ngô Quý Linh'}</strong>
                 </div>
 
                 {/* 2. TƯ VẤN GIÁM SÁT */}
@@ -1586,7 +1586,7 @@ export default function InspectionReportModal({
                     {isSupervisorSigned ? (
                       <div style={{ color: '#047857', fontWeight: 'bold', textAlign: 'center' }}>
                         <div style={{ fontSize: '1.2rem', fontFamily: 'cursive' }}>
-                          {reportState.attendees?.supervisor?.person || 'KS. Võ Văn Tón'}
+                          {reportState.attendees?.supervisor?.person || 'Đinh Xuân Thám'}
                         </div>
                         <div style={{ fontSize: '0.72rem' }}>✓ Đã ký số điện tử</div>
                         {reportState.attendees?.supervisor?.signedAt && (
@@ -1607,7 +1607,7 @@ export default function InspectionReportModal({
                       <span style={{ color: '#059669', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ TVGS kiểm tra & ký)</span>
                     )}
                   </div>
-                  <strong>{reportState.attendees?.supervisor?.person || 'KS. Võ Văn Tón'}</strong>
+                  <strong>{reportState.attendees?.supervisor?.person || 'Đinh Xuân Thám'}</strong>
                 </div>
 
                 {/* 3. ĐƠN VỊ THI CÔNG */}
@@ -1618,7 +1618,7 @@ export default function InspectionReportModal({
                     {isContractorSigned ? (
                       <div style={{ color: '#047857', fontWeight: 'bold', textAlign: 'center' }}>
                         <div style={{ fontSize: '1.2rem', fontFamily: 'cursive' }}>
-                          {reportState.attendees?.contractor?.person || 'KS. Lê Văn Kỹ Thuật'}
+                          {reportState.attendees?.contractor?.person || 'Phạm Thanh Nhàn'}
                         </div>
                         <div style={{ fontSize: '0.72rem' }}>✓ Đã ký số điện tử</div>
                       </div>
@@ -1626,7 +1626,7 @@ export default function InspectionReportModal({
                       <span style={{ color: '#2563eb', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ ĐVTC ký)</span>
                     )}
                   </div>
-                  <strong>{reportState.attendees?.contractor?.person || 'KS. Lê Văn Kỹ Thuật'}</strong>
+                  <strong>{reportState.attendees?.contractor?.person || 'Phạm Thanh Nhàn'}</strong>
                 </div>
               </div>
 

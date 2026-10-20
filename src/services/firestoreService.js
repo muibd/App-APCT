@@ -16,7 +16,12 @@ import {
   getDocs,
   onSnapshot 
 } from 'firebase/firestore';
-import { INITIAL_REQUESTS, INITIAL_REPORTS, INITIAL_NOTIFICATIONS } from '../data/mockData';
+import { 
+  INITIAL_REQUESTS, 
+  INITIAL_REPORTS, 
+  INITIAL_NOTIFICATIONS,
+  MOCK_USERS 
+} from '../data/mockData';
 
 const REQUESTS_COLLECTION = 'inspection_requests';
 const REPORTS_COLLECTION = 'inspection_reports';
@@ -369,6 +374,29 @@ export const deleteSystemUser = async (userId) => {
     console.log('[Firestore Cloud] Đã xóa cán bộ:', userId);
   } catch (error) {
     console.error('[Firestore Delete User Error]', error);
+    throw error;
+  }
+};
+
+/**
+ * Đồng bộ toàn bộ danh sách cán bộ chính thức lên Google Firestore collection 'system_users'
+ */
+export const seedOfficialUsersToCloud = async (customUsers = null) => {
+  if (!isFirebaseConfigured || !db) return false;
+  try {
+    const listToSeed = (Array.isArray(customUsers) && customUsers.length > 0) ? customUsers : MOCK_USERS;
+    const promises = listToSeed.map(u => {
+      const cleanData = sanitizeData({
+        ...u,
+        updatedAt: new Date().toISOString()
+      });
+      return setDoc(doc(db, USERS_COLLECTION, u.uid), cleanData);
+    });
+    await Promise.all(promises);
+    console.log(`[Firestore Cloud] Đã đồng bộ thành công ${listToSeed.length} cán bộ lên Firestore!`);
+    return true;
+  } catch (error) {
+    console.error('[Firestore Seed Users Error]', error);
     throw error;
   }
 };
