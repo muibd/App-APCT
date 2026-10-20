@@ -689,7 +689,7 @@ export default function ReportsListView({
                     ) : (
                       /* 3. BIÊN BẢN BÌNH THƯỜNG HOẶC ĐÃ HOÀN TẤT */
                       <>
-                        {repStatus === 'COMPLETED' && (
+                        {isCompleted && (
                           <button 
                             className="btn-secondary"
                             style={{ padding: '8px 12px', fontSize: '0.84rem' }}
@@ -701,12 +701,12 @@ export default function ReportsListView({
                           </button>
                         )}
                         <button 
-                          className="btn-primary"
+                          className="btn-primary" 
                           style={{ padding: '8px 16px', fontSize: '0.85rem' }}
                           onClick={() => onOpenReport(report)}
                         >
                           <FileText size={15} />
-                          <span>{repStatus === 'COMPLETED' ? 'Xem Biên Bản A4' : 'Xem & Ký Biên Bản A4'}</span>
+                          <span>{isCompleted ? 'Xem Biên Bản A4' : 'Xem & Ký Biên Bản A4'}</span>
                           <ChevronRight size={15} />
                         </button>
                       </>

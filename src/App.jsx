@@ -59,6 +59,7 @@ import {
 import { isFirebaseConfigured } from './services/firebase';
 import { 
   safeSaveLocalStorage, 
+  saveToIndexedDB,
   getAllFromIndexedDB, 
   clearAllFromIndexedDB, 
   clearAllAPCTStorage 
@@ -1280,7 +1281,11 @@ export default function App() {
       const filtered = prev.filter(r => !matchFn(r));
       const nextReports = [updatedReport, ...filtered];
       safeSaveLocalStorage(REPORTS_STORAGE_KEY, nextReports);
-      saveToIndexedDB('reports', nextReports);
+      try {
+        if (typeof saveToIndexedDB === 'function') saveToIndexedDB('reports', nextReports);
+      } catch (err) {
+        console.warn('Lỗi saveToIndexedDB reports:', err);
+      }
       return nextReports;
     });
 
@@ -1291,7 +1296,11 @@ export default function App() {
       setRequests(prev => {
         const nextRequests = prev.map(r => r.id === updatedReq.id ? updatedReq : r);
         safeSaveLocalStorage(REQUESTS_STORAGE_KEY, nextRequests);
-        saveToIndexedDB('requests', nextRequests);
+        try {
+          if (typeof saveToIndexedDB === 'function') saveToIndexedDB('requests', nextRequests);
+        } catch (err) {
+          console.warn('Lỗi saveToIndexedDB requests:', err);
+        }
         return nextRequests;
       });
     }
@@ -1399,10 +1408,10 @@ export default function App() {
     let finalStatus = updatedReport.status || 'PENDING_APPROVAL';
     if (isAllSigned) {
       finalStatus = 'COMPLETED';
+    } else if (updatedReport.status === 'WAITING_INVESTOR' || isSupervisorSigned) {
+      finalStatus = 'WAITING_INVESTOR';
     } else if (updatedReport.status === 'REJECTED' || updatedReport.status === 'RECTIFIED') {
       finalStatus = updatedReport.status;
-    } else if (isSupervisorSigned) {
-      finalStatus = 'WAITING_INVESTOR';
     }
 
     const finalReport = {

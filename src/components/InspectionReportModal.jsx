@@ -286,45 +286,62 @@ export default function InspectionReportModal({
   }, [initialOpenRectify]);
 
   const toggleStandard = (text) => {
-    setSelectedStandards(prev => 
-      prev.includes(text) ? prev.filter(t => t !== text) : [...prev, text]
-    );
+    setSelectedStandards(prev => {
+      const cur = Array.isArray(prev) ? prev : [];
+      return cur.includes(text) ? cur.filter(t => t !== text) : [...cur, text];
+    });
   };
 
   const handleSign = (party) => {
-    const nextSignatures = { ...signatures, [party]: true };
-    setSignatures(nextSignatures);
+    try {
+      const nextSignatures = { ...signatures, [party]: true };
+      setSignatures(nextSignatures);
 
-    const now = new Date().toISOString();
-    const nowFormatted = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('vi-VN');
+      const now = new Date().toISOString();
+      const nowFormatted = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('vi-VN');
 
-    // Cả 3 bên ký số độc lập: Chỉ khi cả 3 bên đều hoàn thành thì mới là COMPLETED
-    const isAllSigned = 
-      (party === 'investor' || nextSignatures.investor) &&
-      (party === 'supervisor' || nextSignatures.supervisor) &&
-      (party === 'contractor' || nextSignatures.contractor !== false);
+      // Cả 3 bên ký số độc lập: Chỉ khi cả 3 bên đều hoàn thành thì mới là COMPLETED
+      const isAllSigned = 
+        (party === 'investor' || nextSignatures.investor) &&
+        (party === 'supervisor' || nextSignatures.supervisor) &&
+        (party === 'contractor' || nextSignatures.contractor !== false);
 
-    const updated = {
-      ...reportState,
-      attendees: {
-        ...reportState.attendees,
-        [party]: {
-          ...reportState.attendees?.[party],
-          signed: true,
-          signedAt: nowFormatted
-        }
-      },
-      status: isAllSigned ? 'COMPLETED' : (party === 'supervisor' ? 'WAITING_INVESTOR' : (reportState.status || 'PENDING_APPROVAL')),
-      updatedAt: now
-    };
-    setReportState(updated);
+      const nextStatus = isAllSigned 
+        ? 'COMPLETED' 
+        : (party === 'supervisor' ? 'WAITING_INVESTOR' : (reportState.status === 'REJECTED' || reportState.status === 'RECTIFIED' ? 'WAITING_INVESTOR' : (reportState.status || 'PENDING_APPROVAL')));
 
-    if (onSaveReport) {
-      onSaveReport(updated);
-    }
+      const updated = {
+        ...reportState,
+        conclusion: {
+          ...reportState.conclusion,
+          isAccepted: true,
+          rejectionReason: isAllSigned ? '' : (reportState.conclusion?.rejectionReason || ''),
+          repairRequired: isAllSigned ? 'Đã nghiệm thu đạt yêu cầu' : (reportState.conclusion?.repairRequired || 'Đang thực hiện ký duyệt các bên')
+        },
+        attendees: {
+          ...reportState.attendees,
+          [party]: {
+            ...reportState.attendees?.[party],
+            signed: true,
+            signedAt: nowFormatted
+          }
+        },
+        status: nextStatus,
+        updatedAt: now
+      };
 
-    if (isAllSigned) {
-      triggerSafeConfetti();
+      setReportState(updated);
+      setActiveTab('DOCUMENT');
+
+      if (onSaveReport) {
+        onSaveReport(updated);
+      }
+
+      if (isAllSigned) {
+        triggerSafeConfetti();
+      }
+    } catch (err) {
+      console.error('[Error in handleSign]:', err);
     }
   };
 
@@ -707,103 +724,113 @@ export default function InspectionReportModal({
 
   // TVGS Chấp thuận nghiệm thu lại sau sửa chữa -> Chuyển sang Chủ đầu tư phê duyệt
   const handleReinspectSupervisor = () => {
-    const now = new Date().toISOString();
-    const nowFormatted = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('vi-VN');
+    try {
+      const now = new Date().toISOString();
+      const nowFormatted = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('vi-VN');
 
-    const updated = {
-      ...reportState,
-      conclusion: {
-        ...reportState.conclusion,
-        isAccepted: true,
-        repairRequired: 'TVGS đã kiểm tra và nghiệm thu đạt sau sửa chữa',
-        otherRequirements: 'Chuyển Chủ đầu tư kiểm tra và phê duyệt'
-      },
-      attendees: {
-        ...reportState.attendees,
-        supervisor: {
-          ...reportState.attendees?.supervisor,
-          signed: true,
-          signedAt: nowFormatted
+      const updated = {
+        ...reportState,
+        conclusion: {
+          ...reportState.conclusion,
+          isAccepted: true,
+          rejectionReason: '',
+          repairRequired: 'TVGS đã kiểm tra và nghiệm thu đạt sau sửa chữa',
+          otherRequirements: 'Chuyển Chủ đầu tư kiểm tra và phê duyệt'
         },
-        investor: {
-          ...reportState.attendees?.investor,
-          signed: false // CĐT chưa ký, chờ CĐT kiểm tra!
+        attendees: {
+          ...reportState.attendees,
+          supervisor: {
+            ...reportState.attendees?.supervisor,
+            signed: true,
+            signedAt: nowFormatted
+          },
+          investor: {
+            ...reportState.attendees?.investor,
+            signed: false // CĐT chưa ký, chờ CĐT kiểm tra!
+          },
+          contractor: {
+            ...reportState.attendees?.contractor,
+            signed: true
+          }
         },
-        contractor: {
-          ...reportState.attendees?.contractor,
-          signed: true
-        }
-      },
-      status: 'WAITING_INVESTOR',
-      updatedAt: now
-    };
+        status: 'WAITING_INVESTOR',
+        updatedAt: now
+      };
 
-    setSignatures(prev => ({
-      ...prev,
-      supervisor: true,
-      investor: false,
-      contractor: true
-    }));
-    setReportState(updated);
-    setActiveTab('DOCUMENT');
+      setSignatures(prev => ({
+        ...prev,
+        supervisor: true,
+        investor: false,
+        contractor: true
+      }));
+      setReportState(updated);
+      setActiveTab('DOCUMENT');
 
-    const targetReportId = reportState.id || report?.id;
-    if (onReinspectReport) {
-      onReinspectReport(targetReportId, updated);
-    } else if (onSaveReport) {
-      onSaveReport(updated);
+      const targetReportId = reportState.id || report?.id;
+      if (onReinspectReport) {
+        onReinspectReport(targetReportId, updated);
+      } else if (onSaveReport) {
+        onSaveReport(updated);
+      }
+    } catch (err) {
+      console.error('[Error in handleReinspectSupervisor]:', err);
     }
   };
 
   // CĐT Chấp thuận nghiệm thu lại sau sửa chữa -> Cả 3 bên hoàn tất nghiệm thu & ký số
   const handleReinspectInvestor = () => {
-    const now = new Date().toISOString();
-    const nowFormatted = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('vi-VN');
+    try {
+      const now = new Date().toISOString();
+      const nowFormatted = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('vi-VN');
 
-    const updated = {
-      ...reportState,
-      conclusion: {
-        ...reportState.conclusion,
-        isAccepted: true,
-        repairRequired: 'Đã hoàn thành khắc phục các tồn tại kỹ thuật và nghiệm thu đạt',
-        otherRequirements: 'Đạt yêu cầu nghiệm thu sau sửa chữa'
-      },
-      attendees: {
-        ...reportState.attendees,
-        supervisor: {
-          ...reportState.attendees?.supervisor,
-          signed: true,
-          signedAt: reportState.attendees?.supervisor?.signedAt || nowFormatted
+      const updated = {
+        ...reportState,
+        conclusion: {
+          ...reportState.conclusion,
+          isAccepted: true,
+          rejectionReason: '',
+          repairRequired: 'Đã hoàn thành khắc phục các tồn tại kỹ thuật và nghiệm thu đạt',
+          otherRequirements: 'Đạt yêu cầu nghiệm thu sau sửa chữa'
         },
-        investor: {
-          ...reportState.attendees?.investor,
-          signed: true,
-          signedAt: nowFormatted
+        attendees: {
+          ...reportState.attendees,
+          supervisor: {
+            ...reportState.attendees?.supervisor,
+            signed: true,
+            signedAt: reportState.attendees?.supervisor?.signedAt || nowFormatted
+          },
+          investor: {
+            ...reportState.attendees?.investor,
+            signed: true,
+            signedAt: nowFormatted
+          },
+          contractor: {
+            ...reportState.attendees?.contractor,
+            signed: true
+          }
         },
-        contractor: {
-          ...reportState.attendees?.contractor,
-          signed: true
-        }
-      },
-      status: 'COMPLETED',
-      updatedAt: now
-    };
+        status: 'COMPLETED',
+        updatedAt: now
+      };
 
-    setSignatures({
-      investor: true,
-      supervisor: true,
-      contractor: true
-    });
-    setReportState(updated);
-    setActiveTab('DOCUMENT');
+      setSignatures({
+        investor: true,
+        supervisor: true,
+        contractor: true
+      });
+      setReportState(updated);
+      setActiveTab('DOCUMENT');
 
-    triggerSafeConfetti();
+      triggerSafeConfetti();
 
-    const targetReportId = reportState.id || report?.id;
-    if (onReinspectReport) {
-      onReinspectReport(targetReportId, updated);
-    } else if (onSaveReport) {
-      onSaveReport(updated);
+      const targetReportId = reportState.id || report?.id;
+      if (onReinspectReport) {
+        onReinspectReport(targetReportId, updated);
+      } else if (onSaveReport) {
+        onSaveReport(updated);
+      }
+    } catch (err) {
+      console.error('[Error in handleReinspectInvestor]:', err);
     }
   };
 
@@ -828,18 +855,26 @@ export default function InspectionReportModal({
 
   if (!isOpen || !report) return null;
 
-  const initialStandardsList = (reportState?.standardsApplied && reportState.standardsApplied.length > 0)
+  const initialStandardsList = (reportState?.standardsApplied && Array.isArray(reportState.standardsApplied) && reportState.standardsApplied.length > 0)
     ? reportState.standardsApplied
-    : (report?.standardsApplied && report.standardsApplied.length > 0)
+    : (report?.standardsApplied && Array.isArray(report.standardsApplied) && report.standardsApplied.length > 0)
         ? report.standardsApplied
         : getSuggestedStandards(
             reportState?.inspectionObject || reportState?.projectInfo?.itemName || '', 
             isMaterialReport ? 'MATERIAL' : 'WORK'
           );
 
+  const safeInitialStandards = Array.isArray(initialStandardsList) 
+    ? initialStandardsList 
+    : (initialStandardsList && typeof initialStandardsList === 'object' ? Object.values(initialStandardsList) : []);
+
+  const safeSelectedStandards = Array.isArray(selectedStandards)
+    ? selectedStandards
+    : (selectedStandards && typeof selectedStandards === 'object' ? Object.values(selectedStandards) : []);
+
   const displayStandards = Array.from(new Set([
-    ...initialStandardsList,
-    ...(selectedStandards || [])
+    ...safeInitialStandards,
+    ...safeSelectedStandards
   ]));
 
   return (
@@ -2005,16 +2040,7 @@ export default function InspectionReportModal({
                 </div>
 
                 {/* Nút hành động dựa trên vai trò */}
-                {(currentRole === 'CONTRACTOR' || currentRole === 'ADMIN') ? (
-                  <button 
-                    className="btn-primary" 
-                    style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)', padding: '8px 14px', fontSize: '0.82rem' }}
-                    onClick={() => setIsRectifyModalOpen(true)}
-                  >
-                    <Wrench size={15} />
-                    <span>Gửi Ảnh Đã Sửa & Mời Nghiệm Thu Lại</span>
-                  </button>
-                ) : (
+                {(currentRole === 'CONTRACTOR' || currentRole === 'ADMIN') ? null : (
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     <button 
                       type="button"
@@ -2527,6 +2553,30 @@ export default function InspectionReportModal({
                         ? 'Sửa Chữa & Gửi Duyệt Trực Tiếp CĐT'
                         : 'Sửa Chữa & Gửi Duyệt Lại TVGS'}
                     </span>
+                  </button>
+                )}
+
+                {/* TVGS DUYỆT ĐẠT & CHUYỂN CĐT (Nếu người dùng là TVGS phụ trách hoặc Admin) */}
+                {isSupervisorReviewer && !isInvestorRole && (
+                  <button 
+                    className="btn-success" 
+                    style={{ padding: '8px 16px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
+                    onClick={handleReinspectSupervisor}
+                  >
+                    <CheckCircle2 size={16} />
+                    <span>TVGS: Nghiệm Thu Đạt & Chuyển CĐT</span>
+                  </button>
+                )}
+
+                {/* CĐT DUYỆT ĐẠT & KÝ PHÊ DUYỆT (Nếu người dùng là CĐT phụ trách hoặc Admin) */}
+                {isInvestorReviewer && (
+                  <button 
+                    className="btn-success" 
+                    style={{ padding: '8px 16px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
+                    onClick={handleReinspectInvestor}
+                  >
+                    <CheckCircle2 size={16} />
+                    <span>CĐT: Nghiệm Thu Đạt & Ký Phê Duyệt</span>
                   </button>
                 )}
 

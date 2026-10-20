@@ -107,6 +107,16 @@ export class ErrorBoundary extends React.Component {
                 <span>Tải lại trang</span>
               </button>
             </div>
+
+            {this.state.error && (
+              <details style={{ marginTop: '16px', textAlign: 'left', fontSize: '0.78rem', color: '#991b1b', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '8px 12px' }}>
+                <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Chi tiết lỗi kỹ thuật</summary>
+                <div style={{ marginTop: '6px', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: '140px', overflowY: 'auto' }}>
+                  {this.state.error.toString()}
+                  {this.state.errorInfo?.componentStack && `\n\nStack:\n${this.state.errorInfo.componentStack}`}
+                </div>
+              </details>
+            )}
           </div>
         </div>
       );
