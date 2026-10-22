@@ -66,6 +66,30 @@ export default function InspectionReportModal({
     reportState?.inspectionType === 'MATERIAL'
   );
 
+  const rawMaterialsList = (reportState?.materials && reportState.materials.length > 0)
+    ? reportState.materials
+    : (report?.materials && report.materials.length > 0)
+      ? report.materials
+      : (reportState?.materialDetails?.materials && reportState.materialDetails.materials.length > 0)
+        ? reportState.materialDetails.materials
+        : (report?.materialDetails?.materials && report.materialDetails.materials.length > 0)
+          ? report.materialDetails.materials
+          : reportState?.materialDetails?.name
+            ? [{
+                name: reportState.materialDetails.name,
+                origin: reportState.materialDetails.origin || 'Nhà máy sản xuất chính hãng',
+                unit: reportState.materialDetails.unit || 'Lô',
+                quantity: reportState.materialDetails.quantity || '01 Lô',
+                certificateNumber: reportState.materialDetails.certificateNumber || 'Số CCXX-2026/VL-APG'
+              }]
+            : [{
+                name: reportState?.inspectionObject?.replace(/^Nghiệm thu vật liệu đầu vào:\s*/i, '') || 'Vật tư thi công',
+                origin: 'Nhà máy sản xuất chính hãng',
+                unit: 'Lô',
+                quantity: '01 Lô nghiệm thu',
+                certificateNumber: 'Số CCXX-2026/VL-APG'
+              }];
+
   const [selectedStandards, setSelectedStandards] = useState(() => {
     if (report?.standardsApplied && Array.isArray(report.standardsApplied) && report.standardsApplied.length > 0) {
       return report.standardsApplied;
@@ -1307,7 +1331,24 @@ export default function InspectionReportModal({
               <div style={{ marginBottom: '14px' }}>
                 <strong>1. Đối tượng nghiệm thu:</strong>
                 <div style={{ paddingLeft: '20px', fontWeight: 'bold', color: '#1e3a8a' }}>
-                  - {reportState.inspectionObject || (isMaterialReport ? `Nghiệm thu vật liệu: ${reportState.materialDetails?.name || 'Vật tư thi công'}` : 'Nghiệm thu công việc xây dựng')}
+                  {isMaterialReport ? (
+                    rawMaterialsList.length > 1 ? (
+                      <div>
+                        <div>- Nghiệm thu danh mục {rawMaterialsList.length} loại vật liệu đầu vào gồm:</div>
+                        <div style={{ paddingLeft: '14px', marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '3px', fontWeight: 600, color: '#1e3a8a' }}>
+                          {rawMaterialsList.map((m, idx) => (
+                            <span key={idx}>+ {idx + 1}. {m.name} ({m.quantity} {m.unit})</span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        - Nghiệm thu vật liệu đầu vào: {rawMaterialsList[0]?.name || reportState.materialDetails?.name || 'Vật tư thi công'} ({rawMaterialsList[0]?.quantity} {rawMaterialsList[0]?.unit})
+                      </div>
+                    )
+                  ) : (
+                    <div>- {reportState.inspectionObject || 'Nghiệm thu công việc xây dựng'}</div>
+                  )}
                 </div>
               </div>
 
@@ -1406,47 +1447,57 @@ export default function InspectionReportModal({
                         ))}
                       </div>
                       - Hồ sơ thầu và hợp đồng xây dựng số: 0203/HĐXD/APCT-GHVP ký ngày 02 tháng 03 năm 2026.<br />
-                      - Hồ sơ xuất xứ, Chứng chỉ kỹ thuật xuất xưởng: <strong>{reportState.materialDetails?.certificateNumber || 'Số CCXX-2026/VL-APG'}</strong><br />
+                      - Hồ sơ xuất xứ, Chứng chỉ kỹ thuật xuất xưởng: <strong>{
+                        Array.from(new Set(rawMaterialsList.map(m => m.certificateNumber).filter(Boolean))).join(', ') ||
+                        reportState.materialDetails?.certificateNumber || 
+                        'Số CCXX-2026/VL-APG'
+                      }</strong><br />
                       - Kết quả thí nghiệm mẫu kiểm nghiệm chất lượng: Đạt yêu cầu.<br />
                       - Danh mục tính năng kỹ thuật của các đối tượng nghiệm thu.<br />
                       - Nhật ký thi công: Đã ghi chép đầy đủ theo quy định.
                     </div>
 
                     <div style={{ marginTop: '12px' }}>
-                      <strong>4.2. Bảng kết quả kiểm tra vật liệu đối chiếu thực tế:</strong>
+                      <strong>4.2. Bảng kết quả kiểm tra vật liệu đối chiếu thực tế (Danh mục {rawMaterialsList.length} vật liệu):</strong>
                       <div style={{ overflowX: 'auto', marginTop: '6px' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', fontSize: '0.86rem' }}>
                           <thead>
                             <tr style={{ background: '#f8fafc', fontWeight: 700, color: '#334155' }}>
-                              <th style={{ border: '1px solid #94a3b8', padding: '6px' }}>STT</th>
-                              <th style={{ border: '1px solid #94a3b8', padding: '6px' }}>Chủng loại vật liệu</th>
-                              <th style={{ border: '1px solid #94a3b8', padding: '6px' }}>Xuất xứ</th>
-                              <th style={{ border: '1px solid #94a3b8', padding: '6px' }}>Đơn vị</th>
-                              <th style={{ border: '1px solid #94a3b8', padding: '6px' }}>Khối lượng</th>
-                              <th style={{ border: '1px solid #94a3b8', padding: '6px' }}>Đánh giá</th>
+                              <th style={{ border: '1px solid #94a3b8', padding: '6px', width: '38px' }}>STT</th>
+                              <th style={{ border: '1px solid #94a3b8', padding: '6px', textAlign: 'left', minWidth: '150px' }}>Chủng loại vật liệu</th>
+                              <th style={{ border: '1px solid #94a3b8', padding: '6px', textAlign: 'left', minWidth: '130px' }}>Xuất xứ</th>
+                              <th style={{ border: '1px solid #94a3b8', padding: '6px', width: '60px' }}>Đơn vị</th>
+                              <th style={{ border: '1px solid #94a3b8', padding: '6px', width: '80px', textAlign: 'right' }}>Khối lượng</th>
+                              <th style={{ border: '1px solid #94a3b8', padding: '6px', textAlign: 'left', minWidth: '120px' }}>Số CCXX / CO-CQ</th>
+                              <th style={{ border: '1px solid #94a3b8', padding: '6px', width: '100px' }}>Đánh giá</th>
                             </tr>
                           </thead>
                           <tbody>
-                            <tr>
-                              <td style={{ border: '1px solid #cbd5e1', padding: '8px' }}>1</td>
-                              <td style={{ border: '1px solid #cbd5e1', padding: '8px', fontWeight: 600, textAlign: 'left' }}>
-                                {reportState.materialDetails?.name || reportState.inspectionObject?.replace(/^Nghiệm thu vật liệu đầu vào:\s*/i, '') || 'Vật tư thi công'}
-                              </td>
-                              <td style={{ border: '1px solid #cbd5e1', padding: '8px' }}>
-                                {reportState.materialDetails?.origin || 'Nhà máy sản xuất chính hãng'}
-                              </td>
-                              <td style={{ border: '1px solid #cbd5e1', padding: '8px' }}>
-                                {reportState.materialDetails?.unit || 'Lô'}
-                              </td>
-                              <td style={{ border: '1px solid #cbd5e1', padding: '8px', fontWeight: 600 }}>
-                                {reportState.materialDetails?.quantity || '01 Lô nghiệm thu'}
-                              </td>
-                              <td style={{ border: '1px solid #cbd5e1', padding: '8px' }}>
-                                <strong style={{ color: (isCompleted && (reportState?.rectification || report?.rectification)) || isRectified ? '#059669' : isRejected ? '#dc2626' : '#059669' }}>
-                                  {isRejected ? '[ ] Đạt  [X] Không đạt' : '[X] Đạt  [ ] Không đạt'}
-                                </strong>
-                              </td>
-                            </tr>
+                            {rawMaterialsList.map((mat, idx) => (
+                              <tr key={idx} style={{ background: idx % 2 === 0 ? '#ffffff' : '#fafafa' }}>
+                                <td style={{ border: '1px solid #cbd5e1', padding: '7px 4px', color: '#475569' }}>{idx + 1}</td>
+                                <td style={{ border: '1px solid #cbd5e1', padding: '7px 8px', fontWeight: 600, textAlign: 'left', color: '#0f172a' }}>
+                                  {mat.name || 'Vật tư thi công'}
+                                </td>
+                                <td style={{ border: '1px solid #cbd5e1', padding: '7px 8px', textAlign: 'left', color: '#334155' }}>
+                                  {mat.origin || 'Nhà máy sản xuất chính hãng'}
+                                </td>
+                                <td style={{ border: '1px solid #cbd5e1', padding: '7px 4px', textAlign: 'center', color: '#475569' }}>
+                                  {mat.unit || 'Lô'}
+                                </td>
+                                <td style={{ border: '1px solid #cbd5e1', padding: '7px 8px', fontWeight: 600, textAlign: 'right', color: '#059669' }}>
+                                  {mat.quantity || '—'}
+                                </td>
+                                <td style={{ border: '1px solid #cbd5e1', padding: '7px 8px', fontSize: '0.8rem', textAlign: 'left', color: '#64748b' }}>
+                                  {mat.certificateNumber || reportState.materialDetails?.certificateNumber || '—'}
+                                </td>
+                                <td style={{ border: '1px solid #cbd5e1', padding: '7px 6px' }}>
+                                  <strong style={{ color: (isCompleted && (reportState?.rectification || report?.rectification)) || isRectified ? '#059669' : isRejected ? '#dc2626' : '#059669', fontSize: '0.82rem' }}>
+                                    {isRejected ? '[ ] Đạt  [X] K.Đạt' : '[X] Đạt  [ ] K.Đạt'}
+                                  </strong>
+                                </td>
+                              </tr>
+                            ))}
                           </tbody>
                         </table>
                       </div>

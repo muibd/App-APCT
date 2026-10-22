@@ -1074,6 +1074,7 @@ export default function App() {
       inspectionType: newRequest.inspectionType || 'WORK',
       reportTemplate: isMaterial ? 'FORM_12' : 'CONSTRUCTION_WORK',
       materialDetails: newRequest.materialDetails || null,
+      materials: newRequest.materials || newRequest.materialDetails?.materials || null,
       projectInfo: {
         projectName: newRequest.projectName,
         buildingName: newRequest.buildingName,
@@ -1337,6 +1338,7 @@ export default function App() {
       inspectionType: targetReq.inspectionType || 'WORK',
       reportTemplate: isMaterial ? 'FORM_12' : 'CONSTRUCTION_WORK',
       materialDetails: targetReq.materialDetails || null,
+      materials: targetReq.materials || targetReq.materialDetails?.materials || null,
       projectInfo: {
         projectName: targetReq.projectName,
         buildingName: targetReq.buildingName,

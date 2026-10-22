@@ -69,11 +69,16 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
 
   // Cho Vật liệu đầu vào (Mẫu số 12 theo Sheet B - 24 loại theo Excel)
   const [selectedMaterialGroup, setSelectedMaterialGroup] = useState(() => MATERIAL_STANDARDS[0]?.name || 'Gạch ốp lát');
-  const [materialName, setMaterialName] = useState(() => 'Gạch ốp lát granite 600x600');
-  const [materialOrigin, setMaterialOrigin] = useState('Đồng Nai, Việt Nam');
-  const [materialUnit, setMaterialUnit] = useState('m2');
-  const [materialQuantity, setMaterialQuantity] = useState('500');
-  const [certificateNumber, setCertificateNumber] = useState('CCXX-2026/01/ĐN');
+  const [materialsList, setMaterialsList] = useState([
+    {
+      id: 'mat_1',
+      name: 'Gạch ốp lát granite 600x600',
+      origin: 'Đồng Nai, Việt Nam',
+      unit: 'm2',
+      quantity: '500',
+      certificateNumber: 'CCXX-2026/01/ĐN'
+    }
+  ]);
 
   // Tiêu chuẩn áp dụng (Tự động cập nhật theo file Excel DANH MỤC TIÊU CHUẨN NGHIỆM THU.xls)
   const [suggestedStandardsList, setSuggestedStandardsList] = useState(() => {
@@ -89,10 +94,96 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
     setSelectedStandards(suggested);
   };
 
+  const refreshStandardsForMaterials = (mats) => {
+    const allSuggested = [];
+    mats.forEach(m => {
+      if (m.name && m.name.trim().length > 1) {
+        const stds = getSuggestedStandards(m.name, 'MATERIAL');
+        stds.forEach(s => {
+          if (!allSuggested.includes(s)) allSuggested.push(s);
+        });
+      }
+    });
+    if (allSuggested.length > 0) {
+      setSuggestedStandardsList(allSuggested);
+      setSelectedStandards(prev => {
+        const combined = [...prev];
+        allSuggested.forEach(s => {
+          if (!combined.includes(s)) combined.push(s);
+        });
+        return combined;
+      });
+    }
+  };
+
+  const handleAddMaterial = () => {
+    const newId = `mat_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    setMaterialsList(prev => [
+      ...prev,
+      {
+        id: newId,
+        name: '',
+        origin: '',
+        unit: '',
+        quantity: '',
+        certificateNumber: ''
+      }
+    ]);
+  };
+
+  const handleRemoveMaterial = (index) => {
+    if (materialsList.length <= 1) return;
+    setMaterialsList(prev => {
+      const next = prev.filter((_, i) => i !== index);
+      refreshStandardsForMaterials(next);
+      return next;
+    });
+  };
+
+  const handleUpdateMaterial = (index, field, value) => {
+    setMaterialsList(prev => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      if (field === 'name' && value.trim().length > 2) {
+        refreshStandardsForMaterials(next);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectMaterialGroupForAdd = (groupName) => {
+    setSelectedMaterialGroup(groupName);
+    if (!groupName || groupName === '__CUSTOM_MAT__') return;
+    setMaterialsList(prev => {
+      const next = [...prev];
+      if (next.length === 1 && !next[0].name.trim()) {
+        next[0] = {
+          ...next[0],
+          name: groupName,
+          origin: next[0].origin || 'Đồng Nai, Việt Nam',
+          unit: next[0].unit || 'm2',
+          quantity: next[0].quantity || '100',
+          certificateNumber: next[0].certificateNumber || 'CCXX-2026/01/ĐN'
+        };
+      } else {
+        next.push({
+          id: `mat_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          name: groupName,
+          origin: 'Việt Nam',
+          unit: 'lô',
+          quantity: '1',
+          certificateNumber: ''
+        });
+      }
+      refreshStandardsForMaterials(next);
+      return next;
+    });
+  };
+
   const handleInspectionTypeChange = (type) => {
     setInspectionType(type);
     if (type === 'MATERIAL') {
-      updateStandards(materialName || selectedMaterialGroup, 'MATERIAL');
+      refreshStandardsForMaterials(materialsList);
     } else {
       const currentTask = customTask.trim() || taskContent || selectedWorkGroup;
       updateStandards(currentTask, 'WORK');
@@ -113,14 +204,6 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
     setCustomTask('');
     if (task !== '__custom__') {
       updateStandards(task, 'WORK');
-    }
-  };
-
-  const handleMaterialGroupChange = (matName) => {
-    setSelectedMaterialGroup(matName);
-    if (matName !== '__CUSTOM_MAT__') {
-      setMaterialName(matName);
-      updateStandards(matName, 'MATERIAL');
     }
   };
 
@@ -322,6 +405,22 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
       return;
     }
 
+    if (inspectionType === 'MATERIAL') {
+      const invalidMat = materialsList.find(m => !m.name.trim() || !m.quantity.toString().trim() || !m.unit.trim());
+      if (invalidMat || materialsList.length === 0) {
+        if (showAlert) {
+          showAlert({
+            type: 'warning',
+            title: 'Chưa Điền Đủ Vật Liệu',
+            message: 'Vui lòng điền đầy đủ Tên, Đơn vị tính và Khối lượng cho tất cả các dòng vật liệu đầu vào!'
+          });
+        } else {
+          alert('Vui lòng điền đầy đủ Tên, Đơn vị tính và Khối lượng cho tất cả các dòng vật liệu đầu vào!');
+        }
+        return;
+      }
+    }
+
     const selectedUids = [selectedSupervisor, selectedInvestor].filter(Boolean);
     const assignedRecipients = selectedUids.map(uid => {
       const u = users.find(x => x.uid === uid);
@@ -353,13 +452,13 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
       }));
     }
 
+    const materialNamesStr = materialsList.map(m => m.name.trim()).filter(Boolean).join(', ');
+
     const finalTask = inspectionType === 'MATERIAL'
-      ? `Nghiệm thu vật liệu đầu vào: ${materialName}`
+      ? `Nghiệm thu vật liệu đầu vào: ${materialNamesStr || 'Vật tư thi công'}`
       : (customTask.trim() ? customTask : taskContent);
 
-    const finalItemName = inspectionType === 'MATERIAL'
-      ? `Nghiệm thu vật liệu đầu vào (${materialName})`
-      : finalItem;
+    const finalItemName = finalItem;
 
     const calculatedEndTime = calculateEndTime(startTime, 30);
     const dateFormatted = scheduledDate.split('-').reverse().join('/');
@@ -393,12 +492,14 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
       inspectionType, // 'WORK' | 'MATERIAL'
       standardsApplied: selectedStandards,
       reportTemplate: inspectionType === 'MATERIAL' ? 'FORM_12' : 'CONSTRUCTION_WORK',
+      materials: inspectionType === 'MATERIAL' ? materialsList : null,
       materialDetails: inspectionType === 'MATERIAL' ? {
-        name: materialName,
-        origin: materialOrigin,
-        unit: materialUnit,
-        quantity: materialQuantity,
-        certificateNumber: certificateNumber,
+        name: materialNamesStr || materialsList[0]?.name || '',
+        origin: materialsList[0]?.origin || '',
+        unit: materialsList[0]?.unit || '',
+        quantity: materialsList.map(m => `${m.quantity} ${m.unit}`).join(', '),
+        certificateNumber: Array.from(new Set(materialsList.map(m => m.certificateNumber).filter(Boolean))).join(', '),
+        materials: materialsList,
         isPass: true
       } : null
     };
@@ -673,16 +774,32 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
           ) : (
             /* NẾU LÀ VẬT LIỆU ĐẦU VÀO - MẪU SỐ 12 (SHEET B) */
             <div style={{ background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                <Package size={18} color="#16a34a" />
-                <strong style={{ fontSize: '0.96rem', color: '#166534' }}>
-                  Thông Tin Vật Liệu Đầu Vào
-                </strong>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px', marginBottom: '12px' }}>
+              
+              {/* Row: Công trình & Hạng mục cho Vật liệu đầu vào */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px', marginBottom: '14px' }}>
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Công trình:</label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <label className="form-label" style={{ margin: 0 }}>Công trình / Khối nhà:</label>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingBuilding(!isAddingBuilding)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#059669',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: 0
+                      }}
+                    >
+                      <Plus size={13} />
+                      <span>{isAddingBuilding ? 'Hủy thêm' : 'Thêm công trình'}</span>
+                    </button>
+                  </div>
                   <select 
                     className="form-select" 
                     value={selectedBuilding} 
@@ -691,90 +808,225 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
                     {buildingsList.map(b => (
                       <option key={b.id || b.name} value={b.name}>{b.name}</option>
                     ))}
+                    <option value="__NEW_BUILDING__">➕ -- Thêm công trình / tòa nhà mới --</option>
                   </select>
+
+                  {isAddingBuilding && (
+                    <div style={{ marginTop: '8px', display: 'flex', gap: '6px' }}>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="Nhập tên công trình mới..."
+                        value={newBuildingInput}
+                        onChange={(e) => setNewBuildingInput(e.target.value)}
+                        style={{ flex: 1, borderColor: '#059669', background: '#f8fafc' }}
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        style={{ padding: '0 12px', fontSize: '0.8rem', whiteSpace: 'nowrap', background: '#059669' }}
+                        onClick={handleAddNewBuilding}
+                      >
+                        Lưu
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Danh mục vật liệu:</label>
+                  <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Hạng mục công trình (*):</span>
+                    {selectedItem === '__NEW_ITEM__' && (
+                      <span style={{ color: '#059669', fontSize: '0.74rem', fontWeight: 700 }}>
+                        ✨ Thêm mới
+                      </span>
+                    )}
+                  </label>
                   <select 
                     className="form-select" 
-                    value={selectedMaterialGroup} 
-                    onChange={(e) => handleMaterialGroupChange(e.target.value)}
-                    style={{ fontWeight: 600, color: '#166534' }}
+                    value={selectedItem} 
+                    onChange={(e) => handleItemChange(e.target.value)}
                   >
-                    {MATERIAL_STANDARDS.map(m => (
-                      <option key={m.id} value={m.name}>
-                        Mục {m.stt}: {m.name} ({m.standards.length} tiêu chuẩn)
-                      </option>
+                    {buildingItems.map(it => (
+                      <option key={it.id || it.name} value={it.name}>{it.name}</option>
                     ))}
-                    <option value="__CUSTOM_MAT__">-- Nhập vật liệu khác --</option>
+                    <option value="__NEW_ITEM__">➕ -- Thêm hạng mục mới --</option>
                   </select>
+                  {selectedItem === '__NEW_ITEM__' && (
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      placeholder="Nhập tên hạng mục mới (VD: Phần hoàn thiện, Xây tô, Thi công M&E...)" 
+                      value={customItemInput} 
+                      onChange={(e) => setCustomItemInput(e.target.value)} 
+                      style={{ marginTop: '8px', borderColor: '#059669', background: '#f8fafc' }}
+                      autoFocus
+                      required 
+                    />
+                  )}
                 </div>
               </div>
 
-              {/* Chi tiết cho Bảng Mẫu số 12 */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '12px' }}>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Tên / Chủng loại vật liệu (*):</label>
-                  <input 
-                    type="text" 
-                    className="form-input" 
-                    value={materialName} 
-                    onChange={(e) => {
-                      setMaterialName(e.target.value);
-                      if (e.target.value.trim().length > 2) {
-                        updateStandards(e.target.value, 'MATERIAL');
-                      }
-                    }} 
-                    placeholder="VD: Xi măng PCB 40 Vicem Hà Tiên"
-                    required 
-                  />
+              {/* BẢNG DANH SÁCH VẬT LIỆU ĐẦU VÀO ĐƯỢC CHỌN NHIỀU */}
+              <div style={{
+                background: '#ffffff',
+                border: '1.5px solid #a7f3d0',
+                borderRadius: '10px',
+                padding: '12px 14px',
+                marginBottom: '10px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Package size={18} color="#059669" />
+                    <strong style={{ fontSize: '0.94rem', color: '#065f46' }}>
+                      Bảng Danh Sách Vật Liệu Đầu Vào ({materialsList.length} loại)
+                    </strong>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.78rem', color: '#047857', fontWeight: 600 }}>Thêm nhanh từ 24 nhóm Excel:</span>
+                    <select 
+                      className="form-select" 
+                      value={selectedMaterialGroup} 
+                      onChange={(e) => handleSelectMaterialGroupForAdd(e.target.value)}
+                      style={{ padding: '4px 8px', fontSize: '0.8rem', fontWeight: 600, color: '#065f46', background: '#f0fdf4', borderColor: '#86efac', maxWidth: '240px' }}
+                      title="Chọn nhanh từ danh mục 24 loại vật liệu tiêu chuẩn Excel"
+                    >
+                      <option value="">+ Chọn nhóm vật liệu...</option>
+                      {MATERIAL_STANDARDS.map(m => (
+                        <option key={m.id} value={m.name}>
+                          Mục {m.stt}: {m.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Xuất xứ / Nhà máy sản xuất (*):</label>
-                  <input 
-                    type="text" 
-                    className="form-input" 
-                    value={materialOrigin} 
-                    onChange={(e) => setMaterialOrigin(e.target.value)} 
-                    placeholder="VD: Kiên Lương, Kiên Giang (Vicem Hà Tiên)"
-                    required 
-                  />
-                </div>
-              </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px' }}>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Đơn vị tính (*):</label>
-                  <input 
-                    type="text" 
-                    className="form-input" 
-                    value={materialUnit} 
-                    onChange={(e) => setMaterialUnit(e.target.value)} 
-                    placeholder="Tấn, m2, m3, bao..."
-                    required 
-                  />
+                <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
+                    <thead>
+                      <tr style={{ background: '#f1f5f9', color: '#334155', borderBottom: '1.5px solid #cbd5e1' }}>
+                        <th style={{ padding: '8px 6px', textAlign: 'center', width: '34px' }}>#</th>
+                        <th style={{ padding: '8px 8px', textAlign: 'left', minWidth: '170px' }}>Tên / Chủng loại vật liệu (*)</th>
+                        <th style={{ padding: '8px 8px', textAlign: 'left', minWidth: '140px' }}>Xuất xứ / Nhà máy (*)</th>
+                        <th style={{ padding: '8px 6px', textAlign: 'center', width: '70px' }}>ĐVT (*)</th>
+                        <th style={{ padding: '8px 8px', textAlign: 'right', width: '85px' }}>K.Lượng (*)</th>
+                        <th style={{ padding: '8px 8px', textAlign: 'left', minWidth: '125px' }}>Số CCXX / CO-CQ</th>
+                        <th style={{ padding: '8px 6px', textAlign: 'center', width: '38px' }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {materialsList.map((mat, idx) => (
+                        <tr key={mat.id || idx} style={{ borderBottom: idx < materialsList.length - 1 ? '1px solid #e2e8f0' : 'none', background: idx % 2 === 0 ? '#ffffff' : '#fcfdfd' }}>
+                          <td style={{ padding: '6px', textAlign: 'center', color: '#059669', fontWeight: 700 }}>
+                            {idx + 1}
+                          </td>
+                          <td style={{ padding: '6px 8px' }}>
+                            <input 
+                              type="text" 
+                              className="form-input" 
+                              style={{ padding: '5px 8px', fontSize: '0.84rem', width: '100%' }}
+                              value={mat.name} 
+                              onChange={(e) => handleUpdateMaterial(idx, 'name', e.target.value)} 
+                              placeholder="VD: Xi măng PCB 40, Gạch 600x600..."
+                              required 
+                            />
+                          </td>
+                          <td style={{ padding: '6px 8px' }}>
+                            <input 
+                              type="text" 
+                              className="form-input" 
+                              style={{ padding: '5px 8px', fontSize: '0.84rem', width: '100%' }}
+                              value={mat.origin} 
+                              onChange={(e) => handleUpdateMaterial(idx, 'origin', e.target.value)} 
+                              placeholder="VD: Kiên Lương, Kiên Giang..."
+                              required 
+                            />
+                          </td>
+                          <td style={{ padding: '6px 6px' }}>
+                            <input 
+                              type="text" 
+                              className="form-input" 
+                              style={{ padding: '5px 6px', fontSize: '0.84rem', width: '100%', textAlign: 'center' }}
+                              value={mat.unit} 
+                              onChange={(e) => handleUpdateMaterial(idx, 'unit', e.target.value)} 
+                              placeholder="tấn, m2..."
+                              required 
+                            />
+                          </td>
+                          <td style={{ padding: '6px 8px' }}>
+                            <input 
+                              type="text" 
+                              className="form-input" 
+                              style={{ padding: '5px 8px', fontSize: '0.84rem', width: '100%', textAlign: 'right', fontWeight: 600 }}
+                              value={mat.quantity} 
+                              onChange={(e) => handleUpdateMaterial(idx, 'quantity', e.target.value)} 
+                              placeholder="50, 500..."
+                              required 
+                            />
+                          </td>
+                          <td style={{ padding: '6px 8px' }}>
+                            <input 
+                              type="text" 
+                              className="form-input" 
+                              style={{ padding: '5px 8px', fontSize: '0.84rem', width: '100%' }}
+                              value={mat.certificateNumber} 
+                              onChange={(e) => handleUpdateMaterial(idx, 'certificateNumber', e.target.value)} 
+                              placeholder="CCXX-2026/01..."
+                            />
+                          </td>
+                          <td style={{ padding: '6px', textAlign: 'center' }}>
+                            {materialsList.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveMaterial(idx)}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#ef4444',
+                                  cursor: 'pointer',
+                                  padding: '4px',
+                                  borderRadius: '4px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center'
+                                }}
+                                title="Xóa dòng vật liệu này"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Khối lượng nghiệm thu (*):</label>
-                  <input 
-                    type="text" 
-                    className="form-input" 
-                    value={materialQuantity} 
-                    onChange={(e) => setMaterialQuantity(e.target.value)} 
-                    placeholder="50, 1500, 20.000..."
-                    required 
-                  />
-                </div>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Số Chứng chỉ xuất xưởng / CO-CQ:</label>
-                  <input 
-                    type="text" 
-                    className="form-input" 
-                    value={certificateNumber} 
-                    onChange={(e) => setCertificateNumber(e.target.value)} 
-                    placeholder="CCXX-2026/01..."
-                  />
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={handleAddMaterial}
+                    style={{
+                      background: '#ffffff',
+                      border: '1.5px dashed #059669',
+                      color: '#065f46',
+                      borderRadius: '8px',
+                      padding: '6px 14px',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <Plus size={15} />
+                    <span>+ Thêm Dòng Vật Liệu Khác</span>
+                  </button>
+                  <span style={{ fontSize: '0.76rem', color: '#64748b', fontStyle: 'italic' }}>
+                    ✓ Bạn có thể thêm nhiều vật liệu cùng đợt nghiệm thu (sẽ hiển thị dạng bảng trong biên bản)
+                  </span>
                 </div>
               </div>
             </div>

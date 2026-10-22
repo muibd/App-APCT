@@ -160,11 +160,50 @@ export default function InvitationDetailModal({
               <div><strong>Địa điểm xây dựng:</strong> {request.location}</div>
               <div><strong>Đơn vị yêu cầu nghiệm thu:</strong> {request.contractorCompany}</div>
               
-              <div style={{ background: '#f1f5f9', padding: '12px', borderRadius: '8px', margin: '8px 0', borderLeft: '4px solid #2563eb' }}>
-                <strong style={{ color: '#1e40af' }}>Công tác xây dựng yêu cầu nghiệm thu:</strong>
-                <div style={{ fontSize: '1rem', fontWeight: '700', color: '#0f172a', marginTop: '4px' }}>
-                  {request.taskContent}
-                </div>
+              <div style={{ 
+                background: request.inspectionType === 'MATERIAL' ? '#f0fdf4' : '#f1f5f9', 
+                padding: '12px', 
+                borderRadius: '8px', 
+                margin: '8px 0', 
+                borderLeft: request.inspectionType === 'MATERIAL' ? '4px solid #059669' : '4px solid #2563eb' 
+              }}>
+                <strong style={{ color: request.inspectionType === 'MATERIAL' ? '#065f46' : '#1e40af' }}>
+                  {request.inspectionType === 'MATERIAL' ? 'Vật liệu đầu vào yêu cầu nghiệm thu (Mẫu số 12):' : 'Công tác xây dựng yêu cầu nghiệm thu:'}
+                </strong>
+                
+                {request.materials && request.materials.length > 0 ? (
+                  <div style={{ marginTop: '8px', overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', background: '#ffffff', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
+                      <thead>
+                        <tr style={{ background: '#ecfdf5', color: '#065f46', borderBottom: '1px solid #a7f3d0' }}>
+                          <th style={{ padding: '6px 8px', textAlign: 'center', width: '32px' }}>#</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'left' }}>Tên / Chủng loại vật liệu</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'left' }}>Xuất xứ</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'center', width: '55px' }}>ĐVT</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'right', width: '75px' }}>K.Lượng</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'left' }}>Số CCXX</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {request.materials.map((mat, idx) => (
+                          <tr key={idx} style={{ borderBottom: idx < request.materials.length - 1 ? '1px solid #f0fdf4' : 'none' }}>
+                            <td style={{ padding: '6px 8px', textAlign: 'center', color: '#059669', fontWeight: 600 }}>{idx + 1}</td>
+                            <td style={{ padding: '6px 8px', fontWeight: 600, color: '#0f172a' }}>{mat.name}</td>
+                            <td style={{ padding: '6px 8px', color: '#334155' }}>{mat.origin}</td>
+                            <td style={{ padding: '6px 8px', textAlign: 'center', color: '#475569' }}>{mat.unit}</td>
+                            <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, color: '#059669' }}>{mat.quantity}</td>
+                            <td style={{ padding: '6px 8px', color: '#64748b', fontSize: '0.78rem' }}>{mat.certificateNumber || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '1rem', fontWeight: '700', color: '#0f172a', marginTop: '4px' }}>
+                    {request.taskContent}
+                  </div>
+                )}
+
                 <p style={{ fontSize: '0.83rem', color: '#475569', margin: '6px 0 0 0', fontStyle: 'italic' }}>
                   Sau khi kiểm tra chất lượng, đối chiếu với bản vẽ thiết kế và các tiêu chuẩn kỹ thuật được áp dụng, chúng tôi đã nghiệm thu nội bộ. Đơn vị thi công kính mời Chủ đầu tư và Tư vấn giám sát tiến hành nghiệm thu.
                 </p>
