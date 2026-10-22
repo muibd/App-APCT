@@ -29,6 +29,7 @@ const NOTIFICATIONS_COLLECTION = 'system_notifications';
 const USERS_COLLECTION = 'system_users';
 const BUILDINGS_COLLECTION = 'system_buildings';
 const DAILY_LOGS_COLLECTION = 'construction_daily_logs';
+const COMPLETION_REPORTS_COLLECTION = 'completion_reports';
 
 // ============================================================================
 // 1. PHIẾU YÊU CẦU NGHIỆM THU (INSPECTION REQUESTS)
@@ -466,7 +467,7 @@ export const saveBuilding = async (buildingData) => {
 export const clearAllCloudInspectionData = async () => {
   if (!isFirebaseConfigured || !db) return true;
   try {
-    const collectionsToClear = [REQUESTS_COLLECTION, REPORTS_COLLECTION, NOTIFICATIONS_COLLECTION, DAILY_LOGS_COLLECTION];
+    const collectionsToClear = [REQUESTS_COLLECTION, REPORTS_COLLECTION, NOTIFICATIONS_COLLECTION, DAILY_LOGS_COLLECTION, COMPLETION_REPORTS_COLLECTION];
     for (const colName of collectionsToClear) {
       const colRef = collection(db, colName);
       const snapshot = await getDocs(colRef);
@@ -583,5 +584,111 @@ export const deleteDailyLog = async (logId) => {
     throw error;
   }
 };
+
+// ============================================================================
+// 8. BIÊN BẢN NGHIỆM THU HOÀN THÀNH (COMPLETION INSPECTION REPORTS)
+// ============================================================================
+
+/**
+ * Lắng nghe thay đổi Real-Time của các Biên bản Nghiệm Thu Hoàn Thành
+ */
+export const subscribeToCompletionReports = (callback) => {
+  if (!isFirebaseConfigured || !db) {
+    console.log('[Firestore] Offline Mode: Using local Completion Reports');
+    callback([]);
+    return () => {};
+  }
+
+  try {
+    const colRef = collection(db, COMPLETION_REPORTS_COLLECTION);
+    const q = query(colRef);
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items = [];
+      snapshot.forEach((docSnap) => {
+        items.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      items.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
+      console.log(`[Firestore Real-Time] Cập nhật ${items.length} biên bản nghiệm thu hoàn thành từ Cloud`);
+      callback(items);
+    }, (error) => {
+      console.warn('[Firestore Listen Completion Reports Error]:', error);
+      callback([]);
+    });
+
+    return unsubscribe;
+  } catch (error) {
+    console.error('[Firestore Setup Completion Reports Listener Error]:', error);
+    callback([]);
+    return () => {};
+  }
+};
+
+/**
+ * Lưu mới một Biên bản Nghiệm Thu Hoàn Thành lên Firestore
+ */
+export const saveCompletionReport = async (reportData) => {
+  const cleanData = sanitizeData({
+    ...reportData,
+    id: reportData.id || `comp_${Date.now()}`,
+    createdAt: reportData.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  });
+
+  if (!isFirebaseConfigured || !db) {
+    return cleanData;
+  }
+
+  try {
+    const docRef = doc(db, COMPLETION_REPORTS_COLLECTION, cleanData.id);
+    await setDoc(docRef, cleanData);
+    console.log('[Firestore Cloud] Đã lưu biên bản nghiệm thu hoàn thành:', cleanData.id);
+    return cleanData;
+  } catch (error) {
+    console.error('[Firestore Save Completion Report Error]', error);
+    throw error;
+  }
+};
+
+/**
+ * Cập nhật một Biên bản Nghiệm Thu Hoàn Thành
+ */
+export const updateCompletionReport = async (reportId, updateData) => {
+  const cleanData = sanitizeData({
+    ...updateData,
+    updatedAt: new Date().toISOString()
+  });
+
+  if (!isFirebaseConfigured || !db) {
+    return cleanData;
+  }
+
+  try {
+    const docRef = doc(db, COMPLETION_REPORTS_COLLECTION, reportId);
+    await updateDoc(docRef, cleanData);
+    console.log('[Firestore Cloud] Đã cập nhật biên bản nghiệm thu hoàn thành:', reportId);
+    return cleanData;
+  } catch (error) {
+    console.error('[Firestore Update Completion Report Error]', error);
+    throw error;
+  }
+};
+
+/**
+ * Xóa một Biên bản Nghiệm Thu Hoàn Thành
+ */
+export const deleteCompletionReport = async (reportId) => {
+  if (!isFirebaseConfigured || !db) return true;
+  try {
+    const docRef = doc(db, COMPLETION_REPORTS_COLLECTION, reportId);
+    await deleteDoc(docRef);
+    console.log('[Firestore Cloud] Đã xóa biên bản nghiệm thu hoàn thành:', reportId);
+    return true;
+  } catch (error) {
+    console.error('[Firestore Delete Completion Report Error]', error);
+    throw error;
+  }
+};
+
 
 

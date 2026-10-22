@@ -20,6 +20,9 @@ import ReportsListView from './components/ReportsListView';
 import DailyLogsListView from './components/DailyLogsListView';
 import CreateDailyLogModal from './components/CreateDailyLogModal';
 import DailyLogDetailModal from './components/DailyLogDetailModal';
+import CompletionReportsListView from './components/CompletionReportsListView';
+import CreateCompletionReportModal from './components/CreateCompletionReportModal';
+import CompletionReportDetailModal from './components/CompletionReportDetailModal';
 import MobileProfileSheet from './components/MobileProfileSheet';
 import ProfileView from './components/ProfileView';
 import PushGuideModal from './components/PushGuideModal';
@@ -31,7 +34,8 @@ import {
   INITIAL_REPORTS,
   STANDARD_CRITERIA_LIST,
   INITIAL_NOTIFICATIONS,
-  INITIAL_DAILY_LOGS
+  INITIAL_DAILY_LOGS,
+  INITIAL_COMPLETION_REPORTS
 } from './data/mockData';
 import { getSuggestedStandards } from './data/standardsRules';
 
@@ -56,7 +60,11 @@ import {
   subscribeToDailyLogs,
   saveDailyLog,
   updateDailyLog,
-  deleteDailyLog
+  deleteDailyLog,
+  subscribeToCompletionReports,
+  saveCompletionReport,
+  updateCompletionReport,
+  deleteCompletionReport
 } from './services/firestoreService';
 import { 
   requestPushPermission, 
@@ -82,6 +90,7 @@ const NOTIF_STORAGE_KEY = 'apct_notifications_list';
 const REQUESTS_STORAGE_KEY = 'apct_requests_list';
 const REPORTS_STORAGE_KEY = 'apct_reports_list';
 const DAILY_LOGS_STORAGE_KEY = 'apct_daily_logs_v1';
+const COMPLETION_REPORTS_STORAGE_KEY = 'apct_completion_reports_v1';
 const DATA_VERSION_KEY = 'apct_data_version';
 const CURRENT_DATA_VERSION = '20261020_excel_users_v2';
 
@@ -168,6 +177,19 @@ export default function App() {
       console.warn('Lỗi đọc dailyLogs từ localStorage:', e);
     }
     return INITIAL_DAILY_LOGS || [];
+  });
+
+  const [completionReports, setCompletionReports] = useState(() => {
+    try {
+      const saved = localStorage.getItem(COMPLETION_REPORTS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Lỗi đọc completionReports từ localStorage:', e);
+    }
+    return INITIAL_COMPLETION_REPORTS || [];
   });
 
   const [standards, setStandards] = useState(STANDARD_CRITERIA_LIST);
@@ -393,6 +415,12 @@ export default function App() {
     }
     if (notif.targetRole && notif.targetRole !== role) {
       return false;
+    }
+
+    // Thông báo Nghiệm thu hoàn thành
+    if (notif.targetCompletionReportId) {
+      if (notif.targetRoles && notif.targetRoles.includes(role)) return true;
+      return true;
     }
 
     // ĐVTC thường: chỉ nhận phiếu do chính mình tạo hoặc được chỉ định
@@ -651,6 +679,31 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // 4c. Đồng bộ Real-Time Biên bản nghiệm thu hoàn thành từ Firestore
+  useEffect(() => {
+    const unsubscribe = subscribeToCompletionReports((cloudReports) => {
+      setCompletionReports(prev => {
+        if (!cloudReports || cloudReports.length === 0) {
+          return prev && prev.length > 0 ? prev : (INITIAL_COMPLETION_REPORTS || []);
+        }
+        const map = new Map();
+        cloudReports.forEach(item => {
+          map.set(item.id, item);
+        });
+        (prev || []).forEach(item => {
+          if (!map.has(item.id)) {
+            map.set(item.id, item);
+          }
+        });
+        const merged = Array.from(map.values());
+        merged.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
+        safeSaveLocalStorage(COMPLETION_REPORTS_STORAGE_KEY, merged);
+        return merged;
+      });
+    });
+    return () => unsubscribe();
+  }, []);
+
   // 5. Khởi tạo OneSignal Web Push SDK
   useEffect(() => {
     initOneSignal((optedIn) => {
@@ -719,6 +772,9 @@ export default function App() {
   const [isCreateDailyLogModalOpen, setIsCreateDailyLogModalOpen] = useState(false);
   const [selectedDailyLog, setSelectedDailyLog] = useState(null);
   const [isDailyLogDetailModalOpen, setIsDailyLogDetailModalOpen] = useState(false);
+  const [isCreateCompletionModalOpen, setIsCreateCompletionModalOpen] = useState(false);
+  const [selectedCompletionReport, setSelectedCompletionReport] = useState(null);
+  const [isCompletionDetailModalOpen, setIsCompletionDetailModalOpen] = useState(false);
   const [reassignModalState, setReassignModalState] = useState({
     isOpen: false,
     request: null,
@@ -744,7 +800,10 @@ export default function App() {
     pushGuideModal.isOpen ||
     reassignModalState.isOpen ||
     isCreateDailyLogModalOpen ||
-    isDailyLogDetailModalOpen
+    isDailyLogDetailModalOpen ||
+    isCreateCompletionModalOpen ||
+    isCompletionDetailModalOpen ||
+    Boolean(selectedCompletionReport)
   );
 
   useEffect(() => {
@@ -1079,7 +1138,9 @@ export default function App() {
           setReports([]);
           setNotifications([]);
           setDailyLogs([]);
+          setCompletionReports([]);
           try { localStorage.removeItem(DAILY_LOGS_STORAGE_KEY); } catch (e) {}
+          try { localStorage.removeItem(COMPLETION_REPORTS_STORAGE_KEY); } catch (e) {}
           showAlert({
             type: 'success',
             title: 'Đã Xóa Thành Công!',
@@ -1217,6 +1278,157 @@ export default function App() {
   const handleOpenDailyLog = (log) => {
     setSelectedDailyLog(log);
     setIsDailyLogDetailModalOpen(true);
+  };
+
+  // ============================================================================
+  // HANDLERS CHO BIÊN BẢN NGHIỆM THU HOÀN THÀNH (COMPLETION INSPECTION REPORTS)
+  // ============================================================================
+  const handleCreateCompletionReport = async (newReport) => {
+    try {
+      const saved = await saveCompletionReport(newReport);
+      const updatedList = [saved, ...(completionReports || []).filter(r => r.id !== saved.id)];
+      setCompletionReports(updatedList);
+      safeSaveLocalStorage(COMPLETION_REPORTS_STORAGE_KEY, updatedList);
+      setIsCreateCompletionModalOpen(false);
+
+      // Tự động gửi thông báo đến TVGS Trưởng và CĐT Trưởng
+      const notif = {
+        id: `notif_${Date.now()}`,
+        title: `🏆 Biên Bản Nghiệm Thu Hoàn Thành: ${saved.reportNumber || saved.objectName}`,
+        body: `ĐVTC ${saved.contractorName || currentUser?.fullName} đã phát hành Biên bản nghiệm thu hoàn thành. Đã tự động gửi tới TVGS Trưởng (${saved.leadSupervisor?.name || 'Đinh Xuân Thám'}) và CĐT Trưởng (${saved.leadInvestor?.name || 'Ngô Quý Linh'}) để kiểm tra và ký duyệt.`,
+        type: 'COMPLETION_REPORT_CREATED',
+        targetCompletionReportId: saved.id,
+        targetRoles: ['LEAD_SUPERVISOR', 'LEAD_INVESTOR', 'SUPERVISOR', 'INVESTOR', 'ADMIN', 'CONTRACTOR'],
+        createdAt: new Date().toISOString(),
+        isRead: false
+      };
+      saveSystemNotification(notif).catch(console.warn);
+
+      showAlert({
+        type: 'success',
+        title: 'Lập Biên Bản Hoàn Thành Thành Công!',
+        message: `Đã phát hành Biên bản nghiệm thu hoàn thành số ${saved.reportNumber || ''}.\nHệ thống đã tự động gửi đến TVGS Trưởng và CĐT Trưởng để ký duyệt pháp lý theo quy định.`,
+        confirmText: 'Xem Văn Bản',
+        onConfirm: () => {
+          setSelectedCompletionReport(saved);
+          setIsCompletionDetailModalOpen(true);
+        }
+      });
+    } catch (err) {
+      console.error('Lỗi lưu biên bản hoàn thành:', err);
+      showAlert({
+        type: 'danger',
+        title: 'Lỗi Lưu Biên Bản',
+        message: 'Có lỗi xảy ra: ' + (err.message || err),
+        confirmText: 'Đóng'
+      });
+    }
+  };
+
+  const handleSignCompletionReport = async (reportId, role) => {
+    try {
+      const rep = (completionReports || []).find(r => r.id === reportId) || selectedCompletionReport;
+      if (!rep) return;
+
+      const updatedSignatures = {
+        ...(rep.signatures || {}),
+        [role]: {
+          ...(rep.signatures?.[role] || {}),
+          signed: true,
+          signedAt: new Date().toISOString(),
+          signerName: currentUser?.fullName || rep.signatures?.[role]?.signerName || 'Cán bộ ký duyệt'
+        }
+      };
+
+      const isSupervisorSigned = Boolean(role === 'supervisor' || rep.signatures?.supervisor?.signed);
+      const isInvestorSigned = Boolean(role === 'investor' || rep.signatures?.investor?.signed);
+      const isDesignerSigned = rep.completionType === 'PROJECT_USE' 
+        ? Boolean(role === 'designer' || rep.signatures?.designer?.signed)
+        : true;
+      const isFullySigned = isSupervisorSigned && isInvestorSigned && isDesignerSigned;
+
+      const updatedReport = {
+        ...rep,
+        signatures: updatedSignatures,
+        status: isFullySigned ? 'COMPLETED' : 'IN_PROGRESS',
+        updatedAt: new Date().toISOString()
+      };
+
+      await updateCompletionReport(reportId, updatedReport);
+
+      const updatedList = (completionReports || []).map(r => r.id === reportId ? updatedReport : r);
+      setCompletionReports(updatedList);
+      safeSaveLocalStorage(COMPLETION_REPORTS_STORAGE_KEY, updatedList);
+      setSelectedCompletionReport(updatedReport);
+
+      const roleTitle = role === 'supervisor' ? 'Tư Vấn Giám Sát' : role === 'investor' ? 'Chủ Đầu Tư' : 'Tư Vấn Thiết Kế';
+      const notif = {
+        id: `notif_${Date.now()}`,
+        title: `✍️ ${roleTitle} Đã Ký Biên Bản Hoàn Thành: ${rep.reportNumber || rep.objectName}`,
+        body: `${currentUser?.fullName || roleTitle} đã hoàn tất ký số trên biên bản nghiệm thu hoàn thành. ${isFullySigned ? 'Biên bản đã có đầy đủ chữ ký các bên!' : 'Đang chờ bên còn lại ký duyệt.'}`,
+        type: 'COMPLETION_REPORT_SIGNED',
+        targetCompletionReportId: rep.id,
+        targetRoles: ['CONTRACTOR', 'SUPERVISOR', 'LEAD_SUPERVISOR', 'INVESTOR', 'LEAD_INVESTOR', 'ADMIN'],
+        createdAt: new Date().toISOString(),
+        isRead: false
+      };
+      saveSystemNotification(notif).catch(console.warn);
+
+      showAlert({
+        type: 'success',
+        title: 'Ký Phê Duyệt Thành Công!',
+        message: `${roleTitle} đã ký số xác nhận vào Biên bản nghiệm thu hoàn thành số ${rep.reportNumber || ''}.\n${isFullySigned ? 'Tất cả các bên đã ký xong, biên bản chính thức có hiệu lực.' : 'Văn bản đang chờ bên còn lại hoàn tất chữ ký.'}`,
+        confirmText: 'Đóng'
+      });
+    } catch (err) {
+      console.error('Lỗi ký biên bản hoàn thành:', err);
+      showAlert({
+        type: 'danger',
+        title: 'Lỗi Ký Phê Duyệt',
+        message: 'Có lỗi xảy ra: ' + (err.message || err),
+        confirmText: 'Đóng'
+      });
+    }
+  };
+
+  const handleDeleteCompletionReport = (reportId) => {
+    showConfirm({
+      type: 'danger',
+      title: 'XÁC NHẬN XÓA BIÊN BẢN HOÀN THÀNH',
+      message: 'Bạn có chắc chắn muốn xóa Biên bản nghiệm thu hoàn thành này? Dữ liệu đã xóa không thể phục hồi.',
+      confirmText: 'Xóa Biên Bản',
+      cancelText: 'Hủy Bỏ',
+      onConfirm: async () => {
+        try {
+          await deleteCompletionReport(reportId);
+          const updatedList = (completionReports || []).filter(r => r.id !== reportId);
+          setCompletionReports(updatedList);
+          safeSaveLocalStorage(COMPLETION_REPORTS_STORAGE_KEY, updatedList);
+          if (selectedCompletionReport?.id === reportId) {
+            setIsCompletionDetailModalOpen(false);
+            setSelectedCompletionReport(null);
+          }
+          showAlert({
+            type: 'success',
+            title: 'Đã Xóa Thành Công',
+            message: 'Biên bản nghiệm thu hoàn thành đã được xóa khỏi hệ thống.',
+            confirmText: 'Đóng'
+          });
+        } catch (err) {
+          showAlert({
+            type: 'danger',
+            title: 'Lỗi Xóa Biên Bản',
+            message: 'Không thể xóa: ' + (err.message || err),
+            confirmText: 'Đóng'
+          });
+        }
+      }
+    });
+  };
+
+  const handleOpenCompletionReport = (report) => {
+    setSelectedCompletionReport(report);
+    setIsCompletionDetailModalOpen(true);
   };
 
   // 1. Khi ĐVTC TẠO PHIẾU MỚI: Tự động khởi tạo cả Phiếu yêu cầu & Biên bản nghiệm thu
@@ -2854,6 +3066,14 @@ export default function App() {
               return;
             }
           }
+          if (notif.targetCompletionReportId) {
+            const cr = completionReports.find(l => l.id === notif.targetCompletionReportId);
+            if (cr) {
+              setSelectedCompletionReport(cr);
+              setIsCompletionDetailModalOpen(true);
+              return;
+            }
+          }
           if (notif.targetRequestId) {
             const target = requests.find(r => r.id === notif.targetRequestId);
             if (target) setSelectedRequest(target);
@@ -2891,6 +3111,14 @@ export default function App() {
             if (dl) {
               setSelectedDailyLog(dl);
               setIsDailyLogDetailModalOpen(true);
+              return;
+            }
+          }
+          if (notif.targetCompletionReportId) {
+            const cr = completionReports.find(l => l.id === notif.targetCompletionReportId);
+            if (cr) {
+              setSelectedCompletionReport(cr);
+              setIsCompletionDetailModalOpen(true);
               return;
             }
           }
@@ -2945,6 +3173,13 @@ export default function App() {
                   <span>Nhật Ký Thi Công ({dailyLogs.length})</span>
                 </li>
                 <li 
+                  className={`sidebar-nav-item ${activeTab === 'COMPLETION' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('COMPLETION')}
+                >
+                  <Award size={18} />
+                  <span>Nghiệm Thu Hoàn Thành ({completionReports.length})</span>
+                </li>
+                <li 
                   className={`sidebar-nav-item ${activeTab === 'PROFILE' ? 'active' : ''}`}
                   onClick={() => setActiveTab('PROFILE')}
                 >
@@ -2980,6 +3215,14 @@ export default function App() {
                 >
                   <NotebookPen size={18} />
                   <span>Nhật Ký Thi Công ({dailyLogs.length})</span>
+                </li>
+
+                <li 
+                  className={`sidebar-nav-item ${activeTab === 'COMPLETION' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('COMPLETION')}
+                >
+                  <Award size={18} />
+                  <span>Nghiệm Thu Hoàn Thành ({completionReports.length})</span>
                 </li>
 
                 <li 
@@ -3037,6 +3280,16 @@ export default function App() {
               onOpenLog={handleOpenDailyLog}
               onDeleteDailyLog={handleDeleteDailyLog}
               onDeleteLog={handleDeleteDailyLog}
+            />
+          ) : activeTab === 'COMPLETION' ? (
+            <CompletionReportsListView 
+              reports={completionReports}
+              completionReports={completionReports}
+              currentUser={currentUser}
+              currentRole={currentRole}
+              onCreateReport={() => setIsCreateCompletionModalOpen(true)}
+              onOpenReport={handleOpenCompletionReport}
+              onDeleteReport={handleDeleteCompletionReport}
             />
           ) : currentRole === 'ADMIN' && (activeTab === 'ADMIN_USERS' || activeTab === 'ADMIN_STANDARDS') ? (
             <div>
@@ -3124,6 +3377,17 @@ export default function App() {
                         <NotebookPen size={16} />
                         <span>Nhật Ký</span>
                       </button>
+                      <button 
+                        className="btn-secondary mobile-create-btn" 
+                        onClick={() => {
+                          setActiveTab('COMPLETION');
+                          setIsCreateCompletionModalOpen(true);
+                        }}
+                        style={{ background: '#d97706', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        <Award size={16} />
+                        <span>NT Hoàn Thành</span>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -3154,6 +3418,17 @@ export default function App() {
                       >
                         <NotebookPen size={18} />
                         <span>Tạo Nhật Ký Thi Công</span>
+                      </button>
+                      <button 
+                        className="btn-secondary" 
+                        onClick={() => {
+                          setActiveTab('COMPLETION');
+                          setIsCreateCompletionModalOpen(true);
+                        }}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#d97706', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: '10px', fontWeight: '600', cursor: 'pointer', boxShadow: '0 2px 4px rgba(217,119,6,0.2)' }}
+                      >
+                        <Award size={18} />
+                        <span>Nghiệm Thu Hoàn Thành</span>
                       </button>
                     </div>
                   )}
@@ -3594,8 +3869,16 @@ export default function App() {
           className={`bottom-nav-item ${activeTab === 'REPORTS' ? 'active' : ''}`}
           onClick={() => setActiveTab('REPORTS')}
         >
-          <Award size={20} />
+          <FileText size={20} />
           <span>Biên Bản</span>
+        </button>
+
+        <button 
+          className={`bottom-nav-item ${activeTab === 'COMPLETION' ? 'active' : ''}`}
+          onClick={() => setActiveTab('COMPLETION')}
+        >
+          <Award size={20} />
+          <span>Hoàn Thành</span>
         </button>
 
         <button 
@@ -3740,6 +4023,30 @@ export default function App() {
         currentRole={currentRole}
         onConfirmLog={handleConfirmDailyLog}
         onConfirmDailyLog={handleConfirmDailyLog}
+        showAlert={showAlert}
+      />
+
+      {/* MODAL TẠO BIÊN BẢN NGHIỆM THU HOÀN THÀNH MỚI */}
+      <CreateCompletionReportModal 
+        isOpen={isCreateCompletionModalOpen}
+        onClose={() => setIsCreateCompletionModalOpen(false)}
+        currentUser={currentUser}
+        users={users}
+        onSubmitCompletionReport={handleCreateCompletionReport}
+        showAlert={showAlert}
+      />
+
+      {/* MODAL XEM CHI TIẾT & KÝ DUYỆT / IN BIÊN BẢN HOÀN THÀNH */}
+      <CompletionReportDetailModal 
+        isOpen={isCompletionDetailModalOpen}
+        onClose={() => {
+          setIsCompletionDetailModalOpen(false);
+          setSelectedCompletionReport(null);
+        }}
+        report={selectedCompletionReport}
+        currentUser={currentUser}
+        currentRole={currentRole}
+        onSignReport={handleSignCompletionReport}
         showAlert={showAlert}
       />
 
