@@ -3,7 +3,8 @@ import {
   Building2, Plus, Search, Filter, CheckCircle2, Clock, XCircle, 
   AlertTriangle, FileText, ChevronRight, Layers, MapPin, Calendar, 
   Send, Users, ShieldAlert, Award, HardHat, Eye, Briefcase, ShieldCheck,
-  BellRing, LogOut, ArrowRight, UserCheck, BookOpen, Settings, Wrench, RotateCcw
+  BellRing, LogOut, ArrowRight, UserCheck, BookOpen, Settings, Wrench, RotateCcw,
+  ArrowLeftRight
 } from 'lucide-react';
 
 import Navbar from './components/Navbar';
@@ -12,6 +13,7 @@ import PushNotificationToast from './components/PushNotificationToast';
 import CreateRequestModal from './components/CreateRequestModal';
 import InvitationDetailModal from './components/InvitationDetailModal';
 import InspectionReportModal from './components/InspectionReportModal';
+import ReassignRecipientModal from './components/ReassignRecipientModal';
 import AdminPortalModal from './components/AdminPortalModal';
 import UserManagementView from './components/UserManagementView';
 import ReportsListView from './components/ReportsListView';
@@ -269,6 +271,9 @@ export default function App() {
 
     // Nếu thông báo gửi đích danh recipientUid
     if (notif.recipientUid && notif.recipientUid === curUid) return true;
+
+    // Nếu thông báo có danh sách nhận trực tiếp (người tạo, cán bộ mới/cũ trong đợt điều chuyển)
+    if (Array.isArray(notif.extraRecipientUids) && notif.extraRecipientUids.includes(curUid)) return true;
 
     // --- KIỂM TRA CHO CÁC TRƯỞNG ---
 
@@ -664,6 +669,11 @@ export default function App() {
   const [initialOpenRectify, setInitialOpenRectify] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isMobileProfileOpen, setIsMobileProfileOpen] = useState(false);
+  const [reassignModalState, setReassignModalState] = useState({
+    isOpen: false,
+    request: null,
+    reassignType: 'SUPERVISOR' // 'SUPERVISOR' | 'INVESTOR'
+  });
 
   // Push Notification Toast state
   const [activePushToast, setActivePushToast] = useState(null);
@@ -681,7 +691,8 @@ export default function App() {
     selectedReport || 
     isAdminModalOpen || 
     isMobileProfileOpen || 
-    pushGuideModal.isOpen
+    pushGuideModal.isOpen ||
+    reassignModalState.isOpen
   );
 
   useEffect(() => {
@@ -1434,6 +1445,236 @@ export default function App() {
     }
 
     setSelectedReport(newReport);
+  };
+
+  // Mở modal điều chuyển cán bộ TVGS hoặc CĐT cho phiếu
+  const handleOpenReassignModal = (request, reassignType) => {
+    setReassignModalState({
+      isOpen: true,
+      request,
+      reassignType
+    });
+  };
+
+  // Xác nhận đổi người TVGS / CĐT khác và thực thi quy trình điều chuyển toàn diện:
+  // 1. Cập nhật assignedRecipients trên phiếu
+  // 2. Chuyển quyền xác nhận / ký số trên biên bản sang người mới
+  // 3. Gửi thông báo đến người tạo, chủ đầu tư, tư vấn giám sát được đổi
+  const handleConfirmReassign = async (requestId, reassignType, newOfficer, reasonNote) => {
+    const targetReq = requests.find(r => r.id === requestId);
+    if (!targetReq || !newOfficer) return;
+
+    const isSupervisor = reassignType === 'SUPERVISOR';
+    const roleLabel = isSupervisor ? 'Tư Vấn Giám Sát (TVGS)' : 'Đại Diện Chủ Đầu Tư (CĐT)';
+
+    // Tìm cán bộ cũ đang phụ trách vai trò này
+    const currentRecipients = Array.isArray(targetReq.assignedRecipients) ? [...targetReq.assignedRecipients] : [];
+    const oldOfficer = currentRecipients.find(r => 
+      isSupervisor 
+        ? (r.role === 'SUPERVISOR' || r.role === 'LEAD_SUPERVISOR')
+        : (r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR')
+    );
+
+    const newRecipientObj = {
+      uid: newOfficer.uid,
+      fullName: newOfficer.fullName,
+      email: newOfficer.email || '',
+      phone: newOfficer.phone || '',
+      role: newOfficer.role,
+      position: newOfficer.position || (isSupervisor ? 'Cán bộ TVGS' : 'Cán bộ ban QLDA'),
+      company: newOfficer.company || (isSupervisor ? 'Công ty CP TVXD và TM GELICON' : 'Công ty TNHH An Phú Cần Thơ'),
+      leaderId: newOfficer.leaderId || null
+    };
+
+    let updatedRecipients;
+    if (oldOfficer) {
+      updatedRecipients = currentRecipients.map(r => {
+        if (isSupervisor && (r.role === 'SUPERVISOR' || r.role === 'LEAD_SUPERVISOR')) {
+          return newRecipientObj;
+        }
+        if (!isSupervisor && (r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR')) {
+          return newRecipientObj;
+        }
+        return r;
+      });
+    } else {
+      updatedRecipients = [...currentRecipients, newRecipientObj];
+    }
+
+    const reassignRecord = {
+      reassignedAt: new Date().toISOString(),
+      reassignedByUid: currentUser?.uid,
+      reassignedByName: currentUser?.fullName || 'Trưởng bộ phận',
+      reassignedByRole: currentUser?.role,
+      type: reassignType,
+      oldOfficer: oldOfficer ? { uid: oldOfficer.uid, fullName: oldOfficer.fullName, role: oldOfficer.role } : null,
+      newOfficer: { uid: newOfficer.uid, fullName: newOfficer.fullName, role: newOfficer.role },
+      reason: reasonNote || ''
+    };
+
+    const updatedReq = {
+      ...targetReq,
+      assignedRecipients: updatedRecipients,
+      reassignHistory: [...(targetReq.reassignHistory || []), reassignRecord],
+      updatedAt: new Date().toISOString()
+    };
+
+    // 1. Cập nhật state requests, LocalStorage, IndexedDB & Firestore
+    setRequests(prev => {
+      const next = prev.map(r => r.id === updatedReq.id ? updatedReq : r);
+      safeSaveLocalStorage(REQUESTS_STORAGE_KEY, next);
+      try {
+        if (typeof saveToIndexedDB === 'function') saveToIndexedDB('requests', next);
+      } catch (err) {
+        console.warn('Lỗi saveToIndexedDB requests:', err);
+      }
+      return next;
+    });
+
+    if (selectedRequest && selectedRequest.id === updatedReq.id) {
+      setSelectedRequest(updatedReq);
+    }
+
+    try {
+      await saveInspectionRequest(updatedReq);
+    } catch (e) {
+      console.warn('Lỗi saveInspectionRequest:', e);
+    }
+
+    // 2. Cập nhật Biên bản nghiệm thu tương ứng (nếu đã tạo)
+    const targetReport = reports.find(r => 
+      (updatedReq.reportId && r.id === updatedReq.reportId) ||
+      (r.requestId && r.requestId === updatedReq.id) ||
+      (r.reportNumber && updatedReq.requestNumber && (
+        r.reportNumber.replace('BBNT-APG', 'PYC').replace('BBNT-VL', 'PYC') === updatedReq.requestNumber ||
+        r.reportNumber.replace('BBNT', 'PYC') === updatedReq.requestNumber
+      ))
+    );
+
+    let updatedReport = null;
+    if (targetReport) {
+      const updatedAttendees = { ...(targetReport.attendees || {}) };
+
+      if (isSupervisor) {
+        updatedAttendees.supervisor = {
+          ...(updatedAttendees.supervisor || {}),
+          uid: newOfficer.uid,
+          company: newOfficer.company || updatedAttendees.supervisor?.company || 'Công ty CP TVXD và TM GELICON',
+          person: newOfficer.fullName,
+          position: newOfficer.position || 'Cán bộ TVGS',
+          email: newOfficer.email || '',
+          signed: false, // Reset quyền ký số sang cho cán bộ mới
+          signature: null,
+          signDate: null
+        };
+      } else {
+        updatedAttendees.investor = {
+          ...(updatedAttendees.investor || {}),
+          uid: newOfficer.uid,
+          company: newOfficer.company || updatedAttendees.investor?.company || 'Công ty TNHH An Phú Cần Thơ',
+          person: newOfficer.fullName,
+          position: newOfficer.position || 'Cán bộ ban QLDA',
+          email: newOfficer.email || '',
+          signed: false, // Reset quyền ký số sang cho cán bộ mới
+          signature: null,
+          signDate: null
+        };
+      }
+
+      let repStatus = targetReport.status;
+      if (repStatus === 'COMPLETED') {
+        repStatus = isSupervisor ? 'PENDING_APPROVAL' : 'WAITING_INVESTOR';
+      }
+
+      updatedReport = {
+        ...targetReport,
+        assignedRecipients: updatedRecipients,
+        attendees: updatedAttendees,
+        status: repStatus,
+        updatedAt: new Date().toISOString()
+      };
+
+      setReports(prev => {
+        const matchFn = r => r.id === updatedReport.id || (updatedReport.reportNumber && r.reportNumber === updatedReport.reportNumber);
+        const filtered = prev.filter(r => !matchFn(r));
+        const next = [updatedReport, ...filtered];
+        safeSaveLocalStorage(REPORTS_STORAGE_KEY, next);
+        try {
+          if (typeof saveToIndexedDB === 'function') saveToIndexedDB('reports', next);
+        } catch (err) {
+          console.warn('Lỗi saveToIndexedDB reports:', err);
+        }
+        return next;
+      });
+
+      if (selectedReport && (selectedReport.id === updatedReport.id || selectedReport.requestId === updatedReq.id)) {
+        setSelectedReport(updatedReport);
+      }
+
+      try {
+        await saveInspectionReport(updatedReport);
+      } catch (e) {
+        console.warn('Lỗi saveInspectionReport:', e);
+      }
+    }
+
+    // 3. Gửi thông báo đến: người tạo, chủ đầu tư, tư vấn giám sát được đổi
+    const notifTitle = `🔄 Điều chuyển cán bộ ${isSupervisor ? 'TVGS' : 'CĐT'}: ${targetReq.taskContent || targetReq.requestNumber}`;
+    const oldName = oldOfficer ? oldOfficer.fullName : 'Cán bộ trước';
+    const notifBody = `${currentUser?.fullName || 'Trưởng bộ phận'} đã điều chuyển cán bộ ${roleLabel} từ "${oldName}" sang "${newOfficer.fullName}". ${reasonNote ? `Lý do: "${reasonNote}"` : ''}`;
+
+    const notifPayload = {
+      id: `notif_${Date.now()}`,
+      type: 'REASSIGN',
+      title: notifTitle,
+      body: notifBody,
+      actionText: 'Xem chi tiết phiếu yêu cầu',
+      targetRequestId: targetReq.id,
+      targetReportId: updatedReport?.id || targetReq.reportId,
+      assignedRecipients: updatedRecipients,
+      createdByUid: targetReq.createdByUid,
+      createdByName: targetReq.createdByName,
+      extraRecipientUids: [
+        targetReq.createdByUid,
+        newOfficer.uid,
+        oldOfficer?.uid,
+        currentUser?.uid
+      ].filter(Boolean),
+      targetRoles: ['CONTRACTOR', 'SUPERVISOR', 'LEAD_SUPERVISOR', 'INVESTOR', 'LEAD_INVESTOR'],
+      createdAt: new Date().toISOString(),
+      time: 'Vừa xong',
+      isRead: false
+    };
+
+    setNotifications(prev => {
+      const nextNotifs = [notifPayload, ...prev.filter(n => n.id !== notifPayload.id)];
+      safeSaveLocalStorage(NOTIF_STORAGE_KEY, nextNotifs);
+      return nextNotifs;
+    });
+
+    if (checkNotificationRecipient(notifPayload, currentUser, [updatedReq, ...requests], [updatedReport, ...reports].filter(Boolean))) {
+      setActivePushToast(notifPayload);
+      showSystemNotification(notifTitle, notifBody);
+    }
+
+    try {
+      await saveSystemNotification(notifPayload);
+    } catch (e) {
+      console.warn('Lỗi lưu notification điều chuyển:', e);
+    }
+
+    sendOneSignalPush({
+      title: notifTitle,
+      message: notifBody,
+      targetRoles: ['CONTRACTOR', 'SUPERVISOR', 'LEAD_SUPERVISOR', 'INVESTOR', 'LEAD_INVESTOR'],
+      url: 'https://app-apct-nghiemthu.web.app'
+    }).catch(console.warn);
+
+    showAlert({
+      type: 'success',
+      title: 'Điều Chuyển Cán Bộ Thành Công',
+      message: `Đã chuyển quyền kiểm tra, nghiệm thu và ký số sang cán bộ ${newOfficer.fullName} (${roleLabel}). Thông báo đã được gửi đến các bên liên quan.`
+    });
   };
 
   // Xử lý khi Cán bộ KHÔNG ĐỒNG Ý NGHIỆM THU từ chối biên bản
@@ -2803,6 +3044,9 @@ export default function App() {
                     const isRectified = req.status === 'RECTIFIED';
                     const matchingRep = reports.find(r => r.id === req.reportId || r.requestId === req.id);
 
+                    const isLeadSupervisor = currentRole === 'LEAD_SUPERVISOR' || Boolean(currentUser?.isLead && currentRole === 'SUPERVISOR') || currentRole === 'ADMIN';
+                    const isLeadInvestor = currentRole === 'LEAD_INVESTOR' || Boolean(currentUser?.isLead && currentRole === 'INVESTOR') || currentRole === 'ADMIN';
+
                     return (
                       <div 
                         key={req.id} 
@@ -2846,7 +3090,7 @@ export default function App() {
 
                           <div style={{ fontSize: '0.8rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <Calendar size={14} />
-                            <span>Hẹn: <strong>{req.scheduledTime}</strong></span>
+                            <span>Nghiệm thu: <strong>{req.scheduledTime}</strong></span>
                           </div>
                         </div>
 
@@ -2908,38 +3152,118 @@ export default function App() {
 
                         {/* DANH SÁCH CÁN BỘ TIẾP NHẬN YÊU CẦU */}
                         <div className="recipients-status-list">
-                          <div className="recipients-title">
-                            Thành phần tiếp nhận yêu cầu ({req.assignedRecipients?.length || 0}):
+                          <div className="recipients-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                            <span>Thành phần tiếp nhận yêu cầu ({req.assignedRecipients?.length || 0}):</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              {isLeadSupervisor && !isCompleted && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenReassignModal(req, 'SUPERVISOR');
+                                  }}
+                                  style={{
+                                    fontSize: '0.74rem',
+                                    padding: '2px 8px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #86efac',
+                                    background: '#f0fdf4',
+                                    color: '#15803d',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}
+                                  title="Đổi cán bộ Tư Vấn Giám Sát tiếp nhận phiếu này"
+                                >
+                                  <ArrowLeftRight size={12} />
+                                  <span>Đổi TVGS</span>
+                                </button>
+                              )}
+                              {isLeadInvestor && !isCompleted && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenReassignModal(req, 'INVESTOR');
+                                  }}
+                                  style={{
+                                    fontSize: '0.74rem',
+                                    padding: '2px 8px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #fde68a',
+                                    background: '#fffbeb',
+                                    color: '#b45309',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}
+                                  title="Đổi cán bộ Chủ Đầu Tư tiếp nhận phiếu này"
+                                >
+                                  <ArrowLeftRight size={12} />
+                                  <span>Đổi CĐT</span>
+                                </button>
+                              )}
+                            </div>
                           </div>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
-                            {req.assignedRecipients?.map((rec, idx) => (
-                              <div key={idx} style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                background: '#ffffff',
-                                border: '1px solid #e2e8f0',
-                                padding: '4px 10px',
-                                borderRadius: '6px',
-                                fontSize: '0.8rem'
-                              }}>
-                                <span style={{ 
-                                  width: '7px', 
-                                  height: '7px', 
-                                  borderRadius: '50%', 
-                                  background: (rec.role === 'SUPERVISOR' || rec.role === 'LEAD_SUPERVISOR') ? '#059669' : '#d97706' 
-                                }} />
-                                <strong>{rec.fullName}</strong>
-                                <span style={{ color: '#64748b', fontSize: '0.74rem' }}>
-                                  ({rec.role === 'LEAD_SUPERVISOR' ? 'TVGS Trưởng' : rec.role === 'SUPERVISOR' ? 'TVGS' : rec.role === 'LEAD_INVESTOR' ? 'CĐT Trưởng' : 'CĐT'})
-                                </span>
-                                {rec.uid === currentUser?.uid && (
-                                  <span style={{ fontSize: '0.7rem', background: '#e0e7ff', color: '#3730a3', padding: '1px 5px', borderRadius: '4px' }}>
-                                    Bạn
+                            {req.assignedRecipients?.map((rec, idx) => {
+                              const isSup = rec.role === 'SUPERVISOR' || rec.role === 'LEAD_SUPERVISOR';
+                              const canReassignThis = !isCompleted && ((isSup && isLeadSupervisor) || (!isSup && isLeadInvestor));
+
+                              return (
+                                <div key={idx} style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  background: '#ffffff',
+                                  border: '1px solid #e2e8f0',
+                                  padding: '4px 10px',
+                                  borderRadius: '6px',
+                                  fontSize: '0.8rem'
+                                }}>
+                                  <span style={{ 
+                                    width: '7px', 
+                                    height: '7px', 
+                                    borderRadius: '50%', 
+                                    background: isSup ? '#059669' : '#d97706' 
+                                  }} />
+                                  <strong>{rec.fullName}</strong>
+                                  <span style={{ color: '#64748b', fontSize: '0.74rem' }}>
+                                    ({rec.role === 'LEAD_SUPERVISOR' ? 'TVGS Trưởng' : rec.role === 'SUPERVISOR' ? 'TVGS' : rec.role === 'LEAD_INVESTOR' ? 'CĐT Trưởng' : 'CĐT'})
                                   </span>
-                                )}
-                              </div>
-                            ))}
+                                  {rec.uid === currentUser?.uid && (
+                                    <span style={{ fontSize: '0.7rem', background: '#e0e7ff', color: '#3730a3', padding: '1px 5px', borderRadius: '4px' }}>
+                                      Bạn
+                                    </span>
+                                  )}
+                                  {canReassignThis && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenReassignModal(req, isSup ? 'SUPERVISOR' : 'INVESTOR');
+                                      }}
+                                      style={{
+                                        background: 'transparent',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        padding: '0 2px',
+                                        color: isSup ? '#059669' : '#d97706',
+                                        display: 'flex',
+                                        alignItems: 'center'
+                                      }}
+                                      title={`Đổi người ${isSup ? 'TVGS' : 'CĐT'} này`}
+                                    >
+                                      <ArrowLeftRight size={13} />
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
 
@@ -3086,6 +3410,9 @@ export default function App() {
           setSelectedRequest(null);
           handleOpenOrCreateReport(reportId, isCreate);
         }}
+        onReassign={(req, type) => {
+          handleOpenReassignModal(req, type);
+        }}
       />
 
       <InspectionReportModal 
@@ -3105,6 +3432,19 @@ export default function App() {
         onResubmitReport={handleResubmitReport}
         initialOpenRectify={initialOpenRectify}
         showAlert={showAlert}
+        onReassign={(req, type) => {
+          handleOpenReassignModal(req, type);
+        }}
+      />
+
+      <ReassignRecipientModal 
+        isOpen={reassignModalState.isOpen}
+        onClose={() => setReassignModalState({ isOpen: false, request: null, reassignType: 'SUPERVISOR' })}
+        request={reassignModalState.request}
+        reassignType={reassignModalState.reassignType}
+        users={users}
+        currentUser={currentUser}
+        onConfirmReassign={handleConfirmReassign}
       />
 
       <AdminPortalModal 

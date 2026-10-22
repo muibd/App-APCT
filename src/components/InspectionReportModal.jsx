@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   X, Printer, CheckCircle2, ShieldCheck, Camera, MapPin, Clock, 
   Download, PenTool, AlertCircle, AlertTriangle, Trash2, ImagePlus, 
-  Zap, RotateCcw, FileWarning, Eye, User, Wrench, Send, ChevronRight, XCircle
+  Zap, RotateCcw, FileWarning, Eye, User, Wrench, Send, ChevronRight, XCircle,
+  ArrowLeftRight
 } from 'lucide-react';
 import { STANDARD_CRITERIA_LIST } from '../data/mockData';
 import { getSuggestedStandards, GENERAL_MANDATORY_STANDARDS } from '../data/standardsRules';
@@ -41,7 +42,8 @@ export default function InspectionReportModal({
   onReinspectReport,
   onResubmitReport,
   initialOpenRectify = false,
-  showAlert
+  showAlert,
+  onReassign
 }) {
   // Tabs: 'DOCUMENT' | 'EVIDENCE' | 'DEFECTS' | 'RECTIFIED'
   const isInitiallyRectified = report?.status === 'RECTIFIED';
@@ -2700,6 +2702,7 @@ export default function InspectionReportModal({
                       <div style={{
                         display: 'flex',
                         alignItems: 'center',
+                        justifyContent: 'space-between',
                         gap: '8px',
                         background: '#f0fdf4',
                         border: '1.5px solid #86efac',
@@ -2707,12 +2710,26 @@ export default function InspectionReportModal({
                         padding: '8px 14px',
                         borderRadius: '8px',
                         fontSize: '0.84rem',
-                        fontWeight: 600
+                        fontWeight: 600,
+                        flexWrap: 'wrap'
                       }}>
-                        <Eye size={16} color="#15803d" />
-                        <span>
-                          👁️ Phiếu do <strong>{supAttendee?.person || 'Cán bộ TVGS'}</strong> phụ trách duyệt • Bạn đang xem với quyền TVGS Trưởng
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Eye size={16} color="#15803d" />
+                          <span>
+                            👁️ Phiếu do <strong>{supAttendee?.person || 'Cán bộ TVGS'}</strong> phụ trách duyệt • Bạn đang xem với quyền TVGS Trưởng
+                          </span>
+                        </div>
+                        {onReassign && (
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            style={{ borderColor: '#86efac', color: '#15803d', background: '#ffffff', padding: '4px 10px', fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                            onClick={() => onReassign(relatedRequest || { id: reportState.requestId || reportState.id, requestNumber: reportState.requestNumber, buildingName: reportState.projectInfo?.buildingName, taskContent: reportState.inspectionObject, assignedRecipients: effectiveAssignedRecipients }, 'SUPERVISOR')}
+                          >
+                            <ArrowLeftRight size={13} />
+                            <span>Đổi TVGS</span>
+                          </button>
+                        )}
                       </div>
                     ) : isInvestorRole ? (
                       <div style={{
@@ -2776,6 +2793,7 @@ export default function InspectionReportModal({
                           <div style={{
                             display: 'flex',
                             alignItems: 'center',
+                            justifyContent: 'space-between',
                             gap: '8px',
                             background: '#fffbeb',
                             border: '1.5px solid #fde68a',
@@ -2783,12 +2801,26 @@ export default function InspectionReportModal({
                             padding: '8px 14px',
                             borderRadius: '8px',
                             fontSize: '0.84rem',
-                            fontWeight: 600
+                            fontWeight: 600,
+                            flexWrap: 'wrap'
                           }}>
-                            <Eye size={16} color="#d97706" />
-                            <span>
-                              👁️ Phiếu do <strong>{invAttendee?.person || 'Cán bộ CĐT'}</strong> phụ trách phê duyệt • Bạn đang xem với quyền CĐT Trưởng
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <Eye size={16} color="#d97706" />
+                              <span>
+                                👁️ Phiếu do <strong>{invAttendee?.person || 'Cán bộ CĐT'}</strong> phụ trách phê duyệt • Bạn đang xem với quyền CĐT Trưởng
+                              </span>
+                            </div>
+                            {onReassign && (
+                              <button
+                                type="button"
+                                className="btn-secondary"
+                                style={{ borderColor: '#fde68a', color: '#b45309', background: '#ffffff', padding: '4px 10px', fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                                onClick={() => onReassign(relatedRequest || { id: reportState.requestId || reportState.id, requestNumber: reportState.requestNumber, buildingName: reportState.projectInfo?.buildingName, taskContent: reportState.inspectionObject, assignedRecipients: effectiveAssignedRecipients }, 'INVESTOR')}
+                              >
+                                <ArrowLeftRight size={13} />
+                                <span>Đổi CĐT</span>
+                              </button>
+                            )}
                           </div>
                         ) : (
                           <div style={{

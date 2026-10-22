@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, MapPin, FileText, Calendar, Award, Building, UserCheck, Camera, Clock, AlertTriangle, RotateCcw, CheckCircle2 } from 'lucide-react';
+import { X, MapPin, FileText, Calendar, Award, Building, UserCheck, Camera, Clock, AlertTriangle, RotateCcw, CheckCircle2, ArrowLeftRight } from 'lucide-react';
 
 export default function InvitationDetailModal({ 
   isOpen, 
@@ -7,9 +7,26 @@ export default function InvitationDetailModal({
   request, 
   currentRole, 
   currentUser, 
-  onOpenReport 
+  onOpenReport,
+  onReassign
 }) {
   if (!isOpen || !request) return null;
+
+  const createdTimeFormatted = (() => {
+    if (!request.createdAt) return 'Chưa ghi nhận';
+    try {
+      const d = new Date(request.createdAt);
+      if (isNaN(d.getTime())) return request.createdAt;
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${hours}:${minutes} ${day}/${month}/${year}`;
+    } catch {
+      return request.createdAt;
+    }
+  })();
 
   return (
     <div className="modal-overlay">
@@ -153,13 +170,17 @@ export default function InvitationDetailModal({
                 </p>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginTop: '4px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '10px 16px', marginTop: '6px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Calendar size={16} color="#2563eb" />
-                  <span><strong>Thời gian hẹn:</strong> {request.scheduledTime}</span>
+                  <Calendar size={16} color="#2563eb" style={{ flexShrink: 0 }} />
+                  <strong>Thời gian nghiệm thu: {request.scheduledTime}</strong>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <MapPin size={16} color="#2563eb" />
+                  <Clock size={16} color="#64748b" style={{ flexShrink: 0 }} />
+                  <span style={{ color: '#334155' }}>Thời gian tạo phiếu: {createdTimeFormatted}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', gridColumn: '1 / -1' }}>
+                  <MapPin size={16} color="#2563eb" style={{ flexShrink: 0 }} />
                   <span><strong>Tại:</strong> {request.inspectionPlace}</span>
                 </div>
               </div>
@@ -268,15 +289,50 @@ export default function InvitationDetailModal({
                     </div>
                   </div>
 
-                  <span className="badge-status badge-confirmed" style={{ fontSize: '0.75rem', padding: '3px 8px' }}>
-                    {rec.role === 'LEAD_SUPERVISOR' 
-                      ? 'TVGS Trưởng' 
-                      : rec.role === 'SUPERVISOR' 
-                      ? 'Đại diện TVGS' 
-                      : rec.role === 'LEAD_INVESTOR' 
-                      ? 'CĐT Trưởng' 
-                      : 'Đại diện CĐT'}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span className="badge-status badge-confirmed" style={{ fontSize: '0.75rem', padding: '3px 8px' }}>
+                      {rec.role === 'LEAD_SUPERVISOR' 
+                        ? 'TVGS Trưởng' 
+                        : rec.role === 'SUPERVISOR' 
+                        ? 'Đại diện TVGS' 
+                        : rec.role === 'LEAD_INVESTOR' 
+                        ? 'CĐT Trưởng' 
+                        : 'Đại diện CĐT'}
+                    </span>
+
+                    {(() => {
+                      const isSup = rec.role === 'SUPERVISOR' || rec.role === 'LEAD_SUPERVISOR';
+                      const isLeadSup = currentRole === 'LEAD_SUPERVISOR' || Boolean(currentUser?.isLead && currentRole === 'SUPERVISOR') || currentRole === 'ADMIN';
+                      const isLeadInv = currentRole === 'LEAD_INVESTOR' || Boolean(currentUser?.isLead && currentRole === 'INVESTOR') || currentRole === 'ADMIN';
+                      const canReassign = request.status !== 'COMPLETED' && ((isSup && isLeadSup) || (!isSup && isLeadInv));
+
+                      if (!canReassign) return null;
+
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => onReassign && onReassign(request, isSup ? 'SUPERVISOR' : 'INVESTOR')}
+                          style={{
+                            background: isSup ? '#f0fdf4' : '#fffbeb',
+                            border: isSup ? '1px solid #86efac' : '1px solid #fde68a',
+                            color: isSup ? '#15803d' : '#b45309',
+                            borderRadius: '6px',
+                            padding: '3px 8px',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                          title={`Điều chuyển người nhận ${isSup ? 'TVGS' : 'CĐT'} khác cho phiếu này`}
+                        >
+                          <ArrowLeftRight size={12} />
+                          <span>Đổi cán bộ</span>
+                        </button>
+                      );
+                    })()}
+                  </div>
                 </div>
               ))}
             </div>
