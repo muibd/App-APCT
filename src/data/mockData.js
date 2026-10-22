@@ -573,3 +573,90 @@ export const INITIAL_REPORTS = [];
 
 export const INITIAL_NOTIFICATIONS = [];
 
+export const INITIAL_DAILY_LOGS = [
+  {
+    id: "log_mock_01",
+    logNumber: "01/NKTC-APG",
+    bookNumber: "Quyển số: 01/2026",
+    date: "2026-10-21",
+    cityDateFormatted: "Cần Thơ, Ngày 21 tháng 10 năm 2026",
+    projectName: "Đầu tư xây dựng nhà ở Phường Thường Thạnh- An Phú Eco City",
+    buildingName: "Chung cư nhà ở xã hội 2",
+    itemName: "Thi công phần kết cấu – Tòa A và Tòa B (Gói thầu số 02)",
+    location: "Phường Thường Thạnh - Quận Cái Răng – TP. Cần Thơ.",
+    investorName: "Công ty TNHH An Phú Cần Thơ",
+    supervisorName: "Công ty CP Tư vấn xây dựng và Thương mại Gelicon",
+    contractorName: "Công ty CP Xây dựng An Phú Gia",
+    representatives: {
+      investor: {
+        representative: "Ngô Quý Linh",
+        position: "Trưởng Ban QLDA"
+      },
+      supervisor: {
+        representative: "Đinh Xuân Thám",
+        position: "Tư vấn giám sát trưởng",
+        officer: "Đỗ Văn Trường",
+        officerPosition: "Cán bộ TVGS"
+      },
+      contractor: {
+        leader: "Phạm Thanh Nhàn",
+        leaderPosition: "Chỉ huy trưởng công trường",
+        createdBy: "Phạm Thanh Nhàn",
+        createdPosition: "Chỉ huy trưởng"
+      }
+    },
+    weather: {
+      morning: "NẮNG",
+      morningHours: "7h - 11h",
+      afternoon: "NẮNG",
+      afternoonHours: "13h - 15h",
+      evening: "TẠNH RÁO",
+      eveningHours: "18h - 24h",
+      note: "Thời tiết khô ráo, thuận lợi cho công tác bê tông."
+    },
+    manpower: {
+      technical: "Phạm Thanh Nhàn (Chỉ huy trưởng)",
+      workers: "38 công nhân (Đội ván khuôn: 16 người, Đội cốt thép: 14 người, Đội bê tông: 8 người)",
+      otherPersonnel: [
+        { uid: "uid_dvtc_apg_02", name: "Nguyễn Hoàng Bách", position: "Kỹ thuật hiện trường" }
+      ]
+    },
+    equipment: "01 máy vận thăng nâng hàng 1000kg, 02 máy trộn bê tông 350L, 04 máy đầm dùi, 01 cần trục tháp 50m.",
+    workContent: "Nghiệm thu ván khuôn cốt thép dầm sàn tầng 4 Tòa A trục 1-8; Đổ bê tông dầm sàn diện tích 380m2; Bảo dưỡng bê tông cột vách tầng 3.",
+    safetyEnvironment: {
+      status: "Bình thường",
+      notes: "Công nhân tuân thủ nghiêm ngặt bảo hộ lao động; Lan can an toàn mép sàn được lắp đặt đầy đủ."
+    },
+    supervisorComments: "ĐVTC thi công đảm bảo biện pháp an toàn và kỹ thuật được duyệt. Yêu cầu duy trì tưới nước giữ ẩm bảo dưỡng sàn bê tông liên tục trong 7 ngày đầu.",
+    investorComments: "Thống nhất với đánh giá của TVGS. Đề nghị nhà thầu tập trung vật tư cho phân đoạn tiếp theo.",
+    contractorComments: "Đơn vị thi công nghiêm túc tiếp thu ý kiến của TVGS và CĐT, bố trí nhân lực tưới ẩm bảo dưỡng đúng quy trình.",
+    status: "CONFIRMED",
+    signatures: {
+      contractor: {
+        signed: true,
+        name: "Phạm Thanh Nhàn",
+        position: "Chỉ huy trưởng",
+        signedAt: "2026-10-21T10:30:00.000Z"
+      },
+      supervisor: {
+        signed: true,
+        name: "Đinh Xuân Thám",
+        position: "Tư vấn giám sát trưởng",
+        signedAt: "2026-10-21T16:00:00.000Z"
+      },
+      investor: {
+        signed: true,
+        name: "Ngô Quý Linh",
+        position: "Trưởng Ban QLDA",
+        signedAt: "2026-10-21T16:05:00.000Z"
+      }
+    },
+    createdAt: "2026-10-21T07:30:00.000Z",
+    updatedAt: "2026-10-21T16:05:00.000Z",
+    createdByUid: "uid_dvtc_apg_01",
+    createdByName: "Phạm Thanh Nhàn",
+    contractorCompany: "Công ty CP Xây dựng An Phú Gia"
+  }
+];
+
+

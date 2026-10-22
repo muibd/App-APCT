@@ -28,6 +28,7 @@ const REPORTS_COLLECTION = 'inspection_reports';
 const NOTIFICATIONS_COLLECTION = 'system_notifications';
 const USERS_COLLECTION = 'system_users';
 const BUILDINGS_COLLECTION = 'system_buildings';
+const DAILY_LOGS_COLLECTION = 'construction_daily_logs';
 
 // ============================================================================
 // 1. PHIẾU YÊU CẦU NGHIỆM THU (INSPECTION REQUESTS)
@@ -460,23 +461,127 @@ export const saveBuilding = async (buildingData) => {
 // ============================================================================
 
 /**
- * Xóa sạch toàn bộ Phiếu yêu cầu, Biên bản nghiệm thu và Thông báo trên Cloud Firestore
+ * Xóa sạch toàn bộ Phiếu yêu cầu, Biên bản nghiệm thu, Nhật ký thi công và Thông báo trên Cloud Firestore
  */
 export const clearAllCloudInspectionData = async () => {
   if (!isFirebaseConfigured || !db) return true;
   try {
-    const collectionsToClear = [REQUESTS_COLLECTION, REPORTS_COLLECTION, NOTIFICATIONS_COLLECTION];
+    const collectionsToClear = [REQUESTS_COLLECTION, REPORTS_COLLECTION, NOTIFICATIONS_COLLECTION, DAILY_LOGS_COLLECTION];
     for (const colName of collectionsToClear) {
       const colRef = collection(db, colName);
       const snapshot = await getDocs(colRef);
       const deletePromises = snapshot.docs.map(docSnap => deleteDoc(doc(db, colName, docSnap.id)));
       await Promise.all(deletePromises);
     }
-    console.log('[Firestore Cloud] Đã dọn sạch toàn bộ phiếu và biên bản trên Firestore!');
+    console.log('[Firestore Cloud] Đã dọn sạch toàn bộ phiếu, biên bản và nhật ký trên Firestore!');
     return true;
   } catch (err) {
     console.error('[Firestore Clear Cloud Data Error]', err);
     throw err;
   }
 };
+
+// ============================================================================
+// 7. NHẬT KÝ THI CÔNG XÂY DỰNG (CONSTRUCTION DAILY LOGS)
+// Theo mẫu chuẩn: 1. Nhat ky thi cong.doc
+// ============================================================================
+
+/**
+ * Lắng nghe thời gian thực danh sách Nhật ký thi công
+ */
+export const subscribeToDailyLogs = (callback) => {
+  if (!isFirebaseConfigured || !db) {
+    callback([]);
+    return () => {};
+  }
+
+  try {
+    const colRef = collection(db, DAILY_LOGS_COLLECTION);
+    const unsubscribe = onSnapshot(colRef, (snapshot) => {
+      const items = [];
+      snapshot.forEach(docSnap => {
+        items.push({ id: docSnap.id, ...docSnap.data() });
+      });
+
+      // Sắp xếp giảm dần theo ngày ghi nhật ký
+      items.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
+      callback(items);
+    }, (error) => {
+      console.warn('[Firestore] Lỗi lắng nghe danh sách nhật ký:', error);
+      callback([]);
+    });
+
+    return unsubscribe;
+  } catch (e) {
+    console.warn('[Firestore Daily Logs Exception]', e);
+    callback([]);
+    return () => {};
+  }
+};
+
+/**
+ * Lưu hoặc cập nhật Nhật ký thi công lên Firestore
+ */
+export const saveDailyLog = async (logData) => {
+  const cleanData = sanitizeData({
+    ...logData,
+    updatedAt: new Date().toISOString()
+  });
+
+  if (!isFirebaseConfigured || !db) {
+    console.log('[Firestore Offline] Lưu nhật ký nội bộ:', cleanData?.logNumber);
+    return cleanData;
+  }
+
+  try {
+    const docRef = doc(db, DAILY_LOGS_COLLECTION, cleanData.id);
+    await setDoc(docRef, cleanData);
+    console.log('[Firestore Cloud] Đã lưu nhật ký thành công:', cleanData.logNumber);
+    return cleanData;
+  } catch (error) {
+    console.error('[Firestore Save Daily Log Error]', error);
+    return cleanData;
+  }
+};
+
+/**
+ * Cập nhật xác nhận TVGS / CĐT trên Nhật ký thi công
+ */
+export const updateDailyLog = async (logId, updateData) => {
+  const cleanData = sanitizeData({
+    ...updateData,
+    updatedAt: new Date().toISOString()
+  });
+
+  if (!isFirebaseConfigured || !db) {
+    return cleanData;
+  }
+
+  try {
+    const docRef = doc(db, DAILY_LOGS_COLLECTION, logId);
+    await updateDoc(docRef, cleanData);
+    console.log('[Firestore Cloud] Đã cập nhật nhật ký:', logId);
+    return cleanData;
+  } catch (error) {
+    console.error('[Firestore Update Daily Log Error]', error);
+    throw error;
+  }
+};
+
+/**
+ * Xóa một Nhật ký thi công
+ */
+export const deleteDailyLog = async (logId) => {
+  if (!isFirebaseConfigured || !db) return true;
+  try {
+    const docRef = doc(db, DAILY_LOGS_COLLECTION, logId);
+    await deleteDoc(docRef);
+    console.log('[Firestore Cloud] Đã xóa nhật ký:', logId);
+    return true;
+  } catch (error) {
+    console.error('[Firestore Delete Daily Log Error]', error);
+    throw error;
+  }
+};
+
 

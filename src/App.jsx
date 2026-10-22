@@ -4,7 +4,7 @@ import {
   AlertTriangle, FileText, ChevronRight, Layers, MapPin, Calendar, 
   Send, Users, ShieldAlert, Award, HardHat, Eye, Briefcase, ShieldCheck,
   BellRing, LogOut, ArrowRight, UserCheck, BookOpen, Settings, Wrench, RotateCcw,
-  ArrowLeftRight
+  ArrowLeftRight, NotebookPen
 } from 'lucide-react';
 
 import Navbar from './components/Navbar';
@@ -17,6 +17,9 @@ import ReassignRecipientModal from './components/ReassignRecipientModal';
 import AdminPortalModal from './components/AdminPortalModal';
 import UserManagementView from './components/UserManagementView';
 import ReportsListView from './components/ReportsListView';
+import DailyLogsListView from './components/DailyLogsListView';
+import CreateDailyLogModal from './components/CreateDailyLogModal';
+import DailyLogDetailModal from './components/DailyLogDetailModal';
 import MobileProfileSheet from './components/MobileProfileSheet';
 import ProfileView from './components/ProfileView';
 import PushGuideModal from './components/PushGuideModal';
@@ -27,7 +30,8 @@ import {
   INITIAL_REQUESTS, 
   INITIAL_REPORTS,
   STANDARD_CRITERIA_LIST,
-  INITIAL_NOTIFICATIONS
+  INITIAL_NOTIFICATIONS,
+  INITIAL_DAILY_LOGS
 } from './data/mockData';
 import { getSuggestedStandards } from './data/standardsRules';
 
@@ -48,7 +52,11 @@ import {
   saveSystemUser,
   deleteSystemUser,
   seedOfficialUsersToCloud,
-  clearAllCloudInspectionData
+  clearAllCloudInspectionData,
+  subscribeToDailyLogs,
+  saveDailyLog,
+  updateDailyLog,
+  deleteDailyLog
 } from './services/firestoreService';
 import { 
   requestPushPermission, 
@@ -73,6 +81,7 @@ const USERS_STORAGE_KEY = 'apct_users_list';
 const NOTIF_STORAGE_KEY = 'apct_notifications_list';
 const REQUESTS_STORAGE_KEY = 'apct_requests_list';
 const REPORTS_STORAGE_KEY = 'apct_reports_list';
+const DAILY_LOGS_STORAGE_KEY = 'apct_daily_logs_v1';
 const DATA_VERSION_KEY = 'apct_data_version';
 const CURRENT_DATA_VERSION = '20261020_excel_users_v2';
 
@@ -146,6 +155,19 @@ export default function App() {
       console.warn('Lỗi đọc reports từ localStorage:', e);
     }
     return INITIAL_REPORTS;
+  });
+
+  const [dailyLogs, setDailyLogs] = useState(() => {
+    try {
+      const saved = localStorage.getItem(DAILY_LOGS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Lỗi đọc dailyLogs từ localStorage:', e);
+    }
+    return INITIAL_DAILY_LOGS || [];
   });
 
   const [standards, setStandards] = useState(STANDARD_CRITERIA_LIST);
@@ -604,6 +626,31 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // 4b. Đồng bộ Real-Time Nhật ký thi công từ Firestore
+  useEffect(() => {
+    const unsubscribe = subscribeToDailyLogs((cloudLogs) => {
+      setDailyLogs(prev => {
+        if (!cloudLogs || cloudLogs.length === 0) {
+          return prev && prev.length > 0 ? prev : (INITIAL_DAILY_LOGS || []);
+        }
+        const map = new Map();
+        cloudLogs.forEach(item => {
+          map.set(item.id, item);
+        });
+        (prev || []).forEach(item => {
+          if (!map.has(item.id)) {
+            map.set(item.id, item);
+          }
+        });
+        const merged = Array.from(map.values());
+        merged.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
+        safeSaveLocalStorage(DAILY_LOGS_STORAGE_KEY, merged);
+        return merged;
+      });
+    });
+    return () => unsubscribe();
+  }, []);
+
   // 5. Khởi tạo OneSignal Web Push SDK
   useEffect(() => {
     initOneSignal((optedIn) => {
@@ -669,6 +716,9 @@ export default function App() {
   const [initialOpenRectify, setInitialOpenRectify] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isMobileProfileOpen, setIsMobileProfileOpen] = useState(false);
+  const [isCreateDailyLogModalOpen, setIsCreateDailyLogModalOpen] = useState(false);
+  const [selectedDailyLog, setSelectedDailyLog] = useState(null);
+  const [isDailyLogDetailModalOpen, setIsDailyLogDetailModalOpen] = useState(false);
   const [reassignModalState, setReassignModalState] = useState({
     isOpen: false,
     request: null,
@@ -692,7 +742,9 @@ export default function App() {
     isAdminModalOpen || 
     isMobileProfileOpen || 
     pushGuideModal.isOpen ||
-    reassignModalState.isOpen
+    reassignModalState.isOpen ||
+    isCreateDailyLogModalOpen ||
+    isDailyLogDetailModalOpen
   );
 
   useEffect(() => {
@@ -1026,6 +1078,8 @@ export default function App() {
           setRequests([]);
           setReports([]);
           setNotifications([]);
+          setDailyLogs([]);
+          try { localStorage.removeItem(DAILY_LOGS_STORAGE_KEY); } catch (e) {}
           showAlert({
             type: 'success',
             title: 'Đã Xóa Thành Công!',
@@ -1043,6 +1097,126 @@ export default function App() {
         }
       }
     });
+  };
+
+  // ============================================================================
+  // HANDLERS CHO NHẬT KÝ THI CÔNG (CONSTRUCTION DAILY LOGS)
+  // ============================================================================
+  const handleCreateDailyLog = async (newLog) => {
+    try {
+      const saved = await saveDailyLog(newLog);
+      const updatedList = [saved, ...(dailyLogs || []).filter(l => l.id !== saved.id)];
+      setDailyLogs(updatedList);
+      safeSaveLocalStorage(DAILY_LOGS_STORAGE_KEY, updatedList);
+      setIsCreateDailyLogModalOpen(false);
+
+      // Gửi thông báo tới TVGS và CĐT
+      const notif = {
+        title: `📝 Nhật Ký Thi Công Mới: ${saved.logNumber || 'Ngày ' + saved.date}`,
+        body: `${currentUser?.fullName || 'ĐVTC'} vừa tạo Nhật ký thi công ngày ${saved.date} cho ${saved.buildingName || 'Công trình'}. Kính mời TVGS ${saved.assignedSupervisor?.name ? `(${saved.assignedSupervisor.name})` : ''} và CĐT vào kiểm tra và xác nhận.`,
+        recipientUid: saved.supervisorUid || null,
+        type: 'DAILY_LOG_CREATED',
+        targetDailyLogId: saved.id,
+        createdAt: new Date().toISOString(),
+        isRead: false
+      };
+      saveSystemNotification(notif).catch(console.warn);
+
+      showAlert({
+        type: 'success',
+        title: 'Tạo Nhật Ký Thành Công!',
+        message: `Đã lưu Nhật ký thi công số ${saved.logNumber || ''} (Ngày ${saved.date}).\nVăn bản đã được chuyển đến Tư Vấn Giám Sát và Chủ Đầu Tư để theo dõi.`,
+        confirmText: 'Xem Văn Bản',
+        onConfirm: () => {
+          setSelectedDailyLog(saved);
+          setIsDailyLogDetailModalOpen(true);
+        }
+      });
+    } catch (err) {
+      console.error('Lỗi lưu nhật ký thi công:', err);
+      showAlert({
+        type: 'danger',
+        title: 'Lỗi Lưu Nhật Ký',
+        message: 'Có lỗi xảy ra: ' + (err.message || err),
+        confirmText: 'Đóng'
+      });
+    }
+  };
+
+  const handleConfirmDailyLog = async (updatedLog) => {
+    try {
+      await updateDailyLog(updatedLog.id, updatedLog);
+      const updatedList = (dailyLogs || []).map(l => l.id === updatedLog.id ? updatedLog : l);
+      setDailyLogs(updatedList);
+      safeSaveLocalStorage(DAILY_LOGS_STORAGE_KEY, updatedList);
+      setSelectedDailyLog(updatedLog);
+
+      // Thông báo các bên đã xác nhận hoàn tất
+      const notif = {
+        title: `✅ TVGS & CĐT Đã Xác Nhận Nhật Ký Thi Công`,
+        body: `Tư vấn giám sát đã đánh giá ý kiến và hoàn tất xác nhận Nhật ký thi công ngày ${updatedLog.date}. Biên bản nhật ký đã hoàn chỉnh pháp lý 3 bên.`,
+        type: 'DAILY_LOG_CONFIRMED',
+        targetDailyLogId: updatedLog.id,
+        createdAt: new Date().toISOString(),
+        isRead: false
+      };
+      saveSystemNotification(notif).catch(console.warn);
+
+      showAlert({
+        type: 'success',
+        title: 'Xác Nhận Thành Công!',
+        message: `Tư vấn giám sát và Chủ đầu tư đã hoàn tất ký nhận xét Nhật ký thi công ngày ${updatedLog.date}.\nVăn bản đã hoàn thiện đầy đủ 7 mục theo chuẩn pháp lý.`,
+        confirmText: 'Đóng'
+      });
+    } catch (err) {
+      console.error('Lỗi cập nhật nhật ký:', err);
+      showAlert({
+        type: 'danger',
+        title: 'Lỗi Xác Nhận',
+        message: 'Có lỗi xảy ra: ' + (err.message || err),
+        confirmText: 'Đóng'
+      });
+    }
+  };
+
+  const handleDeleteDailyLog = (logId) => {
+    showConfirm({
+      type: 'danger',
+      title: 'XÁC NHẬN XÓA NHẬT KÝ THI CÔNG',
+      message: 'Bạn có chắc chắn muốn xóa nhật ký thi công này? Dữ liệu đã xóa không thể phục hồi.',
+      confirmText: 'Xóa Nhật Ký',
+      cancelText: 'Hủy Bỏ',
+      onConfirm: async () => {
+        try {
+          await deleteDailyLog(logId);
+          const updatedList = (dailyLogs || []).filter(l => l.id !== logId);
+          setDailyLogs(updatedList);
+          safeSaveLocalStorage(DAILY_LOGS_STORAGE_KEY, updatedList);
+          if (selectedDailyLog?.id === logId) {
+            setIsDailyLogDetailModalOpen(false);
+            setSelectedDailyLog(null);
+          }
+          showAlert({
+            type: 'success',
+            title: 'Đã Xóa Thành Công',
+            message: 'Nhật ký thi công đã được xóa khỏi hệ thống.',
+            confirmText: 'Đóng'
+          });
+        } catch (err) {
+          showAlert({
+            type: 'danger',
+            title: 'Lỗi Xóa Nhật Ký',
+            message: 'Không thể xóa: ' + (err.message || err),
+            confirmText: 'Đóng'
+          });
+        }
+      }
+    });
+  };
+
+  const handleOpenDailyLog = (log) => {
+    setSelectedDailyLog(log);
+    setIsDailyLogDetailModalOpen(true);
   };
 
   // 1. Khi ĐVTC TẠO PHIẾU MỚI: Tự động khởi tạo cả Phiếu yêu cầu & Biên bản nghiệm thu
@@ -2672,6 +2846,14 @@ export default function App() {
             handleOpenOrCreateReport(notif.targetReportId);
             return;
           }
+          if (notif.targetDailyLogId) {
+            const dl = dailyLogs.find(l => l.id === notif.targetDailyLogId);
+            if (dl) {
+              setSelectedDailyLog(dl);
+              setIsDailyLogDetailModalOpen(true);
+              return;
+            }
+          }
           if (notif.targetRequestId) {
             const target = requests.find(r => r.id === notif.targetRequestId);
             if (target) setSelectedRequest(target);
@@ -2703,6 +2885,14 @@ export default function App() {
           if (notif.targetReportId) {
             handleOpenOrCreateReport(notif.targetReportId);
             return;
+          }
+          if (notif.targetDailyLogId) {
+            const dl = dailyLogs.find(l => l.id === notif.targetDailyLogId);
+            if (dl) {
+              setSelectedDailyLog(dl);
+              setIsDailyLogDetailModalOpen(true);
+              return;
+            }
           }
           const target = requests.find(r => r.id === notif.targetRequestId);
           if (target) setSelectedRequest(target);
@@ -2748,6 +2938,13 @@ export default function App() {
                   <span>Hồ Sơ Biên Bản ({accessibleReports.length})</span>
                 </li>
                 <li 
+                  className={`sidebar-nav-item ${activeTab === 'DAILY_LOGS' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('DAILY_LOGS')}
+                >
+                  <NotebookPen size={18} />
+                  <span>Nhật Ký Thi Công ({dailyLogs.length})</span>
+                </li>
+                <li 
                   className={`sidebar-nav-item ${activeTab === 'PROFILE' ? 'active' : ''}`}
                   onClick={() => setActiveTab('PROFILE')}
                 >
@@ -2775,6 +2972,14 @@ export default function App() {
                 >
                   <FileText size={18} />
                   <span>Biên Bản Nghiệm Thu ({accessibleReports.length})</span>
+                </li>
+
+                <li 
+                  className={`sidebar-nav-item ${activeTab === 'DAILY_LOGS' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('DAILY_LOGS')}
+                >
+                  <NotebookPen size={18} />
+                  <span>Nhật Ký Thi Công ({dailyLogs.length})</span>
                 </li>
 
                 <li 
@@ -2820,6 +3025,18 @@ export default function App() {
               currentRole={currentRole}
               currentUser={currentUser}
               onOpenReport={handleOpenReport}
+            />
+          ) : activeTab === 'DAILY_LOGS' ? (
+            <DailyLogsListView 
+              dailyLogs={dailyLogs}
+              currentUser={currentUser}
+              currentRole={currentRole}
+              onCreateDailyLog={() => setIsCreateDailyLogModalOpen(true)}
+              onCreateLog={() => setIsCreateDailyLogModalOpen(true)}
+              onOpenDailyLog={handleOpenDailyLog}
+              onOpenLog={handleOpenDailyLog}
+              onDeleteDailyLog={handleDeleteDailyLog}
+              onDeleteLog={handleDeleteDailyLog}
             />
           ) : currentRole === 'ADMIN' && (activeTab === 'ADMIN_USERS' || activeTab === 'ADMIN_STANDARDS') ? (
             <div>
@@ -2894,10 +3111,20 @@ export default function App() {
                   </div>
 
                   {currentRole === 'CONTRACTOR' && (
-                    <button className="btn-primary mobile-create-btn" onClick={() => setIsCreateModalOpen(true)}>
-                      <Plus size={16} />
-                      <span>Lập Phiếu</span>
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button className="btn-primary mobile-create-btn" onClick={() => setIsCreateModalOpen(true)}>
+                        <Plus size={16} />
+                        <span>Phiếu Y/C</span>
+                      </button>
+                      <button 
+                        className="btn-secondary mobile-create-btn" 
+                        onClick={() => setIsCreateDailyLogModalOpen(true)}
+                        style={{ background: '#0284c7', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        <NotebookPen size={16} />
+                        <span>Nhật Ký</span>
+                      </button>
+                    </div>
                   )}
                 </div>
 
@@ -2915,10 +3142,20 @@ export default function App() {
 
                   {/* CHỈ HIỂN THỊ NÚT TẠO PHIẾU NẾU LÀ ĐƠN VỊ THI CÔNG */}
                   {currentRole === 'CONTRACTOR' && (
-                    <button className="btn-primary" onClick={() => setIsCreateModalOpen(true)}>
-                      <Plus size={18} />
-                      <span>Tạo Phiếu Yêu Cầu</span>
-                    </button>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <button className="btn-primary" onClick={() => setIsCreateModalOpen(true)}>
+                        <Plus size={18} />
+                        <span>Tạo Phiếu Yêu Cầu</span>
+                      </button>
+                      <button 
+                        className="btn-secondary" 
+                        onClick={() => setIsCreateDailyLogModalOpen(true)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#0284c7', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: '10px', fontWeight: '600', cursor: 'pointer', boxShadow: '0 2px 4px rgba(2,132,199,0.2)' }}
+                      >
+                        <NotebookPen size={18} />
+                        <span>Tạo Nhật Ký Thi Công</span>
+                      </button>
+                    </div>
                   )}
                 </div>
 
@@ -3342,7 +3579,15 @@ export default function App() {
           onClick={() => setActiveTab('REQUESTS')}
         >
           <Send size={20} />
-          <span>Phiếu Yêu Cầu</span>
+          <span>Phiếu Y/C</span>
+        </button>
+
+        <button 
+          className={`bottom-nav-item ${activeTab === 'DAILY_LOGS' ? 'active' : ''}`}
+          onClick={() => setActiveTab('DAILY_LOGS')}
+        >
+          <NotebookPen size={20} />
+          <span>Nhật Ký</span>
         </button>
 
         <button 
@@ -3350,7 +3595,7 @@ export default function App() {
           onClick={() => setActiveTab('REPORTS')}
         >
           <Award size={20} />
-          <span>Biên Bản NT</span>
+          <span>Biên Bản</span>
         </button>
 
         <button 
@@ -3470,6 +3715,32 @@ export default function App() {
         onClose={() => setPushGuideModal(prev => ({ ...prev, isOpen: false }))}
         reason={pushGuideModal.reason}
         onRetry={handleEnablePush}
+      />
+
+      {/* MODAL TẠO NHẬT KÝ THI CÔNG */}
+      <CreateDailyLogModal 
+        isOpen={isCreateDailyLogModalOpen}
+        onClose={() => setIsCreateDailyLogModalOpen(false)}
+        currentUser={currentUser}
+        users={users}
+        onSubmitDailyLog={handleCreateDailyLog}
+        showAlert={showAlert}
+      />
+
+      {/* MODAL XEM CHI TIẾT & KÝ DUYỆT / IN NHẬT KÝ THI CÔNG */}
+      <DailyLogDetailModal 
+        isOpen={isDailyLogDetailModalOpen}
+        onClose={() => {
+          setIsDailyLogDetailModalOpen(false);
+          setSelectedDailyLog(null);
+        }}
+        log={selectedDailyLog}
+        dailyLog={selectedDailyLog}
+        currentUser={currentUser}
+        currentRole={currentRole}
+        onConfirmLog={handleConfirmDailyLog}
+        onConfirmDailyLog={handleConfirmDailyLog}
+        showAlert={showAlert}
       />
 
       {/* MODAL POPUP CONFIRM & ALERT TÙY CHỈNH CHUẨN APCT (THAY THẾ WINDOW.CONFIRM/ALERT) */}
