@@ -16,6 +16,7 @@ import AdminPortalModal from './components/AdminPortalModal';
 import UserManagementView from './components/UserManagementView';
 import ReportsListView from './components/ReportsListView';
 import MobileProfileSheet from './components/MobileProfileSheet';
+import ProfileView from './components/ProfileView';
 import PushGuideModal from './components/PushGuideModal';
 import ConfirmDialogModal from './components/ConfirmDialogModal';
 import { 
@@ -181,6 +182,211 @@ export default function App() {
     }
     return [];
   });
+
+  // Đồng bộ refs cho real-time listeners & notification routing
+  const currentUserRef = useRef(currentUser);
+  currentUserRef.current = currentUser;
+  const requestsRef = useRef(requests);
+  requestsRef.current = requests;
+  const reportsRef = useRef(reports);
+  reportsRef.current = reports;
+  const usersRef = useRef(users);
+  usersRef.current = users;
+
+  // ============================================================================
+  // HÀM KIỂM TRA PHÂN PHỐI THÔNG BÁO CHÍNH XÁC (NOTIFICATION RECIPIENT RESOLVER)
+  // Quy tắc chuẩn:
+  // 1. Quản trị viên (ADMIN): Luôn nhận để giám sát toàn dự án.
+  // 2. Những người Trưởng (TVGS Trưởng, CĐT Trưởng, Chỉ huy trưởng ĐVTC):
+  //    Nhận thông báo thuộc phân hệ của mình hoặc do cán bộ dưới quyền mình phụ trách.
+  // 3. Những người ĐƯỢC CHỌN (Assigned Recipients):
+  //    - Cán bộ TVGS được tick chọn tiếp nhận phiếu.
+  //    - Cán bộ CĐT được tick chọn tiếp nhận / phê duyệt.
+  //    - Cán bộ ĐVTC lập phiếu yêu cầu đó (Creator).
+  //    - Cán bộ tham gia / ký số trên biên bản (Attendees).
+  // 4. Các cán bộ thường KHÔNG được chọn và KHÔNG phải Trưởng:
+  //    TUYỆT ĐỐI KHÔNG NHẬN THÔNG BÁO!
+  // ============================================================================
+  const checkNotificationRecipient = (
+    notif, 
+    user = currentUserRef.current, 
+    reqList = requestsRef.current, 
+    repList = reportsRef.current
+  ) => {
+    if (!user || !notif) return false;
+    const role = user.role;
+
+    // 1. Quản trị viên luôn nhận được thông báo
+    if (role === 'ADMIN') return true;
+
+    // 2. Tìm phiếu yêu cầu và biên bản liên quan đến thông báo này
+    const req = reqList.find(r => 
+      (notif.targetRequestId && (r.id === notif.targetRequestId || r.requestNumber === notif.targetRequestId)) ||
+      (notif.targetReportId && (r.reportId === notif.targetReportId || r.id === notif.targetReportId))
+    );
+    const rep = repList.find(r => 
+      (notif.targetReportId && (r.id === notif.targetReportId || r.reportNumber === notif.targetReportId)) ||
+      (notif.targetRequestId && (r.requestId === notif.targetRequestId || r.id === notif.targetRequestId))
+    );
+
+    // Danh sách cán bộ được chọn tiếp nhận
+    const assignedRecipients = notif.assignedRecipients || req?.assignedRecipients || rep?.assignedRecipients || [];
+
+    const curUid = user.uid;
+    const curEmail = (user.email || '').trim().toLowerCase();
+    const curName = (user.fullName || '').trim().toLowerCase();
+
+    // Kiểm tra xem cán bộ này có nằm trong danh sách ĐƯỢC CHỌN hay không
+    const isExplicitlyAssigned = assignedRecipients.some(rec => {
+      const rUid = rec.uid;
+      const rEmail = (rec.email || '').trim().toLowerCase();
+      const rName = (rec.fullName || '').trim().toLowerCase();
+
+      return Boolean(
+        (curUid && rUid === curUid) ||
+        (curEmail && rEmail && curEmail === rEmail) ||
+        (curName && rName && (curName === rName || curName.includes(rName) || rName.includes(curName)))
+      );
+    });
+
+    // Kiểm tra người lập phiếu (ĐVTC tạo phiếu)
+    const creatorUid = notif.createdByUid || req?.createdByUid;
+    const creatorName = (notif.createdByName || req?.createdByName || '').trim().toLowerCase();
+    const isCreator = Boolean(
+      (curUid && creatorUid === curUid) ||
+      (curName && creatorName && (curName === creatorName || curName.includes(creatorName) || creatorName.includes(curName)))
+    );
+
+    // Kiểm tra người tham gia biên bản (Attendees)
+    const isAttendee = Boolean(
+      (rep?.attendees?.supervisor?.email && curEmail && rep.attendees.supervisor.email.toLowerCase() === curEmail) ||
+      (rep?.attendees?.investor?.email && curEmail && rep.attendees.investor.email.toLowerCase() === curEmail) ||
+      (rep?.attendees?.contractor?.email && curEmail && rep.attendees.contractor.email.toLowerCase() === curEmail) ||
+      (rep?.attendees?.supervisor?.person && curName && rep.attendees.supervisor.person.toLowerCase().includes(curName)) ||
+      (rep?.attendees?.investor?.person && curName && rep.attendees.investor.person.toLowerCase().includes(curName)) ||
+      (rep?.attendees?.contractor?.person && curName && rep.attendees.contractor.person.toLowerCase().includes(curName))
+    );
+
+    // Nếu thông báo gửi đích danh recipientUid
+    if (notif.recipientUid && notif.recipientUid === curUid) return true;
+
+    // --- KIỂM TRA CHO CÁC TRƯỞNG ---
+
+    // A. TVGS TRƯỞNG (LEAD_SUPERVISOR hoặc isSupervisorLead)
+    const isLeadSupervisor = role === 'LEAD_SUPERVISOR' || Boolean(user.isLead && role === 'SUPERVISOR');
+    if (isLeadSupervisor) {
+      const targetsTvgs = 
+        !notif.targetRoles || 
+        notif.targetRoles.includes('SUPERVISOR') || 
+        notif.targetRoles.includes('LEAD_SUPERVISOR') ||
+        notif.targetRole === 'SUPERVISOR' || 
+        notif.targetRole === 'LEAD_SUPERVISOR';
+
+      if (!targetsTvgs) return false;
+
+      // Được chọn hoặc tham gia trực tiếp
+      if (isExplicitlyAssigned || isAttendee) return true;
+
+      // Phiếu gửi cho cán bộ cấp dưới mà TVGS Trưởng này quản lý
+      const subIds = Array.isArray(user.subordinateIds) ? user.subordinateIds : [];
+      const isForSubordinate = assignedRecipients.some(rec => {
+        if (rec.role !== 'SUPERVISOR' && rec.role !== 'LEAD_SUPERVISOR') return false;
+        if (rec.leaderId && rec.leaderId === curUid) return true;
+        if (rec.uid && subIds.includes(rec.uid)) return true;
+        return false;
+      });
+      if (isForSubordinate) return true;
+
+      // Nếu TVGS Trưởng quản lý chung toàn bộ TVGS dự án (hoặc phiếu chưa phân cán bộ cụ thể)
+      if (subIds.length === 0 || assignedRecipients.length === 0) return true;
+
+      return false;
+    }
+
+    // B. CĐT TRƯỞNG (Ban QLDA)
+    const isLeadInvestor = role === 'LEAD_INVESTOR' || Boolean(user.isLead && role === 'INVESTOR');
+    if (isLeadInvestor) {
+      const targetsCdt = 
+        !notif.targetRoles || 
+        notif.targetRoles.includes('INVESTOR') || 
+        notif.targetRoles.includes('LEAD_INVESTOR') ||
+        notif.targetRole === 'INVESTOR' || 
+        notif.targetRole === 'LEAD_INVESTOR';
+
+      if (!targetsCdt) return false;
+
+      // Được chọn hoặc tham gia trực tiếp
+      if (isExplicitlyAssigned || isAttendee) return true;
+
+      // Phiếu gửi cho cán bộ cấp dưới mà CĐT Trưởng này quản lý
+      const subIds = Array.isArray(user.subordinateIds) ? user.subordinateIds : [];
+      const isForSubordinate = assignedRecipients.some(rec => {
+        if (rec.role !== 'INVESTOR' && rec.role !== 'LEAD_INVESTOR') return false;
+        if (rec.leaderId && rec.leaderId === curUid) return true;
+        if (rec.uid && subIds.includes(rec.uid)) return true;
+        return false;
+      });
+      if (isForSubordinate) return true;
+
+      // Nếu CĐT Trưởng quản lý chung toàn bộ CĐT dự án
+      if (subIds.length === 0 || assignedRecipients.length === 0) return true;
+
+      return false;
+    }
+
+    // C. CHỈ HUY TRƯỞNG ĐVTC
+    const isLeadContractor = role === 'CONTRACTOR' && (
+      (user.position || '').toLowerCase().includes('chỉ huy') ||
+      (user.position || '').toLowerCase().includes('trưởng') ||
+      Boolean(user.isLead)
+    );
+    if (isLeadContractor) {
+      const targetsContractor = 
+        !notif.targetRoles || 
+        notif.targetRoles.includes('CONTRACTOR') || 
+        notif.targetRole === 'CONTRACTOR';
+
+      if (!targetsContractor) return false;
+
+      // Phiếu của công ty nhà thầu mình
+      if (isCreator || isAttendee || isExplicitlyAssigned) return true;
+      const contractorCompany = req?.contractorCompany || rep?.attendees?.contractor?.company;
+      if (contractorCompany && user.company && contractorCompany.toLowerCase().includes(user.company.toLowerCase())) {
+        return true;
+      }
+      return true;
+    }
+
+    // --- KIỂM TRA CHO CÁN BỘ THƯỜNG ---
+    // (TVGS thường, CĐT thường, ĐVTC kỹ thuật hiện trường)
+
+    // Khớp vai trò trước
+    if (notif.targetRoles && !notif.targetRoles.includes(role)) {
+      return false;
+    }
+    if (notif.targetRole && notif.targetRole !== role) {
+      return false;
+    }
+
+    // ĐVTC thường: chỉ nhận phiếu do chính mình tạo hoặc được chỉ định
+    if (role === 'CONTRACTOR') {
+      return Boolean(isCreator || isExplicitlyAssigned || isAttendee);
+    }
+
+    // TVGS thường & CĐT thường:
+    // QUY TẮC BẮT BUỘC: CHỈ NHẬN NẾU ĐƯỢC CHỌN (isExplicitlyAssigned) HOẶC THAM GIA (isAttendee)!
+    // Cán bộ KHÔNG được chọn -> TUYỆT ĐỐI KHÔNG NHẬN!
+    if (assignedRecipients.length > 0) {
+      return Boolean(isExplicitlyAssigned || isAttendee);
+    }
+
+    // Thông báo chung không liên quan phiếu nào
+    if (!notif.targetRequestId && !notif.targetReportId) {
+      return true;
+    }
+
+    return false;
+  };
 
   // 0. Khôi phục dữ liệu từ IndexedDB (tránh 100% mất dữ liệu khi LocalStorage bị đầy quota hoặc F5)
   useEffect(() => {
@@ -355,13 +561,15 @@ export default function App() {
     const unsubscribe = subscribeToNotifications((cloudNotifs) => {
       setNotifications(cloudNotifs);
 
-      // Nếu có thông báo mới sau lần tải đầu tiên -> Kích hoạt Pop-up Toast & Native Push
+      // Nếu có thông báo mới sau lần tải đầu tiên -> Kích hoạt Pop-up Toast & Native Push nếu gửi cho mình
       if (!isInitialNotifMountRef.current) {
         const newIncoming = cloudNotifs.filter(n => !prevNotifIdsRef.current.has(n.id) && !n.isRead);
         if (newIncoming.length > 0) {
           const latest = newIncoming[0];
-          setActivePushToast(latest);
-          showSystemNotification(latest.title, latest.body);
+          if (checkNotificationRecipient(latest, currentUserRef.current, requestsRef.current, reportsRef.current)) {
+            setActivePushToast(latest);
+            showSystemNotification(latest.title, latest.body);
+          }
         }
       } else {
         isInitialNotifMountRef.current = false;
@@ -648,6 +856,16 @@ export default function App() {
     }
   };
 
+  // Cập nhật thông tin hồ sơ & mật khẩu của chính người dùng đang đăng nhập
+  const handleUpdateUserProfile = async (updatedFields) => {
+    if (!currentUser) return;
+    const updatedUser = {
+      ...currentUser,
+      ...updatedFields
+    };
+    await handleUpdateUser(updatedUser);
+  };
+
   const handleDeleteUser = async (userId) => {
     setUsers(prev => {
       const filtered = prev.filter(u => u.uid !== userId).map(u => {
@@ -911,14 +1129,19 @@ export default function App() {
       actionText: 'Mở biên bản nghiệm thu',
       targetReportId: newReportId,
       targetRequestId: finalRequest.id,
+      assignedRecipients: finalRequest.assignedRecipients || [],
+      createdByUid: finalRequest.createdByUid || currentUser?.uid,
+      createdByName: finalRequest.createdByName || currentUser?.fullName,
       targetRoles: ['SUPERVISOR', 'LEAD_SUPERVISOR', 'CONTRACTOR'], // Chỉ thông báo TVGS và ĐVTC trước! CĐT chỉ nhận sau khi TVGS duyệt!
       createdAt: new Date().toISOString(),
       time: 'Vừa xong',
       isRead: false
     };
 
-    setActivePushToast(pushPayload);
-    showSystemNotification(pushPayload.title, pushPayload.body);
+    if (checkNotificationRecipient(pushPayload, currentUser, [finalRequest, ...requests], [newReport, ...reports])) {
+      setActivePushToast(pushPayload);
+      showSystemNotification(pushPayload.title, pushPayload.body);
+    }
 
     // Cập nhật ngay lập tức vào state nội bộ và cache localStorage (Optimistic UI Update)
     // Giúp danh sách cập nhật tức thì 100% không bị trễ hay mất phiếu
@@ -996,6 +1219,54 @@ export default function App() {
 
     // Nếu đã tìm thấy report hiện có -> Luôn luôn mở report đó, TUYỆT ĐỐI không khởi tạo đè lên làm mất dữ liệu!
     if (rep) {
+      // ĐỒNG BỘ CÁN BỘ ĐƯỢC CHỈ ĐỊNH TỪ PHIẾU YÊU CẦU:
+      if (targetReq?.assignedRecipients && targetReq.assignedRecipients.length > 0) {
+        const assignedSup = targetReq.assignedRecipients.find(r => r.role === 'SUPERVISOR' || r.role === 'LEAD_SUPERVISOR');
+        const assignedInv = targetReq.assignedRecipients.find(r => r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR');
+        const leadInv = users.find(u => u.role === 'LEAD_INVESTOR') || { fullName: 'Ngô Quý Linh', position: 'Trưởng Ban QLDA', company: 'Công ty TNHH An Phú Cần Thơ' };
+        const leadSup = users.find(u => u.role === 'LEAD_SUPERVISOR') || { fullName: 'Đinh Xuân Thám', position: 'Tư vấn giám sát trưởng', company: 'Công ty CP TVXD và TM GELICON' };
+        const leadContractor = users.find(u => u.role === 'CONTRACTOR' && (u.position?.toLowerCase().includes('chỉ huy') || u.fullName.includes('Chỉ Huy'))) 
+          || { fullName: 'Trần Hữu Chỉ Huy', position: 'Chỉ huy trưởng', company: 'Công ty CP Xây dựng An Phú Gia' };
+
+        rep = {
+          ...rep,
+          assignedRecipients: targetReq.assignedRecipients,
+          attendees: {
+            ...rep.attendees,
+            supervisor: {
+              ...rep.attendees?.supervisor,
+              uid: assignedSup?.uid || rep.attendees?.supervisor?.uid,
+              person: rep.attendees?.supervisor?.signed 
+                ? rep.attendees.supervisor.person 
+                : (assignedSup?.fullName || rep.attendees?.supervisor?.person || leadSup.fullName),
+              position: assignedSup?.position || rep.attendees?.supervisor?.position || leadSup.position,
+              company: assignedSup?.company || rep.attendees?.supervisor?.company || leadSup.company,
+              leadPerson: rep.attendees?.supervisor?.leadPerson || leadSup.fullName,
+              leadPosition: rep.attendees?.supervisor?.leadPosition || leadSup.position
+            },
+            investor: {
+              ...rep.attendees?.investor,
+              uid: assignedInv?.uid || rep.attendees?.investor?.uid,
+              person: rep.attendees?.investor?.signed 
+                ? rep.attendees.investor.person 
+                : (assignedInv?.fullName || rep.attendees?.investor?.person || leadInv.fullName),
+              position: assignedInv?.position || rep.attendees?.investor?.position || leadInv.position,
+              company: assignedInv?.company || rep.attendees?.investor?.company || leadInv.company,
+              leadPerson: rep.attendees?.investor?.leadPerson || leadInv.fullName,
+              leadPosition: rep.attendees?.investor?.leadPosition || leadInv.position
+            },
+            contractor: {
+              ...rep.attendees?.contractor,
+              person: targetReq.createdByName || rep.attendees?.contractor?.person || 'KS. Lê Văn Kỹ Thuật',
+              position: targetReq.createdByRole || rep.attendees?.contractor?.position || 'Kỹ thuật hiện trường',
+              company: targetReq.contractorCompany || rep.attendees?.contractor?.company || 'Công ty CP Xây dựng An Phú Gia',
+              leadPerson: rep.attendees?.contractor?.leadPerson || leadContractor.fullName,
+              leadPosition: rep.attendees?.contractor?.leadPosition || leadContractor.position
+            }
+          }
+        };
+      }
+
       // ĐỒNG BỘ TRẠNG THÁI KHẮC PHỤC:
       const isCompleted = rep.status === 'COMPLETED' || 
         (Boolean(rep.attendees?.supervisor?.signed) && Boolean(rep.attendees?.investor?.signed));
@@ -1066,14 +1337,63 @@ export default function App() {
         : targetReq.taskContent,
       time: {
         startTime: targetReq.startTime || `${targetReq.scheduledTime}`,
-        endTime: targetReq.endTime || `16h30, ${targetReq.scheduledTime?.includes(' ') ? targetReq.scheduledTime.split(' ')[1] : 'hôm nay'}`,
+        endTime: targetReq.endTime || (() => {
+          const start = targetReq.startTime || targetReq.scheduledTime;
+          const match = start && start.match(/^(\d{1,2})[h:](\d{2})(.*)$/);
+          if (match) {
+            let h = parseInt(match[1], 10);
+            let m = parseInt(match[2], 10) + 30;
+            if (m >= 60) {
+              h = (h + Math.floor(m / 60)) % 24;
+              m = m % 60;
+            }
+            return `${String(h).padStart(2, '0')}h${String(m).padStart(2, '0')}${match[3]}`;
+          }
+          return `16h00, ${targetReq.scheduledTime?.includes(' ') ? targetReq.scheduledTime.split(' ')[1] : 'hôm nay'}`;
+        })(),
         place: targetReq.inspectionPlace
       },
-      attendees: {
-        investor: { company: 'Công ty TNHH An Phú Cần Thơ', person: 'Ông Bành Nguyễn Hậu', position: 'Cán bộ ban QLDA', signed: false },
-        supervisor: { company: 'Công ty CP TVXD và TM GELICON', person: 'KS. Võ Văn Tón', position: 'Cán bộ tư vấn giám sát', signed: false },
-        contractor: { company: 'Công ty CP Xây dựng An Phú Gia', person: targetReq.createdByName || 'KS. Lê Văn Kỹ Thuật', position: targetReq.createdByRole || 'Kỹ thuật hiện trường', signed: true }
-      },
+      assignedRecipients: targetReq.assignedRecipients || [],
+      attendees: (() => {
+        const assignedSup = targetReq.assignedRecipients?.find(r => r.role === 'SUPERVISOR' || r.role === 'LEAD_SUPERVISOR');
+        const assignedInv = targetReq.assignedRecipients?.find(r => r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR');
+        const leadInv = users.find(u => u.role === 'LEAD_INVESTOR') || { fullName: 'Ngô Quý Linh', position: 'Trưởng Ban QLDA', company: 'Công ty TNHH An Phú Cần Thơ' };
+        const leadSup = users.find(u => u.role === 'LEAD_SUPERVISOR') || { fullName: 'Đinh Xuân Thám', position: 'Tư vấn giám sát trưởng', company: 'Công ty CP TVXD và TM GELICON' };
+        const leadContractor = users.find(u => u.role === 'CONTRACTOR' && (u.position?.toLowerCase().includes('chỉ huy') || u.fullName.includes('Chỉ Huy'))) 
+          || { fullName: 'Trần Hữu Chỉ Huy', position: 'Chỉ huy trưởng', company: 'Công ty CP Xây dựng An Phú Gia' };
+
+        return {
+          investor: { 
+            uid: assignedInv?.uid || leadInv.uid,
+            company: assignedInv?.company || leadInv.company || 'Công ty TNHH An Phú Cần Thơ', 
+            person: assignedInv?.fullName || leadInv.fullName, 
+            position: assignedInv?.position || leadInv.position, 
+            email: assignedInv?.email || leadInv.email,
+            leadPerson: leadInv.fullName,
+            leadPosition: leadInv.position,
+            signed: false 
+          },
+          supervisor: { 
+            uid: assignedSup?.uid || leadSup.uid,
+            company: assignedSup?.company || leadSup.company || 'Công ty CP TVXD và TM GELICON', 
+            person: assignedSup?.fullName || leadSup.fullName, 
+            position: assignedSup?.position || leadSup.position, 
+            email: assignedSup?.email || leadSup.email,
+            leadPerson: leadSup.fullName,
+            leadPosition: leadSup.position,
+            signed: false 
+          },
+          contractor: { 
+            uid: targetReq.createdByUid,
+            company: targetReq.contractorCompany || 'Công ty CP Xây dựng An Phú Gia', 
+            person: targetReq.createdByName || 'KS. Lê Văn Kỹ Thuật', 
+            position: targetReq.createdByRole || 'Kỹ thuật hiện trường', 
+            leadPerson: leadContractor.fullName,
+            leadPosition: leadContractor.position,
+            signed: true 
+          }
+        };
+      })(),
       standardsApplied: appliedStandards,
       qualityAssessment: { matchDesign: true, matchStandards: true, matchTechnical: true, otherOpinions: 'Không' },
       conclusion: { isAccepted: true, repairRequired: 'Không có', otherRequirements: 'Không có' },
@@ -1222,14 +1542,19 @@ export default function App() {
       actionText: 'Xem ảnh lỗi & Khắc phục',
       targetReportId: updatedReport.id,
       targetRequestId: updatedReq?.id || targetReport.requestId,
+      assignedRecipients: updatedReq?.assignedRecipients || targetReport.assignedRecipients || [],
+      createdByUid: updatedReq?.createdByUid || targetReport.createdByUid,
+      createdByName: updatedReq?.createdByName || targetReport.createdByName,
       targetRoles: ['CONTRACTOR'],
       createdAt: new Date().toISOString(),
       time: 'Vừa xong',
       isRead: false
     };
 
-    setActivePushToast(pushPayload);
-    showSystemNotification(notifTitle, notifBody);
+    if (checkNotificationRecipient(pushPayload, currentUser, requests, [updatedReport, ...reports])) {
+      setActivePushToast(pushPayload);
+      showSystemNotification(notifTitle, notifBody);
+    }
 
     try {
       // BẮT BUỘC AWAIT ĐỂ LƯU CHẮC CHẮN LÊN CLOUD FIRESTORE TRƯỚC KHI ĐỔI TÀI KHOẢN
@@ -1331,6 +1656,9 @@ export default function App() {
         actionText: 'Mở biên bản để ký duyệt',
         targetReportId: targetReport.id,
         targetRequestId: updatedReq?.id || targetReport.requestId,
+        assignedRecipients: updatedReq?.assignedRecipients || targetReport.assignedRecipients || [],
+        createdByUid: updatedReq?.createdByUid || targetReport.createdByUid,
+        createdByName: updatedReq?.createdByName || targetReport.createdByName,
         targetRoles: ['INVESTOR', 'LEAD_INVESTOR', 'SUPERVISOR', 'LEAD_SUPERVISOR', 'CONTRACTOR'],
         createdAt: new Date().toISOString(),
         time: 'Vừa xong',
@@ -1342,8 +1670,10 @@ export default function App() {
         safeSaveLocalStorage('apct_notifications_list', nextNotifs);
         return nextNotifs;
       });
-      setActivePushToast(pushPayload);
-      showSystemNotification(notifTitle, notifBody);
+      if (checkNotificationRecipient(pushPayload, currentUser, requests, [updatedReport, ...reports])) {
+        setActivePushToast(pushPayload);
+        showSystemNotification(notifTitle, notifBody);
+      }
 
       try {
         await saveInspectionReport(updatedReport);
@@ -1374,6 +1704,9 @@ export default function App() {
         actionText: 'Xem biên bản hoàn thành',
         targetReportId: targetReport.id,
         targetRequestId: updatedReq?.id || targetReport.requestId,
+        assignedRecipients: updatedReq?.assignedRecipients || targetReport.assignedRecipients || [],
+        createdByUid: updatedReq?.createdByUid || targetReport.createdByUid,
+        createdByName: updatedReq?.createdByName || targetReport.createdByName,
         targetRoles: ['CONTRACTOR', 'SUPERVISOR', 'LEAD_SUPERVISOR', 'INVESTOR', 'LEAD_INVESTOR'],
         createdAt: new Date().toISOString(),
         time: 'Vừa xong',
@@ -1385,8 +1718,10 @@ export default function App() {
         safeSaveLocalStorage('apct_notifications_list', nextNotifs);
         return nextNotifs;
       });
-      setActivePushToast(pushPayload);
-      showSystemNotification(notifTitle, notifBody);
+      if (checkNotificationRecipient(pushPayload, currentUser, requests, [updatedReport, ...reports])) {
+        setActivePushToast(pushPayload);
+        showSystemNotification(notifTitle, notifBody);
+      }
 
       try {
         await saveInspectionReport(updatedReport);
@@ -1484,20 +1819,25 @@ export default function App() {
           actionText: 'Mở biên bản để ký duyệt',
           targetReportId: finalReport.id,
           targetRequestId: finalReport.requestId,
-          targetRoles: ['INVESTOR'],
+          assignedRecipients: updatedReq?.assignedRecipients || finalReport.assignedRecipients || [],
+          createdByUid: updatedReq?.createdByUid || finalReport.createdByUid,
+          createdByName: updatedReq?.createdByName || finalReport.createdByName,
+          targetRoles: ['INVESTOR', 'LEAD_INVESTOR'],
           createdAt: new Date().toISOString(),
           time: 'Vừa xong',
           isRead: false
         };
 
-        setActivePushToast(pushPayload);
-        showSystemNotification(notifTitle, notifBody);
+        if (checkNotificationRecipient(pushPayload, currentUser, requests, [finalReport, ...reports])) {
+          setActivePushToast(pushPayload);
+          showSystemNotification(notifTitle, notifBody);
+        }
         await saveSystemNotification(pushPayload);
 
         sendOneSignalPush({
           title: notifTitle,
           message: notifBody,
-          targetRoles: ['INVESTOR'],
+          targetRoles: ['INVESTOR', 'LEAD_INVESTOR'],
           url: 'https://app-apct-nghiemthu.web.app'
         }).catch(console.warn);
       } else if (isAllSigned) {
@@ -1512,6 +1852,9 @@ export default function App() {
           actionText: 'Xem biên bản hoàn thành',
           targetReportId: finalReport.id,
           targetRequestId: finalReport.requestId,
+          assignedRecipients: updatedReq?.assignedRecipients || finalReport.assignedRecipients || [],
+          createdByUid: updatedReq?.createdByUid || finalReport.createdByUid,
+          createdByName: updatedReq?.createdByName || finalReport.createdByName,
           targetRoles: ['CONTRACTOR', 'SUPERVISOR', 'LEAD_SUPERVISOR', 'INVESTOR', 'LEAD_INVESTOR'],
           createdAt: new Date().toISOString(),
           time: 'Vừa xong',
@@ -1523,8 +1866,10 @@ export default function App() {
           safeSaveLocalStorage('apct_notifications_list', nextNotifs);
           return nextNotifs;
         });
-        setActivePushToast(pushPayload);
-        showSystemNotification(notifTitle, notifBody);
+        if (checkNotificationRecipient(pushPayload, currentUser, requests, [finalReport, ...reports])) {
+          setActivePushToast(pushPayload);
+          showSystemNotification(notifTitle, notifBody);
+        }
         await saveSystemNotification(pushPayload);
 
         sendOneSignalPush({
@@ -1642,14 +1987,19 @@ export default function App() {
       actionText: 'Xem ảnh sửa & Kiểm tra lại',
       targetReportId: targetReport.id,
       targetRequestId: updatedReq?.id || targetReport.requestId,
-      targetRoles: [targetReviewer], // Gửi CHÍNH XÁC vai trò cần duyệt lại!
+      assignedRecipients: updatedReq?.assignedRecipients || targetReport.assignedRecipients || [],
+      createdByUid: updatedReq?.createdByUid || targetReport.createdByUid,
+      createdByName: updatedReq?.createdByName || targetReport.createdByName,
+      targetRoles: [targetReviewer, targetReviewer === 'SUPERVISOR' ? 'LEAD_SUPERVISOR' : 'LEAD_INVESTOR'],
       createdAt: new Date().toISOString(),
       time: 'Vừa xong',
       isRead: false
     };
 
-    setActivePushToast(pushPayload);
-    showSystemNotification(notifTitle, notifBody);
+    if (checkNotificationRecipient(pushPayload, currentUser, requests, [updatedReport, ...reports])) {
+      setActivePushToast(pushPayload);
+      showSystemNotification(notifTitle, notifBody);
+    }
 
     try {
       await saveInspectionReport(updatedReport);
@@ -2037,29 +2387,10 @@ export default function App() {
     return Boolean(isAssignedInReq || isAttendee);
   });
 
-  // Lọc thông báo phù hợp vai trò
-  const userNotifications = notifications.filter(notif => {
-    if (currentRole === 'ADMIN') return true;
-
-    if (notif.targetRole) {
-      const matchTargetRole = 
-        notif.targetRole === currentRole ||
-        (currentRole === 'LEAD_SUPERVISOR' && notif.targetRole === 'SUPERVISOR') ||
-        (currentRole === 'LEAD_INVESTOR' && notif.targetRole === 'INVESTOR');
-      if (!matchTargetRole) return false;
-    }
-
-    if (notif.targetRoles) {
-      const matchTargetRoles = 
-        notif.targetRoles.includes(currentRole) ||
-        (currentRole === 'LEAD_SUPERVISOR' && notif.targetRoles.includes('SUPERVISOR')) ||
-        (currentRole === 'LEAD_INVESTOR' && notif.targetRoles.includes('INVESTOR'));
-      if (!matchTargetRoles) return false;
-    }
-
-    if (notif.recipientUid && notif.recipientUid !== currentUser?.uid) return false;
-    return true;
-  });
+  // Lọc thông báo phù hợp: CHỈ người được chọn + các Trưởng liên quan + Admin mới nhận được
+  const userNotifications = notifications.filter(notif => 
+    checkNotificationRecipient(notif, currentUser, requests, reports)
+  );
 
   const unreadCount = userNotifications.filter(n => !n.isRead).length;
 
@@ -2106,7 +2437,7 @@ export default function App() {
         pushPermissionGranted={pushPermissionGranted}
         onEnablePush={handleEnablePush}
         onOpenAdmin={() => setIsAdminModalOpen(true)}
-        onOpenProfile={() => setIsMobileProfileOpen(true)}
+        onOpenProfile={() => setActiveTab('PROFILE')}
         onLogout={handleLogout}
         onResetAllData={handleResetAllData}
       />
@@ -2173,6 +2504,13 @@ export default function App() {
                   <FileText size={18} />
                   <span>Hồ Sơ Biên Bản ({accessibleReports.length})</span>
                 </li>
+                <li 
+                  className={`sidebar-nav-item ${activeTab === 'PROFILE' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('PROFILE')}
+                >
+                  <UserCheck size={18} />
+                  <span>Hồ Sơ Cá Nhân</span>
+                </li>
               </>
             ) : (
               <>
@@ -2194,6 +2532,14 @@ export default function App() {
                 >
                   <FileText size={18} />
                   <span>Biên Bản Nghiệm Thu ({accessibleReports.length})</span>
+                </li>
+
+                <li 
+                  className={`sidebar-nav-item ${activeTab === 'PROFILE' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('PROFILE')}
+                >
+                  <UserCheck size={18} />
+                  <span>Hồ Sơ Cá Nhân</span>
                 </li>
               </>
             )}
@@ -2218,8 +2564,14 @@ export default function App() {
 
         {/* NỘI DUNG CHÍNH (GIAO DIỆN CHUYÊN BIỆT TỪNG VAI TRÒ) */}
         <main className="app-main">
-          {/* MÀN HÌNH DANH SÁCH BIÊN BẢN NGHIỆM THU CHO MỌI VAI TRÒ */}
-          {activeTab === 'REPORTS' ? (
+          {/* MÀN HÌNH HỒ SƠ CÁ NHÂN & ĐỔI MẬT KHẨU (PROFILE) */}
+          {activeTab === 'PROFILE' ? (
+            <ProfileView 
+              currentUser={currentUser}
+              users={users}
+              onUpdateProfile={handleUpdateUserProfile}
+            />
+          ) : activeTab === 'REPORTS' ? (
             <ReportsListView 
               reports={accessibleReports}
               currentRole={currentRole}
@@ -2504,8 +2856,6 @@ export default function App() {
                           <span>🏢 {req.buildingName}</span>
                           <span>›</span>
                           <span>📑 {req.itemName}</span>
-                          <span>›</span>
-                          <span>📍 {req.inspectionPlace}</span>
                         </div>
 
                         {/* THÔNG BÁO LÝ DO KHIẾM KHUYẾT NẾU TỪ CHỐI */}
@@ -2709,6 +3059,7 @@ export default function App() {
         users={users}
         onSwitchUser={handleSwitchUser}
         onOpenAdmin={() => setIsAdminModalOpen(true)}
+        onNavigateProfile={() => setActiveTab('PROFILE')}
         onLogout={handleLogout}
         pushPermissionGranted={pushPermissionGranted}
         onEnablePush={handleEnablePush}
@@ -2746,6 +3097,8 @@ export default function App() {
         report={selectedReport}
         currentRole={currentRole}
         currentUser={currentUser}
+        users={users}
+        requests={requests}
         onSaveReport={handleSaveReport}
         onRejectReport={handleRejectReport}
         onReinspectReport={handleReinspectReport}

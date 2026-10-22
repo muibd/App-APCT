@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { 
-  Building2, Mail, Lock, Eye, EyeOff, ArrowRight, 
-  AlertCircle, ShieldCheck, HardHat, Briefcase, CheckCircle2, Award 
+import {
+  Building2, Mail, Lock, Eye, EyeOff, ArrowRight,
+  AlertCircle, ShieldCheck, HardHat, Briefcase, CheckCircle2, Award
 } from 'lucide-react';
 import { MOCK_USERS } from '../data/mockData';
 
@@ -11,72 +11,6 @@ export default function LoginScreen({ onLogin, users = MOCK_USERS }) {
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-
-  // Danh sách tài khoản demo giúp người dùng test nhanh bằng 1 cú click để điền email & pass
-  const demoAccounts = [
-    {
-      roleName: 'Quản Trị Viên (Admin)',
-      email: 'admin@apct.vn',
-      pass: '123456',
-      icon: ShieldCheck,
-      color: '#7e22ce',
-      bg: '#faf5ff'
-    },
-    {
-      roleName: 'ĐVTC: Cty Bình Hoà (CHT Khương)',
-      email: 'pkhuong03@gmail.com',
-      pass: '123456',
-      icon: HardHat,
-      color: '#2563eb',
-      bg: '#eff6ff'
-    },
-    {
-      roleName: 'ĐVTC: An Phú Gia (CHT Nhàn)',
-      email: 'phamnhanktxd2014@gmail.com',
-      pass: '123456',
-      icon: HardHat,
-      color: '#1d4ed8',
-      bg: '#eff6ff'
-    },
-    {
-      roleName: 'Tư Vấn Giám Sát (TVGS)',
-      email: 'dongvug@gmail.com',
-      pass: '123456',
-      icon: Eye,
-      color: '#059669',
-      bg: '#ecfdf5'
-    },
-    {
-      roleName: 'TVGS Trưởng (Đinh Xuân Thám)',
-      email: 'tham.dinhxuan@gelicon.vn',
-      pass: '123456',
-      icon: Award,
-      color: '#047857',
-      bg: '#ecfdf5'
-    },
-    {
-      roleName: 'Đại Diện CĐT (CB MEP Trung)',
-      email: 'trungnguyenme1984@gmail.com',
-      pass: '123456',
-      icon: Briefcase,
-      color: '#d97706',
-      bg: '#fffbeb'
-    },
-    {
-      roleName: 'CĐT Trưởng (Ngô Quý Linh)',
-      email: 'linh.ngoquy@cncmi.vn',
-      pass: '123456',
-      icon: Award,
-      color: '#b45309',
-      bg: '#fffbeb'
-    }
-  ];
-
-  const handleFillDemo = (demoEmail, demoPass) => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    setErrorMsg('');
-  };
 
   const handleLoginSubmit = (e) => {
     e.preventDefault();
@@ -221,21 +155,21 @@ export default function LoginScreen({ onLogin, users = MOCK_USERS }) {
               Tài khoản Email <span style={{ color: '#ef4444' }}>*</span>
             </label>
             <div style={{ position: 'relative' }}>
-              <Mail 
-                size={18} 
-                color="#94a3b8" 
-                style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} 
+              <Mail
+                size={18}
+                color="#94a3b8"
+                style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }}
               />
               <input
                 type="email"
                 className="form-input"
-                placeholder="vidu: admin@apct.vn hoặc email cán bộ"
+                placeholder="Nhập email cán bộ"
                 value={email}
                 onChange={(e) => {
                   setEmail(e.target.value);
                   if (errorMsg) setErrorMsg('');
                 }}
-                style={{ 
+                style={{
                   paddingLeft: '42px',
                   height: '46px',
                   borderRadius: '12px',
@@ -260,10 +194,10 @@ export default function LoginScreen({ onLogin, users = MOCK_USERS }) {
               </span>
             </div>
             <div style={{ position: 'relative' }}>
-              <Lock 
-                size={18} 
-                color="#94a3b8" 
-                style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} 
+              <Lock
+                size={18}
+                color="#94a3b8"
+                style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }}
               />
               <input
                 type={showPassword ? 'text' : 'password'}
@@ -274,7 +208,7 @@ export default function LoginScreen({ onLogin, users = MOCK_USERS }) {
                   setPassword(e.target.value);
                   if (errorMsg) setErrorMsg('');
                 }}
-                style={{ 
+                style={{
                   paddingLeft: '42px',
                   paddingRight: '44px',
                   height: '46px',
@@ -311,13 +245,13 @@ export default function LoginScreen({ onLogin, users = MOCK_USERS }) {
           </div>
 
           {/* Nút Submit Đăng Nhập */}
-          <button 
-            type="submit" 
-            className="btn-primary" 
+          <button
+            type="submit"
+            className="btn-primary"
             disabled={isLoading}
-            style={{ 
-              width: '100%', 
-              justifyContent: 'center', 
+            style={{
+              width: '100%',
+              justifyContent: 'center',
               height: '46px',
               borderRadius: '12px',
               fontSize: '0.95rem',
@@ -330,83 +264,6 @@ export default function LoginScreen({ onLogin, users = MOCK_USERS }) {
             <ArrowRight size={18} />
           </button>
         </form>
-
-        {/* Gợi ý nhanh tài khoản mẫu (Click để điền tự động) */}
-        <div style={{
-          marginTop: '24px',
-          padding: '16px',
-          background: '#f8fafc',
-          borderRadius: '14px',
-          border: '1px solid #e2e8f0'
-        }}>
-          <div style={{
-            fontSize: '0.78rem',
-            fontWeight: 700,
-            color: '#475569',
-            marginBottom: '10px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between'
-          }}>
-            <span>💡 GỢI Ý TÀI KHOẢN MẪU (CLICK ĐỂ ĐIỀN)</span>
-            <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>MK: 123456</span>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-            {demoAccounts.map(demo => {
-              const Icon = demo.icon;
-              return (
-                <button
-                  key={demo.email}
-                  type="button"
-                  onClick={() => handleFillDemo(demo.email, demo.pass)}
-                  style={{
-                    background: '#ffffff',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '10px',
-                    padding: '8px 10px',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = demo.color;
-                    e.currentTarget.style.background = demo.bg;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = '#e2e8f0';
-                    e.currentTarget.style.background = '#ffffff';
-                  }}
-                >
-                  <div style={{
-                    width: '26px',
-                    height: '26px',
-                    borderRadius: '8px',
-                    background: demo.bg,
-                    color: demo.color,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0
-                  }}>
-                    <Icon size={14} />
-                  </div>
-                  <div style={{ overflow: 'hidden' }}>
-                    <div style={{ fontSize: '0.76rem', fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {demo.roleName.split(' (')[0]}
-                    </div>
-                    <div style={{ fontSize: '0.68rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {demo.email.split('@')[0]}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
 
         {/* Footer info */}
         <div style={{

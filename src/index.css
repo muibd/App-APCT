@@ -1015,12 +1015,10 @@ h1, h2, h3, h4, h5, h6, .brand-title {
 /* --------------------------------------------------------------------------
    MODALS & DIALOGS
    -------------------------------------------------------------------------- */
-/* Body Scroll Lock khi mở popup / modal để cố định trang đằng sau */
 body.modal-open,
 html.modal-open {
   overflow: hidden !important;
   height: 100% !important;
-  touch-action: none;
 }
 
 .modal-overlay {
@@ -1034,8 +1032,8 @@ html.modal-open {
   justify-content: center;
   padding: 16px;
   animation: fadeIn 0.2s ease-out;
-  overscroll-behavior: contain;
-  touch-action: none;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .modal-content {
@@ -1167,10 +1165,12 @@ html.modal-open {
   border-color: var(--primary-400);
 }
 
-.recipient-checkbox-card input[type="checkbox"] {
+.recipient-checkbox-card input[type="checkbox"],
+.recipient-checkbox-card input[type="radio"] {
   width: 18px;
   height: 18px;
   accent-color: var(--primary-600);
+  cursor: pointer;
 }
 
 /* --------------------------------------------------------------------------

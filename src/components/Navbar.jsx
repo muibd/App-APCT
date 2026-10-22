@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { Building2, Bell, ShieldCheck, UserCircle, LogOut, BellRing, RotateCcw } from 'lucide-react';
 import NotificationDropdown from './NotificationDropdown';
 
-export default function Navbar({ 
-  currentRole, 
-  currentUser, 
+export default function Navbar({
+  currentRole,
+  currentUser,
   unreadCount = 0,
   notifications = [],
   onMarkAllAsRead,
@@ -46,12 +46,12 @@ export default function Navbar({
           <div className="brand-text">
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <h1 className="brand-title">APCT</h1>
-              <span 
+              <span
                 className="brand-role-chip"
-                style={{ 
-                  background: badge.bg, 
-                  color: badge.color, 
-                  borderColor: badge.color 
+                style={{
+                  background: badge.bg,
+                  color: badge.color,
+                  borderColor: badge.color
                 }}
               >
                 {badge.text}
@@ -70,7 +70,7 @@ export default function Navbar({
       <div className="header-right">
         {/* PUSH BUTTON (DESKTOP ONLY) */}
         {!pushPermissionGranted && onEnablePush && (
-          <button 
+          <button
             className="btn-enable-push desktop-only-action"
             onClick={onEnablePush}
             title="Bật nhận thông báo đẩy Web Push FCM"
@@ -81,19 +81,19 @@ export default function Navbar({
         )}
 
         {/* ADMIN PORTAL BUTTON (DESKTOP ONLY) */}
-        {currentRole === 'ADMIN' && (
-          <button 
-            className="btn-secondary desktop-only-action" 
+        {/* {currentRole === 'ADMIN' && (
+          <button
+            className="btn-secondary desktop-only-action"
             style={{ padding: '6px 12px', fontSize: '0.82rem' }}
             onClick={onOpenAdmin}
           >
             <ShieldCheck size={16} color="#7e22ce" />
             <span>Admin Portal</span>
           </button>
-        )}
+        )} */}
 
         {/* NÚT RESET DỮ LIỆU ĐỂ TEST TỪ ĐẦU (DESKTOP ONLY) */}
-        {onResetAllData && (
+        {/* {onResetAllData && (
           <button 
             className="btn-secondary desktop-only-action" 
             style={{ 
@@ -109,11 +109,11 @@ export default function Navbar({
             <RotateCcw size={14} color="#dc2626" />
             <span>Reset Data</span>
           </button>
-        )}
+        )} */}
 
         {/* NOTIFICATION BELL */}
         <div style={{ position: 'relative' }}>
-          <button 
+          <button
             className="btn-icon-badge"
             onClick={() => setIsNotifOpen(!isNotifOpen)}
             title="Thông báo hệ thống"
@@ -139,14 +139,14 @@ export default function Navbar({
         </div>
 
         {/* USER PROFILE AVATAR / PILL */}
-        <div 
-          className="user-profile-pill" 
+        <div
+          className="user-profile-pill"
           onClick={onOpenProfile}
           title="Thông tin tài khoản & Cài đặt"
           role="button"
           tabIndex={0}
         >
-          <div 
+          <div
             className="avatar-circle"
             style={{ background: badge.color }}
           >
@@ -164,14 +164,14 @@ export default function Navbar({
         <button
           onClick={onLogout}
           className="btn-secondary desktop-only-action"
-          style={{ 
-            padding: '6px 12px', 
-            fontSize: '0.82rem', 
-            color: '#ef4444', 
-            borderColor: '#fecaca', 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '6px' 
+          style={{
+            padding: '6px 12px',
+            fontSize: '0.82rem',
+            color: '#ef4444',
+            borderColor: '#fecaca',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
           }}
           title="Đăng xuất khỏi hệ thống"
         >

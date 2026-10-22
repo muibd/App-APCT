@@ -835,8 +835,8 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content" style={{ maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto' }}>
-        <div className="modal-header" style={{ background: '#faf5ff' }}>
+      <div className="modal-content" style={{ maxWidth: '640px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div className="modal-header" style={{ background: '#faf5ff', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ background: '#f3e8ff', padding: '8px', borderRadius: '10px', color: '#7e22ce' }}>
               <UserPlus size={22} />
@@ -850,8 +850,8 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
           <button className="modal-close-btn" onClick={onClose}><X size={20} /></button>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <div className="modal-body" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <div className="modal-body" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1, minHeight: 0, overflowY: 'auto' }}>
             {errorMsg && (
               <div style={{
                 background: '#fef2f2',
@@ -1275,7 +1275,7 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
             </div>
           </div>
 
-          <div className="modal-footer" style={{ justifyContent: 'flex-end', gap: '10px' }}>
+          <div className="modal-footer" style={{ justifyContent: 'flex-end', gap: '10px', flexShrink: 0 }}>
             <button type="button" className="btn-secondary" onClick={onClose}>
               Hủy bỏ
             </button>
@@ -1385,8 +1385,8 @@ function EditUserModal({ user, onClose, onSave, existingUsers = [] }) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content" style={{ maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto' }}>
-        <div className="modal-header" style={{ background: '#f0f9ff' }}>
+      <div className="modal-content" style={{ maxWidth: '640px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div className="modal-header" style={{ background: '#f0f9ff', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ background: '#e0f2fe', padding: '8px', borderRadius: '10px', color: '#0284c7' }}>
               <Edit3 size={22} />
@@ -1400,8 +1400,8 @@ function EditUserModal({ user, onClose, onSave, existingUsers = [] }) {
           <button className="modal-close-btn" onClick={onClose}><X size={20} /></button>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <div className="modal-body" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <div className="modal-body" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1, minHeight: 0, overflowY: 'auto' }}>
             {errorMsg && (
               <div style={{
                 background: '#fef2f2',
@@ -1782,7 +1782,7 @@ function EditUserModal({ user, onClose, onSave, existingUsers = [] }) {
             </div>
           </div>
 
-          <div className="modal-footer" style={{ justifyContent: 'flex-end', gap: '10px' }}>
+          <div className="modal-footer" style={{ justifyContent: 'flex-end', gap: '10px', flexShrink: 0 }}>
             <button type="button" className="btn-secondary" onClick={onClose}>
               Hủy
             </button>

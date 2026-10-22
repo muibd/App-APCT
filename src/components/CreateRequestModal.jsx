@@ -136,16 +136,22 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
     return today.toISOString().split('T')[0];
   });
 
-  // Giờ bắt đầu: Tự động lấy giờ hiện tại khi lập phiếu
+  // Hàm tính giờ kết thúc tự động = giờ bắt đầu + 30 phút
+  const calculateEndTime = (timeStr, addMinutes = 30) => {
+    if (!timeStr) return '';
+    const [hStr, mStr] = timeStr.split(':');
+    let h = parseInt(hStr, 10);
+    let m = parseInt(mStr, 10);
+    if (isNaN(h) || isNaN(m)) return '';
+    const totalMinutes = h * 60 + m + addMinutes;
+    const newH = Math.floor(totalMinutes / 60) % 24;
+    const newM = totalMinutes % 60;
+    return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
+  };
+
+  // Giờ bắt đầu: Mặc định lấy giờ hiện tại khi lập phiếu, người dùng được quyền chỉnh sửa
   const [startTime, setStartTime] = useState(() => {
     const now = new Date();
-    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  });
-
-  // Giờ kết thúc: Cho người dùng tự điền lúc tạo phiếu (mặc định sau 1 giờ)
-  const [endTime, setEndTime] = useState(() => {
-    const now = new Date();
-    now.setHours(now.getHours() + 1);
     return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   });
 
@@ -270,49 +276,31 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
     setEvidencePhotos(prev => prev.map(p => p.id === photoId ? { ...p, caption: newCaption } : p));
   };
 
-  // Selected Recipient IDs
-  const [selectedRecipients, setSelectedRecipients] = useState(() => [
-    supervisorList[0]?.uid, // Default pre-select first TVGS (e.g. KS. Võ Văn Tón)
-    investorList[0]?.uid    // Default pre-select first CĐT (e.g. Ông Bành Nguyễn Hậu)
-  ].filter(Boolean));
+  // Chọn dạng Radio: Chỉ chọn duy nhất 1 cán bộ TVGS và 1 cán bộ CĐT
+  const [selectedSupervisor, setSelectedSupervisor] = useState(() => supervisorList[0]?.uid || '');
+  const [selectedInvestor, setSelectedInvestor] = useState(() => investorList[0]?.uid || '');
 
   useEffect(() => {
-    if (selectedRecipients.length === 0 && users.length > 0) {
-      const s = users.filter(u => u.role === 'SUPERVISOR' || u.role === 'LEAD_SUPERVISOR');
-      const i = users.filter(u => u.role === 'INVESTOR' || u.role === 'LEAD_INVESTOR');
-      setSelectedRecipients([s[0]?.uid, i[0]?.uid].filter(Boolean));
+    if (!selectedSupervisor && supervisorList.length > 0) {
+      setSelectedSupervisor(supervisorList[0]?.uid || '');
     }
-  }, [users, isOpen]);
-
-  // Toggle recipient
-  const toggleRecipient = (uid) => {
-    setSelectedRecipients(prev => 
-      prev.includes(uid) ? prev.filter(id => id !== uid) : [...prev, uid]
-    );
-  };
-
-  const selectAllGroup = (groupUsers) => {
-    const groupUids = groupUsers.map(u => u.uid);
-    const allSelected = groupUids.every(id => selectedRecipients.includes(id));
-    if (allSelected) {
-      setSelectedRecipients(prev => prev.filter(id => !groupUids.includes(id)));
-    } else {
-      setSelectedRecipients(prev => Array.from(new Set([...prev, ...groupUids])));
+    if (!selectedInvestor && investorList.length > 0) {
+      setSelectedInvestor(investorList[0]?.uid || '');
     }
-  };
+  }, [supervisorList, investorList, isOpen]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    if (selectedRecipients.length === 0) {
+    if (!selectedSupervisor) {
       if (showAlert) {
         showAlert({
           type: 'warning',
-          title: 'Chưa Chọn Người Nhận',
-          message: 'Vui lòng chọn ít nhất 1 cán bộ TVGS hoặc CĐT để nhận thông báo nghiệm thu!'
+          title: 'Chưa Chọn TVGS',
+          message: 'Vui lòng chọn 1 cán bộ Tư Vấn Giám Sát tiếp nhận nghiệm thu!'
         });
       } else {
-        alert('Vui lòng chọn ít nhất 1 cán bộ TVGS hoặc CĐT để nhận thông báo!');
+        alert('Vui lòng chọn 1 cán bộ TVGS!');
       }
       return;
     }
@@ -334,7 +322,8 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
       return;
     }
 
-    const assignedRecipients = selectedRecipients.map(uid => {
+    const selectedUids = [selectedSupervisor, selectedInvestor].filter(Boolean);
+    const assignedRecipients = selectedUids.map(uid => {
       const u = users.find(x => x.uid === uid);
       return {
         uid: u?.uid || uid,
@@ -372,9 +361,10 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
       ? `Nghiệm thu vật liệu đầu vào (${materialName})`
       : finalItem;
 
+    const calculatedEndTime = calculateEndTime(startTime, 30);
     const dateFormatted = scheduledDate.split('-').reverse().join('/');
     const formattedStartTime = `${startTime.replace(':', 'h')}, ngày ${dateFormatted}`;
-    const formattedEndTime = `${endTime.replace(':', 'h')}, ngày ${dateFormatted}`;
+    const formattedEndTime = `${calculatedEndTime.replace(':', 'h')}, ngày ${dateFormatted}`;
 
     const newRequest = {
       id: `req_${Date.now()}`,
@@ -492,7 +482,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
             </button>
           </div>
 
-          {/* Row 1: Số phiếu & Dự án */}
+          {/* Row 1: Số phiếu & Đơn vị thi công */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px', marginBottom: '14px' }}>
             <div className="form-group" style={{ margin: 0 }}>
               <label className="form-label">Mã số phiếu:</label>
@@ -505,15 +495,29 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
               />
             </div>
             <div className="form-group" style={{ margin: 0 }}>
-              <label className="form-label">Dự án:</label>
+              <label className="form-label">Đơn vị thi công:</label>
               <input 
                 type="text" 
                 className="form-input" 
-                value={MOCK_PROJECT.projectName} 
+                value={currentUser?.company || 'Công ty CP Xây dựng An Phú Gia'} 
+                readOnly 
                 disabled 
-                style={{ background: '#f8fafc', color: '#475569' }} 
+                style={{ background: '#f8fafc', color: '#0f172a', fontWeight: '600', cursor: 'not-allowed', border: '1px solid #cbd5e1' }} 
+                title="Đơn Vị / Công Ty Phụ Trách của người tạo (Cố định, không được sửa)"
               />
             </div>
+          </div>
+
+          {/* Row 1.5: Dự án */}
+          <div className="form-group" style={{ marginBottom: '14px' }}>
+            <label className="form-label">Dự án:</label>
+            <input 
+              type="text" 
+              className="form-input" 
+              value={MOCK_PROJECT.projectName} 
+              disabled 
+              style={{ background: '#f8fafc', color: '#475569', cursor: 'not-allowed' }} 
+            />
           </div>
 
           {/* NẾU LÀ CÔNG VIỆC XÂY DỰNG */}
@@ -776,8 +780,8 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
             </div>
           )}
 
-          {/* Thời gian nghiệm thu: Giờ bắt đầu (giờ tạo phiếu) & Giờ kết thúc (cho điền) */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginBottom: '18px' }}>
+          {/* Thời gian nghiệm thu: Chỉ hiển thị Giờ bắt đầu, Ngày thực hiện, Tại địa điểm (Giờ kết thúc tự động = Giờ bắt đầu + 30p, chỉ hiển thị ở biên bản nghiệm thu) */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '14px', marginBottom: '18px' }}>
             <div className="form-group" style={{ margin: 0 }}>
               <label className="form-label">Giờ bắt đầu:</label>
               <input 
@@ -785,18 +789,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
                 className="form-input" 
                 value={startTime} 
                 onChange={(e) => setStartTime(e.target.value)} 
-                title="Tự động lấy giờ hiện tại khi lập phiếu"
-                required 
-              />
-            </div>
-            <div className="form-group" style={{ margin: 0 }}>
-              <label className="form-label">Giờ kết thúc:</label>
-              <input 
-                type="time" 
-                className="form-input" 
-                value={endTime} 
-                onChange={(e) => setEndTime(e.target.value)} 
-                title="Điền giờ kết thúc nghiệm thu"
+                title="Giờ bắt đầu nghiệm thu"
                 required 
               />
             </div>
@@ -1030,46 +1023,39 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
 
           {/* KHU VỰC CHỌN NGƯỜI NHẬN (TVGS & CĐT) */}
           <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', marginBottom: '18px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Users size={18} color="#2563eb" />
-                <strong style={{ fontSize: '0.95rem', color: '#1e293b' }}>
-                  Chỉ định Cán bộ Nhận Thư Mời Nghiệm Thu
-                </strong>
-              </div>
-              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                Đã chọn: <strong>{selectedRecipients.length} cán bộ</strong>
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+              <Users size={18} color="#2563eb" />
+              <strong style={{ fontSize: '0.95rem', color: '#1e293b' }}>
+                Chỉ định Cán bộ Nhận Thư Mời Nghiệm Thu
+              </strong>
             </div>
 
             {/* NHÓM 1: TƯ VẤN GIÁM SÁT */}
             <div style={{ marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <div style={{ marginBottom: '8px' }}>
                 <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#047857', textTransform: 'uppercase' }}>
                   1. Cán bộ Tư Vấn Giám Sát:
                 </span>
-                <button 
-                  type="button" 
-                  onClick={() => selectAllGroup(supervisorList)}
-                  style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.78rem', cursor: 'pointer', fontWeight: '600' }}
-                >
-                  Chọn / Bỏ tất cả TVGS
-                </button>
               </div>
 
               <div className="recipients-selection-grid">
                 {supervisorList.map(u => {
-                  const isSelected = selectedRecipients.includes(u.uid);
+                  const isSelected = selectedSupervisor === u.uid;
                   return (
                     <div 
                       key={u.uid}
                       className={`recipient-checkbox-card ${isSelected ? 'selected' : ''}`}
-                      onClick={() => toggleRecipient(u.uid)}
+                      onClick={() => setSelectedSupervisor(u.uid)}
+                      style={{ cursor: 'pointer' }}
                     >
                       <input 
-                        type="checkbox" 
+                        type="radio" 
+                        name="selectedSupervisorRadio"
+                        value={u.uid}
                         checked={isSelected} 
-                        onChange={() => {}} 
+                        onChange={() => setSelectedSupervisor(u.uid)} 
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ cursor: 'pointer' }}
                       />
                       <div className="avatar-circle" style={{ width: '30px', height: '30px', fontSize: '0.75rem', background: '#059669' }}>
                         {u.avatar}
@@ -1079,7 +1065,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
                           <span>{u.fullName}</span>
                           {u.role === 'LEAD_SUPERVISOR' && (
                             <span style={{ fontSize: '0.68rem', background: '#dcfce7', color: '#15803d', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>
-                              Trưởng
+                              Trưởng TVGS
                             </span>
                           )}
                         </div>
@@ -1093,32 +1079,30 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
 
             {/* NHÓM 2: ĐẠI DIỆN CHỦ ĐẦU TƯ */}
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <div style={{ marginBottom: '8px' }}>
                 <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#b45309', textTransform: 'uppercase' }}>
                   2. Đại Diện Chủ Đầu Tư:
                 </span>
-                <button 
-                  type="button" 
-                  onClick={() => selectAllGroup(investorList)}
-                  style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.78rem', cursor: 'pointer', fontWeight: '600' }}
-                >
-                  Chọn / Bỏ tất cả CĐT
-                </button>
               </div>
 
               <div className="recipients-selection-grid">
                 {investorList.map(u => {
-                  const isSelected = selectedRecipients.includes(u.uid);
+                  const isSelected = selectedInvestor === u.uid;
                   return (
                     <div 
                       key={u.uid}
                       className={`recipient-checkbox-card ${isSelected ? 'selected' : ''}`}
-                      onClick={() => toggleRecipient(u.uid)}
+                      onClick={() => setSelectedInvestor(u.uid)}
+                      style={{ cursor: 'pointer' }}
                     >
                       <input 
-                        type="checkbox" 
+                        type="radio" 
+                        name="selectedInvestorRadio"
+                        value={u.uid}
                         checked={isSelected} 
-                        onChange={() => {}} 
+                        onChange={() => setSelectedInvestor(u.uid)} 
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ cursor: 'pointer' }}
                       />
                       <div className="avatar-circle" style={{ width: '30px', height: '30px', fontSize: '0.75rem', background: '#d97706' }}>
                         {u.avatar}
@@ -1128,7 +1112,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
                           <span>{u.fullName}</span>
                           {u.role === 'LEAD_INVESTOR' && (
                             <span style={{ fontSize: '0.68rem', background: '#fef3c7', color: '#b45309', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>
-                              Trưởng
+                              Trưởng CĐT
                             </span>
                           )}
                         </div>

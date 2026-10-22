@@ -1,7 +1,7 @@
 import React from 'react';
-import { 
-  X, UserCircle, ShieldCheck, BellRing, LogOut, Building, 
-  HardHat, Eye, Briefcase, CheckCircle2, ChevronRight, Sparkles, RotateCcw, Award 
+import {
+  X, UserCircle, ShieldCheck, BellRing, LogOut, Building,
+  HardHat, Eye, Briefcase, CheckCircle2, ChevronRight, Sparkles, RotateCcw, Award, KeyRound, User
 } from 'lucide-react';
 import { isIOSDevice, isStandalonePWA } from '../services/notificationService';
 
@@ -13,6 +13,7 @@ export default function MobileProfileSheet({
   users = [],
   onSwitchUser,
   onOpenAdmin,
+  onNavigateProfile,
   onLogout,
   pushPermissionGranted,
   onEnablePush,
@@ -23,58 +24,58 @@ export default function MobileProfileSheet({
   const getRoleDetails = (role) => {
     switch (role) {
       case 'ADMIN':
-        return { 
-          name: 'Quản Trị Viên (Admin)', 
-          icon: ShieldCheck, 
-          bg: '#f3e8ff', 
+        return {
+          name: 'Quản Trị Viên (Admin)',
+          icon: ShieldCheck,
+          bg: '#f3e8ff',
           color: '#7e22ce',
           desc: 'Toàn quyền quản trị nhân sự, TCVN & phân quyền'
         };
       case 'CONTRACTOR':
-        return { 
-          name: 'Đơn Vị Thi Công (ĐVTC)', 
-          icon: HardHat, 
-          bg: '#eff6ff', 
+        return {
+          name: 'Đơn Vị Thi Công (ĐVTC)',
+          icon: HardHat,
+          bg: '#eff6ff',
           color: '#1d4ed8',
           desc: 'Lập phiếu yêu cầu nghiệm thu, khắc phục lỗi & gửi lại'
         };
       case 'SUPERVISOR':
-        return { 
-          name: 'Tư Vấn Giám Sát (TVGS)', 
-          icon: Eye, 
-          bg: '#ecfdf5', 
+        return {
+          name: 'Tư Vấn Giám Sát (TVGS)',
+          icon: Eye,
+          bg: '#ecfdf5',
           color: '#047857',
           desc: 'Trực tiếp đánh giá tại hiện trường, duyệt hoặc từ chối NT'
         };
       case 'LEAD_SUPERVISOR':
-        return { 
-          name: 'Tư Vấn Giám Sát Trưởng', 
-          icon: Award, 
-          bg: '#f0fdf4', 
+        return {
+          name: 'Tư Vấn Giám Sát Trưởng',
+          icon: Award,
+          bg: '#f0fdf4',
           color: '#15803d',
           desc: 'Xem tất cả phiếu thuộc TVGS, xác nhận/hủy phiếu mình phụ trách'
         };
       case 'INVESTOR':
-        return { 
-          name: 'Chủ Đầu Tư (Ban QLDA)', 
-          icon: Briefcase, 
-          bg: '#fffbeb', 
+        return {
+          name: 'Chủ Đầu Tư (Ban QLDA)',
+          icon: Briefcase,
+          bg: '#fffbeb',
           color: '#b45309',
           desc: 'Giám sát chủ quản, ký xác nhận & phê duyệt hoàn tất'
         };
       case 'LEAD_INVESTOR':
-        return { 
-          name: 'Đại Diện Chủ Đầu Tư Trưởng', 
-          icon: Award, 
-          bg: '#fef3c7', 
+        return {
+          name: 'Đại Diện Chủ Đầu Tư Trưởng',
+          icon: Award,
+          bg: '#fef3c7',
           color: '#b45309',
           desc: 'Xem tất cả phiếu thuộc CĐT, phê duyệt/hủy phiếu mình phụ trách'
         };
       default:
-        return { 
-          name: role, 
-          icon: UserCircle, 
-          bg: '#f1f5f9', 
+        return {
+          name: role,
+          icon: UserCircle,
+          bg: '#f1f5f9',
           color: '#475569',
           desc: 'Cán bộ kỹ thuật'
         };
@@ -86,8 +87,8 @@ export default function MobileProfileSheet({
 
   return (
     <div className="mobile-sheet-overlay" onClick={onClose}>
-      <div 
-        className="mobile-sheet-content" 
+      <div
+        className="mobile-sheet-content"
         onClick={(e) => e.stopPropagation()}
       >
         {/* DRAG HANDLE */}
@@ -98,11 +99,11 @@ export default function MobileProfileSheet({
         {/* SHEET HEADER */}
         <div className="sheet-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div 
-              className="avatar-circle" 
-              style={{ 
-                width: '48px', 
-                height: '48px', 
+            <div
+              className="avatar-circle"
+              style={{
+                width: '48px',
+                height: '48px',
                 fontSize: '1.1rem',
                 background: currentRoleInfo.color,
                 boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
@@ -115,14 +116,14 @@ export default function MobileProfileSheet({
                 {currentUser?.fullName || 'Người dùng'}
               </h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
-                <span 
-                  style={{ 
-                    fontSize: '0.72rem', 
-                    padding: '2px 8px', 
+                <span
+                  style={{
+                    fontSize: '0.72rem',
+                    padding: '2px 8px',
                     borderRadius: '9999px',
                     background: currentRoleInfo.bg,
                     color: currentRoleInfo.color,
-                    fontWeight: 700 
+                    fontWeight: 700
                   }}
                 >
                   {currentRoleInfo.name}
@@ -131,8 +132,8 @@ export default function MobileProfileSheet({
             </div>
           </div>
 
-          <button 
-            className="sheet-close-btn" 
+          <button
+            className="sheet-close-btn"
             onClick={onClose}
             aria-label="Đóng"
           >
@@ -158,8 +159,40 @@ export default function MobileProfileSheet({
             </div>
           </div>
 
+          {/* NÚT TRUY CẬP HỒ SƠ & ĐỔI MẬT KHẨU */}
+          {onNavigateProfile && (
+            <button
+              onClick={() => {
+                onClose();
+                onNavigateProfile();
+              }}
+              style={{
+                width: '100%',
+                padding: '12px 16px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+                border: '1.5px solid #bfdbfe',
+                color: '#1d4ed8',
+                fontWeight: 700,
+                fontSize: '0.88rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'pointer',
+                marginBottom: '16px',
+                boxShadow: '0 2px 8px rgba(37,99,235,0.08)'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <KeyRound size={18} color="#2563eb" />
+                <span>Đổi Họ Tên & Mật Khẩu Cá Nhân</span>
+              </div>
+              <ChevronRight size={18} color="#2563eb" />
+            </button>
+          )}
+
           {/* NHANH CHUYỂN ĐỔI TÀI KHOẢN / VAI TRÒ ĐỂ TEST */}
-          <div className="sheet-section">
+          {/* <div className="sheet-section">
             <div className="sheet-section-title">
               <Sparkles size={16} color="#7e22ce" />
               <span>Chuyển Đổi Nhanh Tài Khoản (Để Thử Nghiệm)</span>
@@ -222,11 +255,11 @@ export default function MobileProfileSheet({
                 );
               })}
             </div>
-          </div>
+          </div> */}
 
           {/* QUẢN TRỊ ADMIN (NẾU ROLE LÀ ADMIN) */}
           {currentRole === 'ADMIN' && (
-            <button 
+            <button
               type="button"
               className="sheet-action-button"
               style={{ background: '#f5f3ff', borderColor: '#ddd6fe', color: '#7c3aed' }}
@@ -262,9 +295,9 @@ export default function MobileProfileSheet({
                         Thông báo đẩy Web Push
                       </div>
                       <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
-                        {pushPermissionGranted 
-                          ? 'Đã kích hoạt trên thiết bị này' 
-                          : isIOSNeedsPWA 
+                        {pushPermissionGranted
+                          ? 'Đã kích hoạt trên thiết bị này'
+                          : isIOSNeedsPWA
                             ? 'Chưa bật (iOS: Cần cài ra MH chính)'
                             : 'Chưa bật thông báo nền'}
                       </div>
@@ -272,7 +305,7 @@ export default function MobileProfileSheet({
                   </div>
 
                   {!pushPermissionGranted && onEnablePush && (
-                    <button 
+                    <button
                       type="button"
                       className="btn-enable-push"
                       style={{ padding: '6px 14px', fontSize: '0.78rem', flexShrink: 0 }}
@@ -286,14 +319,14 @@ export default function MobileProfileSheet({
                 </div>
 
                 {!pushPermissionGranted && isIOSNeedsPWA && (
-                  <div 
+                  <div
                     onClick={onEnablePush}
-                    style={{ 
-                      background: '#f8fafc', 
-                      border: '1px dashed #cbd5e1', 
-                      borderRadius: '10px', 
-                      padding: '8px 12px', 
-                      fontSize: '0.74rem', 
+                    style={{
+                      background: '#f8fafc',
+                      border: '1px dashed #cbd5e1',
+                      borderRadius: '10px',
+                      padding: '8px 12px',
+                      fontSize: '0.74rem',
                       color: '#475569',
                       cursor: 'pointer',
                       display: 'flex',
@@ -311,15 +344,15 @@ export default function MobileProfileSheet({
           })()}
 
           {/* NÚT XÓA DỮ LIỆU ĐỂ TEST LẠI TỪ ĐẦU */}
-          {onResetAllData && (
+          {/* {onResetAllData && (
             <div style={{ marginTop: '14px' }}>
-              <button 
+              <button
                 type="button"
                 className="sheet-action-button"
-                style={{ 
-                  background: '#fef2f2', 
-                  borderColor: '#fca5a5', 
-                  color: '#dc2626' 
+                style={{
+                  background: '#fef2f2',
+                  borderColor: '#fca5a5',
+                  color: '#dc2626'
                 }}
                 onClick={() => {
                   onClose();
@@ -334,11 +367,11 @@ export default function MobileProfileSheet({
                 <ChevronRight size={16} />
               </button>
             </div>
-          )}
+          )} */}
 
           {/* NÚT ĐĂNG XUẤT */}
           <div style={{ marginTop: '20px', paddingBottom: '10px' }}>
-            <button 
+            <button
               type="button"
               className="sheet-logout-btn"
               onClick={() => {

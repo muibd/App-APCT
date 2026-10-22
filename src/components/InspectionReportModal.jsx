@@ -34,6 +34,8 @@ export default function InspectionReportModal({
   report, 
   currentRole, 
   currentUser,
+  users = [],
+  requests = [],
   onSaveReport,
   onRejectReport,
   onReinspectReport,
@@ -121,6 +123,47 @@ export default function InspectionReportModal({
   const isSupervisorRole = currentRole === 'SUPERVISOR' || currentRole === 'LEAD_SUPERVISOR';
   const isInvestorRole = currentRole === 'INVESTOR' || currentRole === 'LEAD_INVESTOR';
 
+  // Lấy yêu cầu nghiệm thu tương ứng (nếu có) để truy xuất danh sách cán bộ được chọn
+  const relatedRequest = (requests || []).find(r => 
+    r.id === reportState.requestId || 
+    r.reportId === reportState.id ||
+    (reportState.requestNumber && r.requestNumber === reportState.requestNumber)
+  );
+
+  const effectiveAssignedRecipients = (reportState.assignedRecipients && reportState.assignedRecipients.length > 0)
+    ? reportState.assignedRecipients
+    : (relatedRequest?.assignedRecipients || []);
+
+  const assignedInv = effectiveAssignedRecipients.find(r => r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR') || reportState.attendees?.investor;
+  const assignedSup = effectiveAssignedRecipients.find(r => r.role === 'SUPERVISOR' || r.role === 'LEAD_SUPERVISOR') || reportState.attendees?.supervisor;
+
+  // Lãnh đạo các bên từ danh sách users
+  const leadInvUser = (users || []).find(u => u.role === 'LEAD_INVESTOR') || { fullName: 'Ngô Quý Linh', position: 'Trưởng Ban QLDA', company: 'Công ty TNHH An Phú Cần Thơ' };
+  const leadSupUser = (users || []).find(u => u.role === 'LEAD_SUPERVISOR') || { fullName: 'Đinh Xuân Thám', position: 'Tư vấn giám sát trưởng', company: 'Công ty CP TVXD và TM GELICON' };
+  const leadContractorUser = (users || []).find(u => u.role === 'CONTRACTOR' && (u.position?.toLowerCase().includes('chỉ huy') || u.fullName.includes('Chỉ Huy'))) 
+    || { fullName: 'Trần Hữu Chỉ Huy', position: 'Chỉ huy trưởng', company: 'Công ty CP Xây dựng An Phú Gia' };
+
+  // a) Đại diện Chủ đầu tư
+  const invCompany = assignedInv?.company || reportState.attendees?.investor?.company || leadInvUser.company || 'Công ty TNHH An Phú Cần Thơ';
+  const invLeadName = reportState.attendees?.investor?.leadPerson || leadInvUser.fullName;
+  const invLeadPosition = reportState.attendees?.investor?.leadPosition || leadInvUser.position;
+  const invOfficerName = assignedInv?.fullName || reportState.attendees?.investor?.person || 'Bành Nguyễn Hậu';
+  const invOfficerPosition = assignedInv?.position || reportState.attendees?.investor?.position || 'Cán bộ ban QLDA';
+
+  // b) Tư vấn giám sát
+  const supCompany = assignedSup?.company || reportState.attendees?.supervisor?.company || leadSupUser.company || 'Công ty CP TVXD và TM GELICON';
+  const supLeadName = reportState.attendees?.supervisor?.leadPerson || leadSupUser.fullName;
+  const supLeadPosition = reportState.attendees?.supervisor?.leadPosition || leadSupUser.position;
+  const supOfficerName = assignedSup?.fullName || reportState.attendees?.supervisor?.person || 'Võ Văn Tón';
+  const supOfficerPosition = assignedSup?.position || reportState.attendees?.supervisor?.position || 'Cán bộ tư vấn giám sát';
+
+  // c) Đơn vị thi công
+  const contCompany = reportState.attendees?.contractor?.company || relatedRequest?.contractorCompany || 'Công ty CP Xây dựng An Phú Gia';
+  const contLeadName = reportState.attendees?.contractor?.leadPerson || leadContractorUser.fullName;
+  const contLeadPosition = reportState.attendees?.contractor?.leadPosition || leadContractorUser.position;
+  const contOfficerName = reportState.attendees?.contractor?.person || relatedRequest?.createdByName || 'KS. Lê Văn Kỹ Thuật';
+  const contOfficerPosition = reportState.attendees?.contractor?.position || relatedRequest?.createdByRole || 'Kỹ thuật hiện trường';
+
   const supAttendee = reportState?.attendees?.supervisor;
   const invAttendee = reportState?.attendees?.investor;
 
@@ -128,10 +171,10 @@ export default function InspectionReportModal({
   const curEmail = (currentUser?.email || '').trim().toLowerCase();
   const curName = (currentUser?.fullName || '').trim().toLowerCase();
 
-  const assignedSupRecipients = (reportState?.assignedRecipients || []).filter(
+  const assignedSupRecipients = effectiveAssignedRecipients.filter(
     r => r.role === 'SUPERVISOR' || r.role === 'LEAD_SUPERVISOR'
   );
-  const assignedInvRecipients = (reportState?.assignedRecipients || []).filter(
+  const assignedInvRecipients = effectiveAssignedRecipients.filter(
     r => r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR'
   );
 
@@ -1266,36 +1309,72 @@ export default function InspectionReportModal({
                 </div>
               </div>
 
-              {/* 2. Thành phần trực tiếp nghiệm thu */}
+              {/* 2. Thành phần trực tiếp nghiệm thu (Động theo cán bộ được chọn khi lập phiếu) */}
               <div style={{ marginBottom: '14px' }}>
                 <strong>2. Thành phần trực tiếp nghiệm thu:</strong>
                 <div style={{ paddingLeft: '16px', marginTop: '4px' }}>
-                  <div><strong>a) Đại diện Chủ đầu tư:</strong> Công ty TNHH An Phú Cần Thơ</div>
+                  {/* a) Đại diện Chủ đầu tư */}
+                  <div><strong>a) Đại diện Chủ đầu tư:</strong> {invCompany}</div>
                   <div style={{ paddingLeft: '16px' }}>
-                    - Ông: <strong>Ngô Quý Linh</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: Trưởng Ban QLDA<br />
-                    - Ông: <strong>Bành Nguyễn Hậu</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: Cán bộ ban QLDA
+                    {invOfficerName.trim().toLowerCase() === invLeadName.trim().toLowerCase() || assignedInv?.role === 'LEAD_INVESTOR' ? (
+                      <div>- Ông: <strong>{invLeadName}</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {invLeadPosition}</div>
+                    ) : (
+                      <>
+                        <div>- Ông: <strong>{invLeadName}</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {invLeadPosition}</div>
+                        <div>- Ông: <strong>{invOfficerName}</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {invOfficerPosition}</div>
+                      </>
+                    )}
                   </div>
 
-                  <div style={{ marginTop: '4px' }}><strong>b) Tư vấn giám sát:</strong> Công ty CP Tư vấn Xây dựng và Thương mại GELICON</div>
+                  {/* b) Tư vấn giám sát */}
+                  <div style={{ marginTop: '4px' }}><strong>b) Tư vấn giám sát:</strong> {supCompany}</div>
                   <div style={{ paddingLeft: '16px' }}>
-                    - Ông: <strong>Đinh Xuân Thám</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: Tư vấn giám sát trưởng<br />
-                    - Ông: <strong>Võ Văn Tón</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: Cán bộ tư vấn giám sát
+                    {supOfficerName.trim().toLowerCase() === supLeadName.trim().toLowerCase() || assignedSup?.role === 'LEAD_SUPERVISOR' ? (
+                      <div>- Ông: <strong>{supLeadName}</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {supLeadPosition}</div>
+                    ) : (
+                      <>
+                        <div>- Ông: <strong>{supLeadName}</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {supLeadPosition}</div>
+                        <div>- Ông: <strong>{supOfficerName}</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {supOfficerPosition}</div>
+                      </>
+                    )}
                   </div>
 
-                  <div style={{ marginTop: '4px' }}><strong>c) Đơn vị thi công:</strong> Công ty CP Xây dựng An Phú Gia</div>
+                  {/* c) Đơn vị thi công */}
+                  <div style={{ marginTop: '4px' }}><strong>c) Đơn vị thi công:</strong> {contCompany}</div>
                   <div style={{ paddingLeft: '16px' }}>
-                    - Ông: <strong>Trần Hữu Chỉ Huy</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: Chỉ huy trưởng<br />
-                    - Ông: <strong>Lê Văn Kỹ Thuật</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: Kỹ thuật hiện trường
+                    {contOfficerName.trim().toLowerCase() === contLeadName.trim().toLowerCase() ? (
+                      <div>- Ông: <strong>{contLeadName}</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {contLeadPosition}</div>
+                    ) : (
+                      <>
+                        <div>- Ông: <strong>{contLeadName}</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {contLeadPosition}</div>
+                        <div>- Ông: <strong>{contOfficerName}</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {contOfficerPosition}</div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* 3. Thời gian nghiệm thu */}
+              {/* 3. Thời gian nghiệm thu: Bắt đầu & Kết thúc (tự động = Bắt đầu + 30p) */}
               <div style={{ marginBottom: '14px' }}>
                 <strong>3. Thời gian nghiệm thu:</strong>
                 <div style={{ paddingLeft: '20px' }}>
                   - Bắt đầu: {reportState.time?.startTime || '15h30, ngày 05/10/2026'}<br />
-                  - Kết thúc: {reportState.time?.endTime || '16h30, ngày 05/10/2026'}<br />
+                  - Kết thúc: {(() => {
+                    if (reportState.time?.endTime) return reportState.time.endTime;
+                    const start = reportState.time?.startTime;
+                    if (!start) return '16h00, ngày 05/10/2026';
+                    const match = start.match(/^(\d{1,2})[h:](\d{2})(.*)$/);
+                    if (match) {
+                      let h = parseInt(match[1], 10);
+                      let m = parseInt(match[2], 10) + 30;
+                      if (m >= 60) {
+                        h = (h + Math.floor(m / 60)) % 24;
+                        m = m % 60;
+                      }
+                      return `${String(h).padStart(2, '0')}h${String(m).padStart(2, '0')}${match[3]}`;
+                    }
+                    return '16h00, ngày 05/10/2026';
+                  })()}<br />
                   - Tại: {reportState.time?.place || reportState.projectInfo?.projectName}
                 </div>
               </div>
@@ -1552,7 +1631,7 @@ export default function InspectionReportModal({
                     {isInvestorSigned ? (
                       <div style={{ color: '#047857', fontWeight: 'bold', textAlign: 'center' }}>
                         <div style={{ fontSize: '1.2rem', fontFamily: 'cursive' }}>
-                          {reportState.attendees?.investor?.person || 'Ngô Quý Linh'}
+                          {invOfficerName || reportState.attendees?.investor?.person || 'Ngô Quý Linh'}
                         </div>
                         <div style={{ fontSize: '0.72rem' }}>✓ Đã ký số điện tử</div>
                         {reportState.attendees?.investor?.signedAt && (
@@ -1575,7 +1654,7 @@ export default function InspectionReportModal({
                       <span style={{ color: '#d97706', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ CĐT ký duyệt)</span>
                     )}
                   </div>
-                  <strong>{reportState.attendees?.investor?.person || 'Ngô Quý Linh'}</strong>
+                  <strong>{invOfficerName || reportState.attendees?.investor?.person || 'Ngô Quý Linh'}</strong>
                 </div>
 
                 {/* 2. TƯ VẤN GIÁM SÁT */}
@@ -1586,7 +1665,7 @@ export default function InspectionReportModal({
                     {isSupervisorSigned ? (
                       <div style={{ color: '#047857', fontWeight: 'bold', textAlign: 'center' }}>
                         <div style={{ fontSize: '1.2rem', fontFamily: 'cursive' }}>
-                          {reportState.attendees?.supervisor?.person || 'Đinh Xuân Thám'}
+                          {supOfficerName || reportState.attendees?.supervisor?.person || 'Đinh Xuân Thám'}
                         </div>
                         <div style={{ fontSize: '0.72rem' }}>✓ Đã ký số điện tử</div>
                         {reportState.attendees?.supervisor?.signedAt && (
@@ -1607,7 +1686,7 @@ export default function InspectionReportModal({
                       <span style={{ color: '#059669', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ TVGS kiểm tra & ký)</span>
                     )}
                   </div>
-                  <strong>{reportState.attendees?.supervisor?.person || 'Đinh Xuân Thám'}</strong>
+                  <strong>{supOfficerName || reportState.attendees?.supervisor?.person || 'Đinh Xuân Thám'}</strong>
                 </div>
 
                 {/* 3. ĐƠN VỊ THI CÔNG */}
@@ -1618,7 +1697,7 @@ export default function InspectionReportModal({
                     {isContractorSigned ? (
                       <div style={{ color: '#047857', fontWeight: 'bold', textAlign: 'center' }}>
                         <div style={{ fontSize: '1.2rem', fontFamily: 'cursive' }}>
-                          {reportState.attendees?.contractor?.person || 'Phạm Thanh Nhàn'}
+                          {contOfficerName || reportState.attendees?.contractor?.person || 'Phạm Thanh Nhàn'}
                         </div>
                         <div style={{ fontSize: '0.72rem' }}>✓ Đã ký số điện tử</div>
                       </div>
@@ -1626,7 +1705,7 @@ export default function InspectionReportModal({
                       <span style={{ color: '#2563eb', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ ĐVTC ký)</span>
                     )}
                   </div>
-                  <strong>{reportState.attendees?.contractor?.person || 'Phạm Thanh Nhàn'}</strong>
+                  <strong>{contOfficerName || reportState.attendees?.contractor?.person || 'Phạm Thanh Nhàn'}</strong>
                 </div>
               </div>
 
@@ -2851,27 +2930,9 @@ export default function InspectionReportModal({
                 />
               </div>
 
-              <div className="form-group" style={{ marginBottom: '16px' }}>
-                <label className="form-label" style={{ fontWeight: 700 }}>
-                  2. Yêu cầu khắc phục, sửa chữa:
-                </label>
-                <textarea 
-                  className="form-textarea"
-                  style={{ minHeight: '65px' }}
-                  placeholder="Chỉ đạo ĐVTC: Nắn chỉnh lại đai thép, bổ sung con kê đạt chuẩn..."
-                  value={repairRequired}
-                  onChange={(e) => setRepairRequired(e.target.value)}
-                />
-              </div>
-
-              <div className="form-group" style={{ marginBottom: '20px' }}>
-                <label className="form-label">Thời hạn ĐVTC phải hoàn thành khắc phục:</label>
-                <input type="text" className="form-input" value={repairDeadline} onChange={(e) => setRepairDeadline(e.target.value)} />
-              </div>
-
               <div className="form-group">
                 <label className="form-label" style={{ margin: '0 0 10px 0', fontWeight: 700, color: '#991b1b' }}>
-                  3. Hình ảnh chụp lỗi hiện trường ({defectPhotos.length} ảnh):
+                  2. Hình ảnh chụp lỗi hiện trường ({defectPhotos.length} ảnh):
                 </label>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px', marginBottom: '14px' }}>
