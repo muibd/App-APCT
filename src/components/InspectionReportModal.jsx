@@ -184,28 +184,40 @@ export default function InspectionReportModal({
   const supOfficerPosition = assignedSup?.position || reportState.attendees?.supervisor?.position || 'Cán bộ tư vấn giám sát';
 
   // c) Đơn vị thi công
-  const contCompany = reportState.attendees?.contractor?.company || relatedRequest?.contractorCompany || 'Công ty CP Xây dựng An Phú Gia';
+  const contCompany = reportState.attendees?.contractor?.company || reportState.contractorCompany || relatedRequest?.contractorCompany || 'Công ty CP Xây dựng An Phú Gia';
   const [isEditingContCompany, setIsEditingContCompany] = useState(false);
   const [contCompanyVal, setContCompanyVal] = useState(contCompany);
 
   useEffect(() => {
-    setContCompanyVal(contCompany);
-  }, [contCompany]);
+    if (!isEditingContCompany) {
+      setContCompanyVal(contCompany);
+    }
+  }, [contCompany, isEditingContCompany]);
 
   const handleSaveContCompany = () => {
+    const newComp = contCompanyVal.trim() || contCompany;
     setIsEditingContCompany(false);
+    setContCompanyVal(newComp);
     const updated = {
       ...reportState,
+      contractorCompany: newComp,
       attendees: {
         ...reportState.attendees,
         contractor: {
           ...reportState.attendees?.contractor,
-          company: contCompanyVal.trim() || contCompany
+          company: newComp
         }
       }
     };
     setReportState(updated);
     if (onSaveReport) onSaveReport(updated);
+    if (showAlert) {
+      showAlert({
+        type: 'success',
+        title: 'Đã Cập Nhật Đơn Vị Thi Công',
+        message: `Đã lưu đơn vị thi công: "${newComp}" thành công!`
+      });
+    }
   };
 
   const contLeadName = reportState.attendees?.contractor?.leadPerson || leadContractorUser.fullName;
@@ -1436,7 +1448,7 @@ export default function InspectionReportModal({
                       </div>
                     ) : (
                       <span>
-                        {contCompanyVal}
+                        {contCompanyVal || contCompany}
                         <button
                           type="button"
                           className="no-print"

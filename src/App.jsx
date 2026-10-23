@@ -1777,43 +1777,54 @@ export default function App() {
         const leadContractor = users.find(u => u.role === 'CONTRACTOR' && (u.position?.toLowerCase().includes('chỉ huy') || u.fullName.includes('Chỉ Huy'))) 
           || { fullName: 'Trần Hữu Chỉ Huy', position: 'Chỉ huy trưởng', company: 'Công ty CP Xây dựng An Phú Gia' };
 
-        rep = {
-          ...rep,
-          assignedRecipients: targetReq.assignedRecipients,
-          attendees: {
-            ...rep.attendees,
-            supervisor: {
-              ...rep.attendees?.supervisor,
-              uid: assignedSup?.uid || rep.attendees?.supervisor?.uid,
-              person: rep.attendees?.supervisor?.signed 
-                ? rep.attendees.supervisor.person 
-                : (assignedSup?.fullName || rep.attendees?.supervisor?.person || leadSup.fullName),
-              position: assignedSup?.position || rep.attendees?.supervisor?.position || leadSup.position,
-              company: assignedSup?.company || rep.attendees?.supervisor?.company || leadSup.company,
-              leadPerson: rep.attendees?.supervisor?.leadPerson || leadSup.fullName,
-              leadPosition: rep.attendees?.supervisor?.leadPosition || leadSup.position
-            },
-            investor: {
-              ...rep.attendees?.investor,
-              uid: assignedInv?.uid || rep.attendees?.investor?.uid,
-              person: rep.attendees?.investor?.signed 
-                ? rep.attendees.investor.person 
-                : (assignedInv?.fullName || rep.attendees?.investor?.person || leadInv.fullName),
-              position: assignedInv?.position || rep.attendees?.investor?.position || leadInv.position,
-              company: assignedInv?.company || rep.attendees?.investor?.company || leadInv.company,
-              leadPerson: rep.attendees?.investor?.leadPerson || leadInv.fullName,
-              leadPosition: rep.attendees?.investor?.leadPosition || leadInv.position
-            },
-            contractor: {
-              ...rep.attendees?.contractor,
-              person: targetReq.createdByName || rep.attendees?.contractor?.person || 'KS. Lê Văn Kỹ Thuật',
-              position: targetReq.createdByRole || rep.attendees?.contractor?.position || 'Kỹ thuật hiện trường',
-              company: targetReq.contractorCompany || rep.attendees?.contractor?.company || 'Công ty CP Xây dựng An Phú Gia',
-              leadPerson: rep.attendees?.contractor?.leadPerson || leadContractor.fullName,
-              leadPosition: rep.attendees?.contractor?.leadPosition || leadContractor.position
+            const effectiveContCompany = rep.attendees?.contractor?.company || targetReq.contractorCompany || 'Công ty CP Xây dựng An Phú Gia';
+            if (targetReq && rep.attendees?.contractor?.company && targetReq.contractorCompany !== rep.attendees.contractor.company) {
+              targetReq.contractorCompany = rep.attendees.contractor.company;
+              setRequests(prev => {
+                const next = prev.map(r => r.id === targetReq.id ? { ...r, contractorCompany: rep.attendees.contractor.company } : r);
+                safeSaveLocalStorage(REQUESTS_STORAGE_KEY, next);
+                return next;
+              });
+              saveInspectionRequest({ ...targetReq, contractorCompany: rep.attendees.contractor.company }).catch(console.warn);
             }
-          }
-        };
+
+            rep = {
+              ...rep,
+              assignedRecipients: targetReq.assignedRecipients,
+              attendees: {
+                ...rep.attendees,
+                supervisor: {
+                  ...rep.attendees?.supervisor,
+                  uid: assignedSup?.uid || rep.attendees?.supervisor?.uid,
+                  person: rep.attendees?.supervisor?.signed 
+                    ? rep.attendees.supervisor.person 
+                    : (assignedSup?.fullName || rep.attendees?.supervisor?.person || leadSup.fullName),
+                  position: assignedSup?.position || rep.attendees?.supervisor?.position || leadSup.position,
+                  company: assignedSup?.company || rep.attendees?.supervisor?.company || leadSup.company,
+                  leadPerson: rep.attendees?.supervisor?.leadPerson || leadSup.fullName,
+                  leadPosition: rep.attendees?.supervisor?.leadPosition || leadSup.position
+                },
+                investor: {
+                  ...rep.attendees?.investor,
+                  uid: assignedInv?.uid || rep.attendees?.investor?.uid,
+                  person: rep.attendees?.investor?.signed 
+                    ? rep.attendees.investor.person 
+                    : (assignedInv?.fullName || rep.attendees?.investor?.person || leadInv.fullName),
+                  position: assignedInv?.position || rep.attendees?.investor?.position || leadInv.position,
+                  company: assignedInv?.company || rep.attendees?.investor?.company || leadInv.company,
+                  leadPerson: rep.attendees?.investor?.leadPerson || leadInv.fullName,
+                  leadPosition: rep.attendees?.investor?.leadPosition || leadInv.position
+                },
+                contractor: {
+                  ...rep.attendees?.contractor,
+                  person: targetReq.createdByName || rep.attendees?.contractor?.person || 'KS. Lê Văn Kỹ Thuật',
+                  position: targetReq.createdByRole || rep.attendees?.contractor?.position || 'Kỹ thuật hiện trường',
+                  company: effectiveContCompany,
+                  leadPerson: rep.attendees?.contractor?.leadPerson || leadContractor.fullName,
+                  leadPosition: rep.attendees?.contractor?.leadPosition || leadContractor.position
+                }
+              }
+            };
       }
 
       // ĐỒNG BỘ TRẠNG THÁI KHẮC PHỤC:
@@ -2561,14 +2572,18 @@ export default function App() {
     }
 
     let updatedReq = null;
+    const newContCompany = finalReport.attendees?.contractor?.company || finalReport.contractorCompany;
     const targetReq = requests.find(r => 
       (finalReport.requestId && r.id === finalReport.requestId) ||
-      (r.reportId && r.reportId === finalReport.id)
+      (r.reportId && r.reportId === finalReport.id) ||
+      (finalReport.requestNumber && r.requestNumber === finalReport.requestNumber) ||
+      (finalReport.reportNumber && r.requestNumber && r.requestNumber === finalReport.reportNumber.replace(/BBNT-VL|BBNT-APG|BBNT/g, 'PYC'))
     );
     if (targetReq) {
       updatedReq = {
         ...targetReq,
         status: finalReport.status,
+        contractorCompany: newContCompany || targetReq.contractorCompany,
         hasReport: true,
         reportId: finalReport.id,
         updatedAt: new Date().toISOString()
