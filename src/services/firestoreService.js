@@ -690,5 +690,57 @@ export const deleteCompletionReport = async (reportId) => {
   }
 };
 
+// ============================================================================
+// 7. TIÊU CHUẨN NGHIỆM THU DO ADMIN QUẢN LÝ (INSPECTION STANDARDS)
+// ============================================================================
+const STANDARDS_COLLECTION = 'inspection_standards';
+const STANDARDS_DOC_ID = 'system_inspection_standards';
 
+/**
+ * Lắng nghe thời gian thực bộ tiêu chuẩn do Admin quản lý từ Firestore
+ */
+export const subscribeToStandards = (callback) => {
+  if (!isFirebaseConfigured || !db) {
+    return () => {};
+  }
 
+  try {
+    const docRef = doc(db, STANDARDS_COLLECTION, STANDARDS_DOC_ID);
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        callback(docSnap.data());
+      }
+    }, (error) => {
+      console.warn('[Firestore] Lỗi lắng nghe danh mục tiêu chuẩn:', error);
+    });
+
+    return unsubscribe;
+  } catch (e) {
+    console.warn('[Firestore Standards Exception]', e);
+    return () => {};
+  }
+};
+
+/**
+ * Lưu bộ tiêu chuẩn do Admin quản lý lên Firestore
+ */
+export const saveInspectionStandards = async (standardsPayload) => {
+  const cleanData = sanitizeData({
+    ...standardsPayload,
+    updatedAt: new Date().toISOString()
+  });
+
+  if (!isFirebaseConfigured || !db) {
+    return cleanData;
+  }
+
+  try {
+    const docRef = doc(db, STANDARDS_COLLECTION, STANDARDS_DOC_ID);
+    await setDoc(docRef, cleanData);
+    console.log('[Firestore Cloud] Đã lưu danh mục tiêu chuẩn của Admin thành công');
+    return cleanData;
+  } catch (error) {
+    console.error('[Firestore Save Standards Error]', error);
+    return cleanData;
+  }
+};

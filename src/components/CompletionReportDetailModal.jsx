@@ -294,7 +294,8 @@ export default function CompletionReportDetailModal({
                 <div style={{ marginBottom: '14px' }}>
                   <strong>1. Thành phần tham gia nghiệm thu :</strong>
                   
-                  <div style={{ paddingLeft: '14px', marginTop: '4px' }}>
+                  {/* HIỂN THỊ TRÊN MÀN HÌNH APP */}
+                  <div className="screen-only" style={{ paddingLeft: '14px', marginTop: '4px' }}>
                     <div><strong>a) Chủ đầu tư – Ban QLDA:</strong> {report.representatives?.investor?.company}</div>
                     <div style={{ paddingLeft: '16px' }}>
                       <div>- Ông (bà) : {report.representatives?.investor?.leadName} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.investor?.leadPosition}</div>
@@ -317,6 +318,93 @@ export default function CompletionReportDetailModal({
                     <div style={{ paddingLeft: '16px' }}>
                       <div>- Ông (bà) : {report.representatives?.contractor?.leadName} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.contractor?.leadPosition}</div>
                       <div>- Ông (bà) : {report.representatives?.contractor?.officerName || 'Nguyễn Hoàng Bách'} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.contractor?.officerPosition || 'Kỹ thuật hiện trường'}</div>
+                    </div>
+                  </div>
+
+                  {/* KHI IN RA GIẤY: DẠNG DẤU CHẤM .... HẾT THEO YÊU CẦU */}
+                  <div className="print-only" style={{ paddingLeft: '14px', marginTop: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden' }}>
+                      <strong style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>a) Chủ đầu tư – Ban QLDA:</strong>
+                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                        ................................................................................................................................................................
+                      </span>
+                    </div>
+                    <div style={{ paddingLeft: '16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden' }}>
+                        <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông (bà):</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                        <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '2px' }}>
+                        <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông (bà):</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                        <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '4px' }}>
+                      <strong style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>b) Tư vấn thiết kế:</strong>
+                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                        ................................................................................................................................................................
+                      </span>
+                    </div>
+                    <div style={{ paddingLeft: '16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden' }}>
+                        <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông (bà):</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                        <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '2px' }}>
+                        <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông (bà):</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                        <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '4px' }}>
+                      <strong style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>c) Tư vấn giám sát:</strong>
+                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                        ................................................................................................................................................................
+                      </span>
+                    </div>
+                    <div style={{ paddingLeft: '16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden' }}>
+                        <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông (bà):</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                        <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '2px' }}>
+                        <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông (bà):</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                        <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '4px' }}>
+                      <strong style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>d) Đơn vị thi công:</strong>
+                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                        ................................................................................................................................................................
+                      </span>
+                    </div>
+                    <div style={{ paddingLeft: '16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden' }}>
+                        <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông (bà):</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                        <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '2px' }}>
+                        <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông (bà):</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                        <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -382,64 +470,72 @@ export default function CompletionReportDetailModal({
                   <div>
                     <strong>CHỦ ĐẦU TƯ<br />BAN QLDA</strong>
                     <div style={{ height: '75px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {report.signatures?.investor?.signed ? (
-                        <div style={{ color: '#047857' }}>
-                          <div style={{ fontFamily: 'cursive', fontSize: '1.1rem', fontWeight: 'bold' }}>
-                            {report.signatures.investor.name}
+                      <div className="screen-only">
+                        {report.signatures?.investor?.signed ? (
+                          <div style={{ color: '#047857' }}>
+                            <div style={{ fontFamily: 'cursive', fontSize: '1.1rem', fontWeight: 'bold' }}>
+                              {report.signatures.investor.name}
+                            </div>
+                            <div style={{ fontSize: '0.65rem' }}>✓ Đã ký số</div>
                           </div>
-                          <div style={{ fontSize: '0.65rem' }}>✓ Đã ký số</div>
-                        </div>
-                      ) : (
-                        <span style={{ fontSize: '0.75rem', fontStyle: 'italic', color: '#64748b' }}>(Chờ ký)</span>
-                      )}
+                        ) : (
+                          <span style={{ fontSize: '0.75rem', fontStyle: 'italic', color: '#64748b' }}>(Chờ ký)</span>
+                        )}
+                      </div>
                     </div>
-                    <strong>{report.representatives?.investor?.leadName || 'Ngô Quý Linh'}</strong>
+                    <strong className="screen-only">{report.representatives?.investor?.leadName || 'Ngô Quý Linh'}</strong>
                   </div>
 
                   {/* TƯ VẤN THIẾT KẾ */}
                   <div>
                     <strong>TƯ VẤN THIẾT KẾ</strong>
                     <div style={{ height: '75px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <div style={{ color: '#047857' }}>
-                        <div style={{ fontFamily: 'cursive', fontSize: '1.1rem', fontWeight: 'bold' }}>
-                          {report.signatures?.designer?.name || 'Lê Quang Thiết Kế'}
+                      <div className="screen-only">
+                        <div style={{ color: '#047857' }}>
+                          <div style={{ fontFamily: 'cursive', fontSize: '1.1rem', fontWeight: 'bold' }}>
+                            {report.signatures?.designer?.name || 'Lê Quang Thiết Kế'}
+                          </div>
+                          <div style={{ fontSize: '0.65rem' }}>✓ Đã ký số</div>
                         </div>
-                        <div style={{ fontSize: '0.65rem' }}>✓ Đã ký số</div>
                       </div>
                     </div>
-                    <strong>{report.representatives?.designer?.leadName || 'KTS. Lê Quang Thiết Kế'}</strong>
+                    <strong className="screen-only">{report.representatives?.designer?.leadName || 'KTS. Lê Quang Thiết Kế'}</strong>
                   </div>
 
                   {/* TƯ VẤN GIÁM SÁT */}
                   <div>
                     <strong>TƯ VẤN GIÁM SÁT</strong>
                     <div style={{ height: '75px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {report.signatures?.supervisor?.signed ? (
-                        <div style={{ color: '#047857' }}>
-                          <div style={{ fontFamily: 'cursive', fontSize: '1.1rem', fontWeight: 'bold' }}>
-                            {report.signatures.supervisor.name}
+                      <div className="screen-only">
+                        {report.signatures?.supervisor?.signed ? (
+                          <div style={{ color: '#047857' }}>
+                            <div style={{ fontFamily: 'cursive', fontSize: '1.1rem', fontWeight: 'bold' }}>
+                              {report.signatures.supervisor.name}
+                            </div>
+                            <div style={{ fontSize: '0.65rem' }}>✓ Đã ký số</div>
                           </div>
-                          <div style={{ fontSize: '0.65rem' }}>✓ Đã ký số</div>
-                        </div>
-                      ) : (
-                        <span style={{ fontSize: '0.75rem', fontStyle: 'italic', color: '#64748b' }}>(Chờ ký)</span>
-                      )}
+                        ) : (
+                          <span style={{ fontSize: '0.75rem', fontStyle: 'italic', color: '#64748b' }}>(Chờ ký)</span>
+                        )}
+                      </div>
                     </div>
-                    <strong>{report.representatives?.supervisor?.leadName || 'Đinh Xuân Thám'}</strong>
+                    <strong className="screen-only">{report.representatives?.supervisor?.leadName || 'Đinh Xuân Thám'}</strong>
                   </div>
 
                   {/* ĐƠN VỊ THI CÔNG */}
                   <div>
                     <strong>ĐƠN VỊ THI CÔNG</strong>
                     <div style={{ height: '75px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <div style={{ color: '#047857' }}>
-                        <div style={{ fontFamily: 'cursive', fontSize: '1.1rem', fontWeight: 'bold' }}>
-                          {report.signatures?.contractor?.name || 'Phạm Thanh Nhàn'}
+                      <div className="screen-only">
+                        <div style={{ color: '#047857' }}>
+                          <div style={{ fontFamily: 'cursive', fontSize: '1.1rem', fontWeight: 'bold' }}>
+                            {report.signatures?.contractor?.name || 'Phạm Thanh Nhàn'}
+                          </div>
+                          <div style={{ fontSize: '0.65rem' }}>✓ Đã ký số</div>
                         </div>
-                        <div style={{ fontSize: '0.65rem' }}>✓ Đã ký số</div>
                       </div>
                     </div>
-                    <strong>{report.representatives?.contractor?.leadName || 'Phạm Thanh Nhàn'}</strong>
+                    <strong className="screen-only">{report.representatives?.contractor?.leadName || 'Phạm Thanh Nhàn'}</strong>
                   </div>
                 </div>
               </div>
@@ -453,7 +549,9 @@ export default function CompletionReportDetailModal({
                 {/* 1. THÀNH PHẦN TRỰC TIẾP KIỂM TRA */}
                 <div style={{ marginBottom: '14px' }}>
                   <strong>1. Thành phần trực tiếp kiểm tra :</strong>
-                  <div style={{ paddingLeft: '14px', marginTop: '4px' }}>
+                  
+                  {/* HIỂN THỊ TRÊN MÀN HÌNH APP */}
+                  <div className="screen-only" style={{ paddingLeft: '14px', marginTop: '4px' }}>
                     <div><strong>a) Đại diện Chủ đầu tư – Ban QLDA:</strong> {report.representatives?.investor?.company}</div>
                     <div style={{ paddingLeft: '16px' }}>
                       <div>- Ông(bà): {report.representatives?.investor?.leadName} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.investor?.leadPosition}</div>
@@ -470,6 +568,72 @@ export default function CompletionReportDetailModal({
                     <div style={{ paddingLeft: '16px' }}>
                       <div>- Ông(bà): {report.representatives?.contractor?.leadName} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.contractor?.leadPosition}</div>
                       <div>- Ông(bà): {report.representatives?.contractor?.officerName || 'Nguyễn Hoàng Bách'} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.contractor?.officerPosition || 'Kỹ thuật hiện trường'}</div>
+                    </div>
+                  </div>
+
+                  {/* KHI IN RA GIẤY: DẠNG DẤU CHẤM .... HẾT THEO YÊU CẦU */}
+                  <div className="print-only" style={{ paddingLeft: '14px', marginTop: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden' }}>
+                      <strong style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>a) Đại diện Chủ đầu tư – Ban QLDA:</strong>
+                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                        ................................................................................................................................................................
+                      </span>
+                    </div>
+                    <div style={{ paddingLeft: '16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden' }}>
+                        <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông (bà):</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                        <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '2px' }}>
+                        <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông (bà):</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                        <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '4px' }}>
+                      <strong style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>b) Đại diện Tư vấn giám sát:</strong>
+                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                        ................................................................................................................................................................
+                      </span>
+                    </div>
+                    <div style={{ paddingLeft: '16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden' }}>
+                        <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông (bà):</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                        <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '2px' }}>
+                        <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông (bà):</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                        <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '4px' }}>
+                      <strong style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>c) Đại diện Đơn vị thi công:</strong>
+                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                        ................................................................................................................................................................
+                      </span>
+                    </div>
+                    <div style={{ paddingLeft: '16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden' }}>
+                        <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông (bà):</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                        <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '2px' }}>
+                        <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông (bà):</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                        <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -558,50 +722,56 @@ export default function CompletionReportDetailModal({
                   <div>
                     <strong>ĐD. CHỦ ĐẦU TƯ<br />BAN QLDA</strong>
                     <div style={{ height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {report.signatures?.investor?.signed ? (
-                        <div style={{ color: '#047857' }}>
-                          <div style={{ fontFamily: 'cursive', fontSize: '1.2rem', fontWeight: 'bold' }}>
-                            {report.signatures.investor.name}
+                      <div className="screen-only">
+                        {report.signatures?.investor?.signed ? (
+                          <div style={{ color: '#047857' }}>
+                            <div style={{ fontFamily: 'cursive', fontSize: '1.2rem', fontWeight: 'bold' }}>
+                              {report.signatures.investor.name}
+                            </div>
+                            <div style={{ fontSize: '0.68rem' }}>✓ Đã ký số điện tử</div>
                           </div>
-                          <div style={{ fontSize: '0.68rem' }}>✓ Đã ký số điện tử</div>
-                        </div>
-                      ) : (
-                        <span style={{ fontSize: '0.78rem', fontStyle: 'italic', color: '#64748b' }}>(Chờ CĐT duyệt)</span>
-                      )}
+                        ) : (
+                          <span style={{ fontSize: '0.78rem', fontStyle: 'italic', color: '#64748b' }}>(Chờ CĐT duyệt)</span>
+                        )}
+                      </div>
                     </div>
-                    <strong>{report.representatives?.investor?.leadName || 'Ngô Quý Linh'}</strong>
+                    <strong className="screen-only">{report.representatives?.investor?.leadName || 'Ngô Quý Linh'}</strong>
                   </div>
 
                   {/* TƯ VẤN GIÁM SÁT */}
                   <div>
                     <strong>ĐD. TƯ VẤN GIÁM SÁT</strong>
                     <div style={{ height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {report.signatures?.supervisor?.signed ? (
-                        <div style={{ color: '#047857' }}>
-                          <div style={{ fontFamily: 'cursive', fontSize: '1.2rem', fontWeight: 'bold' }}>
-                            {report.signatures.supervisor.name}
+                      <div className="screen-only">
+                        {report.signatures?.supervisor?.signed ? (
+                          <div style={{ color: '#047857' }}>
+                            <div style={{ fontFamily: 'cursive', fontSize: '1.2rem', fontWeight: 'bold' }}>
+                              {report.signatures.supervisor.name}
+                            </div>
+                            <div style={{ fontSize: '0.68rem' }}>✓ Đã ký số điện tử</div>
                           </div>
-                          <div style={{ fontSize: '0.68rem' }}>✓ Đã ký số điện tử</div>
-                        </div>
-                      ) : (
-                        <span style={{ fontSize: '0.78rem', fontStyle: 'italic', color: '#64748b' }}>(Chờ TVGS ký)</span>
-                      )}
+                        ) : (
+                          <span style={{ fontSize: '0.78rem', fontStyle: 'italic', color: '#64748b' }}>(Chờ TVGS ký)</span>
+                        )}
+                      </div>
                     </div>
-                    <strong>{report.representatives?.supervisor?.leadName || 'Đinh Xuân Thám'}</strong>
+                    <strong className="screen-only">{report.representatives?.supervisor?.leadName || 'Đinh Xuân Thám'}</strong>
                   </div>
 
                   {/* ĐƠN VỊ THI CÔNG */}
                   <div>
                     <strong>ĐD. ĐƠN VỊ THI CÔNG</strong>
                     <div style={{ height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <div style={{ color: '#047857' }}>
-                        <div style={{ fontFamily: 'cursive', fontSize: '1.2rem', fontWeight: 'bold' }}>
-                          {report.signatures?.contractor?.name || 'Phạm Thanh Nhàn'}
+                      <div className="screen-only">
+                        <div style={{ color: '#047857' }}>
+                          <div style={{ fontFamily: 'cursive', fontSize: '1.2rem', fontWeight: 'bold' }}>
+                            {report.signatures?.contractor?.name || 'Phạm Thanh Nhàn'}
+                          </div>
+                          <div style={{ fontSize: '0.68rem' }}>✓ Đã ký số điện tử</div>
                         </div>
-                        <div style={{ fontSize: '0.68rem' }}>✓ Đã ký số điện tử</div>
                       </div>
                     </div>
-                    <strong>{report.representatives?.contractor?.leadName || 'Phạm Thanh Nhàn'}</strong>
+                    <strong className="screen-only">{report.representatives?.contractor?.leadName || 'Phạm Thanh Nhàn'}</strong>
                   </div>
                 </div>
               </div>
@@ -615,7 +785,9 @@ export default function CompletionReportDetailModal({
                 {/* 1. THÀNH PHẦN TRỰC TIẾP KIỂM TRA */}
                 <div style={{ marginBottom: '14px' }}>
                   <strong>1. Thành phần trực tiếp kiểm tra :</strong>
-                  <div style={{ paddingLeft: '14px', marginTop: '4px' }}>
+                  
+                  {/* HIỂN THỊ TRÊN MÀN HÌNH APP */}
+                  <div className="screen-only" style={{ paddingLeft: '14px', marginTop: '4px' }}>
                     <div><strong>a) Đại diện Chủ đầu tư – Ban QLDA:</strong> {report.representatives?.investor?.company}</div>
                     <div style={{ paddingLeft: '16px' }}>
                       <div>- Ông(bà): {report.representatives?.investor?.leadName} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.investor?.leadPosition}</div>
@@ -631,6 +803,72 @@ export default function CompletionReportDetailModal({
                     <div style={{ paddingLeft: '16px' }}>
                       <div>- Ông(bà): {report.representatives?.contractor?.leadName} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.contractor?.leadPosition}</div>
                       <div>- Ông(bà): {report.representatives?.contractor?.officerName || 'Nguyễn Hoàng Bách'} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.contractor?.officerPosition || 'Kỹ thuật hiện trường'}</div>
+                    </div>
+                  </div>
+
+                  {/* KHI IN RA GIẤY: DẠNG DẤU CHẤM .... HẾT THEO YÊU CẦU */}
+                  <div className="print-only" style={{ paddingLeft: '14px', marginTop: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden' }}>
+                      <strong style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>a) Đại diện Chủ đầu tư – Ban QLDA:</strong>
+                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                        ................................................................................................................................................................
+                      </span>
+                    </div>
+                    <div style={{ paddingLeft: '16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden' }}>
+                        <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông (bà):</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                        <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '2px' }}>
+                        <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông (bà):</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                        <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '4px' }}>
+                      <strong style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>b) Đại diện Tư vấn giám sát:</strong>
+                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                        ................................................................................................................................................................
+                      </span>
+                    </div>
+                    <div style={{ paddingLeft: '16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden' }}>
+                        <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông (bà):</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                        <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '2px' }}>
+                        <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông (bà):</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                        <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '4px' }}>
+                      <strong style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>c) Đại diện Đơn vị thi công:</strong>
+                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                        ................................................................................................................................................................
+                      </span>
+                    </div>
+                    <div style={{ paddingLeft: '16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden' }}>
+                        <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông (bà):</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                        <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '2px' }}>
+                        <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông (bà):</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                        <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                        <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>................................................................................................</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -669,50 +907,56 @@ export default function CompletionReportDetailModal({
                   <div>
                     <strong>ĐD. CHỦ ĐẦU TƯ<br />BAN QLDA</strong>
                     <div style={{ height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {report.signatures?.investor?.signed ? (
-                        <div style={{ color: '#047857' }}>
-                          <div style={{ fontFamily: 'cursive', fontSize: '1.2rem', fontWeight: 'bold' }}>
-                            {report.signatures.investor.name}
+                      <div className="screen-only">
+                        {report.signatures?.investor?.signed ? (
+                          <div style={{ color: '#047857' }}>
+                            <div style={{ fontFamily: 'cursive', fontSize: '1.2rem', fontWeight: 'bold' }}>
+                              {report.signatures.investor.name}
+                            </div>
+                            <div style={{ fontSize: '0.68rem' }}>✓ Đã ký số</div>
                           </div>
-                          <div style={{ fontSize: '0.68rem' }}>✓ Đã ký số</div>
-                        </div>
-                      ) : (
-                        <span style={{ fontSize: '0.78rem', fontStyle: 'italic', color: '#64748b' }}>(Chờ CĐT duyệt)</span>
-                      )}
+                        ) : (
+                          <span style={{ fontSize: '0.78rem', fontStyle: 'italic', color: '#64748b' }}>(Chờ CĐT duyệt)</span>
+                        )}
+                      </div>
                     </div>
-                    <strong>{report.representatives?.investor?.leadName || 'Ngô Quý Linh'}</strong>
+                    <strong className="screen-only">{report.representatives?.investor?.leadName || 'Ngô Quý Linh'}</strong>
                   </div>
 
                   {/* TƯ VẤN GIÁM SÁT */}
                   <div>
                     <strong>ĐD. TƯ VẤN GIÁM SÁT</strong>
                     <div style={{ height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {report.signatures?.supervisor?.signed ? (
-                        <div style={{ color: '#047857' }}>
-                          <div style={{ fontFamily: 'cursive', fontSize: '1.2rem', fontWeight: 'bold' }}>
-                            {report.signatures.supervisor.name}
+                      <div className="screen-only">
+                        {report.signatures?.supervisor?.signed ? (
+                          <div style={{ color: '#047857' }}>
+                            <div style={{ fontFamily: 'cursive', fontSize: '1.2rem', fontWeight: 'bold' }}>
+                              {report.signatures.supervisor.name}
+                            </div>
+                            <div style={{ fontSize: '0.68rem' }}>✓ Đã ký số</div>
                           </div>
-                          <div style={{ fontSize: '0.68rem' }}>✓ Đã ký số</div>
-                        </div>
-                      ) : (
-                        <span style={{ fontSize: '0.78rem', fontStyle: 'italic', color: '#64748b' }}>(Chờ TVGS ký)</span>
-                      )}
+                        ) : (
+                          <span style={{ fontSize: '0.78rem', fontStyle: 'italic', color: '#64748b' }}>(Chờ TVGS ký)</span>
+                        )}
+                      </div>
                     </div>
-                    <strong>{report.representatives?.supervisor?.leadName || 'Đinh Xuân Thám'}</strong>
+                    <strong className="screen-only">{report.representatives?.supervisor?.leadName || 'Đinh Xuân Thám'}</strong>
                   </div>
 
                   {/* ĐƠN VỊ THI CÔNG */}
                   <div>
                     <strong>ĐD. ĐƠN VỊ THI CÔNG</strong>
                     <div style={{ height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <div style={{ color: '#047857' }}>
-                        <div style={{ fontFamily: 'cursive', fontSize: '1.2rem', fontWeight: 'bold' }}>
-                          {report.signatures?.contractor?.name || 'Phạm Thanh Nhàn'}
+                      <div className="screen-only">
+                        <div style={{ color: '#047857' }}>
+                          <div style={{ fontFamily: 'cursive', fontSize: '1.2rem', fontWeight: 'bold' }}>
+                            {report.signatures?.contractor?.name || 'Phạm Thanh Nhàn'}
+                          </div>
+                          <div style={{ fontSize: '0.68rem' }}>✓ Đã ký số</div>
                         </div>
-                        <div style={{ fontSize: '0.68rem' }}>✓ Đã ký số</div>
                       </div>
                     </div>
-                    <strong>{report.representatives?.contractor?.leadName || 'Phạm Thanh Nhàn'}</strong>
+                    <strong className="screen-only">{report.representatives?.contractor?.leadName || 'Phạm Thanh Nhàn'}</strong>
                   </div>
                 </div>
               </div>

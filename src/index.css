@@ -1917,6 +1917,11 @@ html.modal-open {
 /* --------------------------------------------------------------------------
    CHẾ ĐỘ IN A4 & XUẤT PDF CHUẨN CHO BIÊN BẢN NGHIỆM THU (NĐ 06/2021/NĐ-CP)
    -------------------------------------------------------------------------- */
+/* Print vs Screen display utilities */
+.print-only {
+  display: none !important;
+}
+
 /* 1. Thiết lập khổ giấy A4 chuẩn tương thích mọi driver máy in (HP, Canon, Brother, Epson) */
 @page {
   size: A4;
@@ -1981,9 +1986,14 @@ html.modal-open {
   .report-modal-tabs,
   .no-print,
   .print-hide,
+  .screen-only,
   button,
   input[type="file"] {
     display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
   }
 
   /* 5. Gỡ bỏ lớp phủ modal (overlay) và khung modal card */

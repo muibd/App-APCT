@@ -15,8 +15,12 @@ import {
 
 
 
-export default function CreateRequestModal({ isOpen, onClose, users, currentUser, onSubmitRequest, showAlert }) {
+export default function CreateRequestModal({ isOpen, onClose, users, currentUser, onSubmitRequest, showAlert, standardsData }) {
   if (!isOpen) return null;
+
+  const activeWorks = (standardsData?.works && standardsData.works.length > 0) ? standardsData.works : CONSTRUCTION_WORK_STANDARDS;
+  const activeMaterials = (standardsData?.materials && standardsData.materials.length > 0) ? standardsData.materials : MATERIAL_STANDARDS;
+  const activeMandatory = (standardsData?.mandatory && standardsData.mandatory.length > 0) ? standardsData.mandatory : GENERAL_MANDATORY_STANDARDS;
 
   // Filter recipient groups
   const supervisorList = users.filter(u => u.role === 'SUPERVISOR' || u.role === 'LEAD_SUPERVISOR');
@@ -78,11 +82,11 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
   // Loại hình nghiệm thu: 'WORK' (Công việc xây dựng) | 'MATERIAL' (Vật liệu đầu vào - Mẫu số 12)
   const [inspectionType, setInspectionType] = useState('WORK');
 
-  // Cho Công việc xây dựng (Sheet A - 15 nhóm theo Excel)
-  const [selectedWorkGroup, setSelectedWorkGroup] = useState(() => CONSTRUCTION_WORK_STANDARDS[0]?.name || 'Cốt thép, ván khuôn, bê tông');
+  // Cho Công việc xây dựng (Theo danh mục Admin quản lý)
+  const [selectedWorkGroup, setSelectedWorkGroup] = useState(() => activeWorks[0]?.name || 'Cốt thép, ván khuôn, bê tông');
 
-  // Cho Vật liệu đầu vào (Mẫu số 12 theo Sheet B - 24 loại theo Excel)
-  const [selectedMaterialGroup, setSelectedMaterialGroup] = useState(() => MATERIAL_STANDARDS[0]?.name || 'Gạch ốp lát');
+  // Cho Vật liệu đầu vào (Theo danh mục Admin quản lý)
+  const [selectedMaterialGroup, setSelectedMaterialGroup] = useState(() => activeMaterials[0]?.name || 'Gạch ốp lát');
   const [materialsList, setMaterialsList] = useState([
     {
       id: 'mat_1',
@@ -94,16 +98,16 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
     }
   ]);
 
-  // Tiêu chuẩn áp dụng (Tự động cập nhật theo file Excel DANH MỤC TIÊU CHUẨN NGHIỆM THU.xls)
+  // Tiêu chuẩn áp dụng (Tự động cập nhật theo cấu hình tiêu chuẩn do Admin quản lý)
   const [suggestedStandardsList, setSuggestedStandardsList] = useState(() => {
-    return getSuggestedStandards(CONSTRUCTION_WORK_STANDARDS[0]?.name || 'Cốt thép, ván khuôn, bê tông', 'WORK');
+    return getSuggestedStandards(activeWorks[0]?.name || 'Cốt thép, ván khuôn, bê tông', 'WORK', activeWorks, activeMaterials, activeMandatory);
   });
   const [selectedStandards, setSelectedStandards] = useState(() => {
-    return getSuggestedStandards(CONSTRUCTION_WORK_STANDARDS[0]?.name || 'Cốt thép, ván khuôn, bê tông', 'WORK');
+    return getSuggestedStandards(activeWorks[0]?.name || 'Cốt thép, ván khuôn, bê tông', 'WORK', activeWorks, activeMaterials, activeMandatory);
   });
 
   const updateStandards = (query, type) => {
-    const suggested = getSuggestedStandards(query, type);
+    const suggested = getSuggestedStandards(query, type, activeWorks, activeMaterials, activeMandatory);
     setSuggestedStandardsList(suggested);
     setSelectedStandards(suggested);
   };
@@ -112,7 +116,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
     const allSuggested = [];
     mats.forEach(m => {
       if (m.name && m.name.trim().length > 1) {
-        const stds = getSuggestedStandards(m.name, 'MATERIAL');
+        const stds = getSuggestedStandards(m.name, 'MATERIAL', activeWorks, activeMaterials, activeMandatory);
         stds.forEach(s => {
           if (!allSuggested.includes(s)) allSuggested.push(s);
         });
@@ -739,11 +743,11 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
                 </div>
               </div>
 
-              {/* Chọn Nhóm Tiêu Chuẩn Công Việc Xây Dựng (Sheet A - 15 nhóm) */}
+              {/* Chọn Hạng Mục Tiêu Chuẩn Công Việc Xây Dựng (Admin quản lý) */}
               <div className="form-group" style={{ marginBottom: '14px' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span>Nhóm công việc:</span>
-                  <span style={{ color: '#16a34a', fontSize: '0.74rem', fontWeight: 600 }}>⚡ 15 nhóm tiêu chuẩn</span>
+                  <span>Hạng mục công việc:</span>
+                  <span style={{ color: '#16a34a', fontSize: '0.74rem', fontWeight: 600 }}>⚡ {activeWorks.length} hạng mục tiêu chuẩn</span>
                 </label>
                 <select 
                   className="form-select" 
@@ -751,9 +755,9 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
                   onChange={(e) => handleWorkGroupChange(e.target.value)}
                   style={{ background: '#f0fdf4', borderColor: '#86efac', fontWeight: 600 }}
                 >
-                  {CONSTRUCTION_WORK_STANDARDS.map(w => (
-                    <option key={w.id} value={w.name}>
-                      Mục {w.stt}: {w.name} ({w.standards.length} tiêu chuẩn)
+                  {activeWorks.map((w, idx) => (
+                    <option key={w.id || idx} value={w.name}>
+                      Mục {w.stt || idx + 1}: {w.name} ({w.standards?.length || 0} tiêu chuẩn đi kèm)
                     </option>
                   ))}
                   <option value="__CUSTOM_WORK__">-- Nhập công tác ngoài danh mục --</option>
@@ -907,18 +911,18 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
                     </strong>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '0.78rem', color: '#047857', fontWeight: 600 }}>Thêm nhanh từ 24 nhóm Excel:</span>
+                    <span style={{ fontSize: '0.78rem', color: '#047857', fontWeight: 600 }}>Thêm nhanh từ {activeMaterials.length} hạng mục vật liệu:</span>
                     <select 
                       className="form-select" 
                       value={selectedMaterialGroup} 
                       onChange={(e) => handleSelectMaterialGroupForAdd(e.target.value)}
                       style={{ padding: '4px 8px', fontSize: '0.8rem', fontWeight: 600, color: '#065f46', background: '#f0fdf4', borderColor: '#86efac', maxWidth: '240px' }}
-                      title="Chọn nhanh từ danh mục 24 loại vật liệu tiêu chuẩn Excel"
+                      title={`Chọn nhanh từ danh mục ${activeMaterials.length} loại vật liệu tiêu chuẩn`}
                     >
-                      <option value="">+ Chọn nhóm vật liệu...</option>
-                      {MATERIAL_STANDARDS.map(m => (
-                        <option key={m.id} value={m.name}>
-                          Mục {m.stt}: {m.name}
+                      <option value="">+ Chọn hạng mục vật liệu...</option>
+                      {activeMaterials.map((m, idx) => (
+                        <option key={m.id || idx} value={m.name}>
+                          Mục {m.stt || idx + 1}: {m.name} ({m.standards?.length || 0} tiêu chuẩn đi kèm)
                         </option>
                       ))}
                     </select>

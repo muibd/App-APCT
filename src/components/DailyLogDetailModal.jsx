@@ -549,25 +549,27 @@ export default function DailyLogDetailModal({
               <span style={{ fontSize: '0.8rem', fontStyle: 'italic' }}>(Ký, ghi rõ họ tên)</span>
               
               <div style={{ minHeight: '80px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', margin: '8px 0' }}>
-                {log.signatures?.investor?.signed ? (
-                  <div style={{
-                    border: '1.5px solid #059669',
-                    borderRadius: '8px',
-                    padding: '6px 10px',
-                    background: '#f0fdf4',
-                    color: '#065f46',
-                    fontSize: '0.8rem',
-                    fontWeight: 700
-                  }}>
-                    ✓ ĐÃ XÁC NHẬN<br />
-                    <span style={{ fontSize: '0.72rem', fontWeight: 500 }}>Chữ ký số điện tử CĐT</span>
-                  </div>
-                ) : (
-                  <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.8rem' }}>(Chờ xác nhận)</span>
-                )}
+                <div className="screen-only">
+                  {log.signatures?.investor?.signed ? (
+                    <div style={{
+                      border: '1.5px solid #059669',
+                      borderRadius: '8px',
+                      padding: '6px 10px',
+                      background: '#f0fdf4',
+                      color: '#065f46',
+                      fontSize: '0.8rem',
+                      fontWeight: 700
+                    }}>
+                      ✓ ĐÃ XÁC NHẬN<br />
+                      <span style={{ fontSize: '0.72rem', fontWeight: 500 }}>Chữ ký số điện tử CĐT</span>
+                    </div>
+                  ) : (
+                    <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.8rem' }}>(Chờ xác nhận)</span>
+                  )}
+                </div>
               </div>
 
-              <strong>{log.signatures?.investor?.name || log.representatives?.investor?.representative || 'Ngô Quý Linh'}</strong>
+              <strong className="screen-only">{log.signatures?.investor?.name || log.representatives?.investor?.representative || 'Ngô Quý Linh'}</strong>
             </div>
 
             {/* TƯ VẤN GIÁM SÁT */}
@@ -576,25 +578,27 @@ export default function DailyLogDetailModal({
               <span style={{ fontSize: '0.8rem', fontStyle: 'italic' }}>(Ký, ghi rõ họ tên)</span>
               
               <div style={{ minHeight: '80px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', margin: '8px 0' }}>
-                {log.signatures?.supervisor?.signed ? (
-                  <div style={{
-                    border: '1.5px solid #059669',
-                    borderRadius: '8px',
-                    padding: '6px 10px',
-                    background: '#f0fdf4',
-                    color: '#065f46',
-                    fontSize: '0.8rem',
-                    fontWeight: 700
-                  }}>
-                    ✓ ĐÃ KÝ DUYỆT<br />
-                    <span style={{ fontSize: '0.72rem', fontWeight: 500 }}>Chữ ký số điện tử TVGS</span>
-                  </div>
-                ) : (
-                  <span style={{ color: '#d97706', fontStyle: 'italic', fontSize: '0.8rem' }}>(Chờ TVGS xác nhận)</span>
-                )}
+                <div className="screen-only">
+                  {log.signatures?.supervisor?.signed ? (
+                    <div style={{
+                      border: '1.5px solid #059669',
+                      borderRadius: '8px',
+                      padding: '6px 10px',
+                      background: '#f0fdf4',
+                      color: '#065f46',
+                      fontSize: '0.8rem',
+                      fontWeight: 700
+                    }}>
+                      ✓ ĐÃ KÝ DUYỆT<br />
+                      <span style={{ fontSize: '0.72rem', fontWeight: 500 }}>Chữ ký số điện tử TVGS</span>
+                    </div>
+                  ) : (
+                    <span style={{ color: '#d97706', fontStyle: 'italic', fontSize: '0.8rem' }}>(Chờ TVGS xác nhận)</span>
+                  )}
+                </div>
               </div>
 
-              <strong>{log.signatures?.supervisor?.name || log.assignedSupervisor?.name || log.representatives?.supervisor?.representative || 'Đinh Xuân Thám'}</strong>
+              <strong className="screen-only">{log.signatures?.supervisor?.name || log.assignedSupervisor?.name || log.representatives?.supervisor?.representative || 'Đinh Xuân Thám'}</strong>
             </div>
 
             {/* ĐƠN VỊ THI CÔNG */}
@@ -603,25 +607,27 @@ export default function DailyLogDetailModal({
               <span style={{ fontSize: '0.8rem', fontStyle: 'italic' }}>(Ký, ghi rõ họ tên)</span>
               
               <div style={{ minHeight: '80px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', margin: '8px 0' }}>
-                {log.signatures?.contractor?.signed !== false ? (
-                  <div style={{
-                    border: '1.5px solid #2563eb',
-                    borderRadius: '8px',
-                    padding: '6px 10px',
-                    background: '#eff6ff',
-                    color: '#1d4ed8',
-                    fontSize: '0.8rem',
-                    fontWeight: 700
-                  }}>
-                    ✓ ĐÃ LẬP & KÝ<br />
-                    <span style={{ fontSize: '0.72rem', fontWeight: 500 }}>Cán bộ KT thi công</span>
-                  </div>
-                ) : (
-                  <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.8rem' }}>(Chưa ký)</span>
-                )}
+                <div className="screen-only">
+                  {log.signatures?.contractor?.signed !== false ? (
+                    <div style={{
+                      border: '1.5px solid #2563eb',
+                      borderRadius: '8px',
+                      padding: '6px 10px',
+                      background: '#eff6ff',
+                      color: '#1d4ed8',
+                      fontSize: '0.8rem',
+                      fontWeight: 700
+                    }}>
+                      ✓ ĐÃ LẬP & KÝ<br />
+                      <span style={{ fontSize: '0.72rem', fontWeight: 500 }}>Cán bộ KT thi công</span>
+                    </div>
+                  ) : (
+                    <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.8rem' }}>(Chưa ký)</span>
+                  )}
+                </div>
               </div>
 
-              <strong>{log.signatures?.contractor?.name || log.createdByName || 'KS. Lê Văn Kỹ Thuật'}</strong>
+              <strong className="screen-only">{log.signatures?.contractor?.name || log.createdByName || 'KS. Lê Văn Kỹ Thuật'}</strong>
             </div>
           </div>
 

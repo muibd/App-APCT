@@ -37,6 +37,7 @@ export default function InspectionReportModal({
   currentUser,
   users = [],
   requests = [],
+  standardsData = null,
   onSaveReport,
   onRejectReport,
   onReinspectReport,
@@ -96,7 +97,10 @@ export default function InspectionReportModal({
     }
     return getSuggestedStandards(
       report?.inspectionObject || report?.projectInfo?.itemName || '', 
-      (report?.reportTemplate === 'FORM_12' || report?.inspectionType === 'MATERIAL') ? 'MATERIAL' : 'WORK'
+      (report?.reportTemplate === 'FORM_12' || report?.inspectionType === 'MATERIAL') ? 'MATERIAL' : 'WORK',
+      standardsData?.works,
+      standardsData?.materials,
+      standardsData?.mandatory
     );
   });
 
@@ -1390,7 +1394,9 @@ export default function InspectionReportModal({
               {/* 2. Thành phần trực tiếp nghiệm thu (Động theo cán bộ được chọn khi lập phiếu) */}
               <div style={{ marginBottom: '14px' }}>
                 <strong>2. Thành phần trực tiếp nghiệm thu:</strong>
-                <div style={{ paddingLeft: '16px', marginTop: '4px' }}>
+                
+                {/* HIỂN THỊ TRÊN MÀN HÌNH APP */}
+                <div className="screen-only" style={{ paddingLeft: '16px', marginTop: '4px' }}>
                   {/* a) Đại diện Chủ đầu tư */}
                   <div><strong>a) Đại diện Chủ đầu tư:</strong> {invCompany}</div>
                   <div style={{ paddingLeft: '16px' }}>
@@ -1482,6 +1488,99 @@ export default function InspectionReportModal({
                         <div>- Ông: <strong>{contOfficerName}</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {contOfficerPosition}</div>
                       </>
                     )}
+                  </div>
+                </div>
+
+                {/* KHI IN RA GIẤY: DẠNG DẤU CHẤM .... HẾT THEO YÊU CẦU */}
+                <div className="print-only" style={{ paddingLeft: '16px', marginTop: '4px' }}>
+                  {/* a) Đại diện Chủ đầu tư */}
+                  <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden' }}>
+                    <strong style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>a) Đại diện Chủ đầu tư:</strong>
+                    <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                      ................................................................................................................................................................
+                    </span>
+                  </div>
+                  <div style={{ paddingLeft: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden' }}>
+                      <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông:</span>
+                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                        ................................................................................................................................
+                      </span>
+                      <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                        ................................................................................................................................
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '2px' }}>
+                      <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông:</span>
+                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                        ................................................................................................................................
+                      </span>
+                      <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                        ................................................................................................................................
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* b) Tư vấn giám sát */}
+                  <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '4px' }}>
+                    <strong style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>b) Tư vấn giám sát:</strong>
+                    <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                      ................................................................................................................................................................
+                    </span>
+                  </div>
+                  <div style={{ paddingLeft: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden' }}>
+                      <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông:</span>
+                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                        ................................................................................................................................
+                      </span>
+                      <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                        ................................................................................................................................
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '2px' }}>
+                      <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông:</span>
+                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                        ................................................................................................................................
+                      </span>
+                      <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                        ................................................................................................................................
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* c) Đơn vị thi công */}
+                  <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '4px' }}>
+                    <strong style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>c) Đơn vị thi công:</strong>
+                    <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                      ................................................................................................................................................................
+                    </span>
+                  </div>
+                  <div style={{ paddingLeft: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden' }}>
+                      <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông:</span>
+                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                        ................................................................................................................................
+                      </span>
+                      <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                        ................................................................................................................................
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '2px' }}>
+                      <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông:</span>
+                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                        ................................................................................................................................
+                      </span>
+                      <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
+                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                        ................................................................................................................................
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1770,33 +1869,35 @@ export default function InspectionReportModal({
                   <strong style={{ fontSize: '0.95rem' }}>CHỦ ĐẦU TƯ / BAN QLDA</strong><br />
                   <span style={{ fontSize: '0.8rem', fontStyle: 'italic' }}>(Ký, ghi rõ họ tên)</span>
                   <div style={{ height: '90px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {isInvestorSigned ? (
-                      <div style={{ color: '#047857', fontWeight: 'bold', textAlign: 'center' }}>
-                        <div style={{ fontSize: '1.2rem', fontFamily: 'cursive' }}>
-                          {invOfficerName || reportState.attendees?.investor?.person || 'Ngô Quý Linh'}
-                        </div>
-                        <div style={{ fontSize: '0.72rem' }}>✓ Đã ký số điện tử</div>
-                        {reportState.attendees?.investor?.signedAt && (
-                          <div style={{ fontSize: '0.65rem', color: '#64748b' }}>
-                            {reportState.attendees.investor.signedAt}
+                    <div className="screen-only">
+                      {isInvestorSigned ? (
+                        <div style={{ color: '#047857', fontWeight: 'bold', textAlign: 'center' }}>
+                          <div style={{ fontSize: '1.2rem', fontFamily: 'cursive' }}>
+                            {invOfficerName || reportState.attendees?.investor?.person || 'Ngô Quý Linh'}
                           </div>
-                        )}
-                      </div>
-                    ) : isRejected && (rejectionInfo?.role === 'INVESTOR' || rejectionInfo?.role === 'LEAD_INVESTOR') ? (
-                      <div style={{ border: '2px dashed #dc2626', background: '#fef2f2', padding: '6px 10px', borderRadius: '6px', textAlign: 'center' }}>
-                        <div style={{ color: '#dc2626', fontWeight: 800, fontSize: '0.85rem' }}>❌ TỪ CHỐI DUYỆT</div>
-                        <div style={{ fontSize: '0.72rem', color: '#991b1b' }}>{rejectionInfo?.name}</div>
-                        <div style={{ fontSize: '0.68rem', color: '#64748b' }}>{rejectionInfo?.timestamp}</div>
-                      </div>
-                    ) : isRectified && (rejectionInfo?.role === 'INVESTOR' || rejectionInfo?.role === 'LEAD_INVESTOR' || reportState.rectification?.target === 'INVESTOR') ? (
-                      <span style={{ color: '#7c3aed', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ CĐT kiểm tra lại)</span>
-                    ) : !isSupervisorSigned ? (
-                      <span style={{ color: '#d97706', fontStyle: 'italic', fontSize: '0.8rem' }}>(Chờ TVGS duyệt trước)</span>
-                    ) : (
-                      <span style={{ color: '#d97706', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ CĐT ký duyệt)</span>
-                    )}
+                          <div style={{ fontSize: '0.72rem' }}>✓ Đã ký số điện tử</div>
+                          {reportState.attendees?.investor?.signedAt && (
+                            <div style={{ fontSize: '0.65rem', color: '#64748b' }}>
+                              {reportState.attendees.investor.signedAt}
+                            </div>
+                          )}
+                        </div>
+                      ) : isRejected && (rejectionInfo?.role === 'INVESTOR' || rejectionInfo?.role === 'LEAD_INVESTOR') ? (
+                        <div style={{ border: '2px dashed #dc2626', background: '#fef2f2', padding: '6px 10px', borderRadius: '6px', textAlign: 'center' }}>
+                          <div style={{ color: '#dc2626', fontWeight: 800, fontSize: '0.85rem' }}>❌ TỪ CHỐI DUYỆT</div>
+                          <div style={{ fontSize: '0.72rem', color: '#991b1b' }}>{rejectionInfo?.name}</div>
+                          <div style={{ fontSize: '0.68rem', color: '#64748b' }}>{rejectionInfo?.timestamp}</div>
+                        </div>
+                      ) : isRectified && (rejectionInfo?.role === 'INVESTOR' || rejectionInfo?.role === 'LEAD_INVESTOR' || reportState.rectification?.target === 'INVESTOR') ? (
+                        <span style={{ color: '#7c3aed', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ CĐT kiểm tra lại)</span>
+                      ) : !isSupervisorSigned ? (
+                        <span style={{ color: '#d97706', fontStyle: 'italic', fontSize: '0.8rem' }}>(Chờ TVGS duyệt trước)</span>
+                      ) : (
+                        <span style={{ color: '#d97706', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ CĐT ký duyệt)</span>
+                      )}
+                    </div>
                   </div>
-                  <strong>{invOfficerName || reportState.attendees?.investor?.person || 'Ngô Quý Linh'}</strong>
+                  <strong className="screen-only">{invOfficerName || reportState.attendees?.investor?.person || 'Ngô Quý Linh'}</strong>
                 </div>
 
                 {/* 2. TƯ VẤN GIÁM SÁT */}
@@ -1804,31 +1905,33 @@ export default function InspectionReportModal({
                   <strong style={{ fontSize: '0.95rem' }}>TƯ VẤN GIÁM SÁT</strong><br />
                   <span style={{ fontSize: '0.8rem', fontStyle: 'italic' }}>(Ký, ghi rõ họ tên)</span>
                   <div style={{ height: '90px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {isSupervisorSigned ? (
-                      <div style={{ color: '#047857', fontWeight: 'bold', textAlign: 'center' }}>
-                        <div style={{ fontSize: '1.2rem', fontFamily: 'cursive' }}>
-                          {supOfficerName || reportState.attendees?.supervisor?.person || 'Đinh Xuân Thám'}
-                        </div>
-                        <div style={{ fontSize: '0.72rem' }}>✓ Đã ký số điện tử</div>
-                        {reportState.attendees?.supervisor?.signedAt && (
-                          <div style={{ fontSize: '0.65rem', color: '#64748b' }}>
-                            {reportState.attendees.supervisor.signedAt}
+                    <div className="screen-only">
+                      {isSupervisorSigned ? (
+                        <div style={{ color: '#047857', fontWeight: 'bold', textAlign: 'center' }}>
+                          <div style={{ fontSize: '1.2rem', fontFamily: 'cursive' }}>
+                            {supOfficerName || reportState.attendees?.supervisor?.person || 'Đinh Xuân Thám'}
                           </div>
-                        )}
-                      </div>
-                    ) : isRejected && (rejectionInfo?.role === 'SUPERVISOR' || rejectionInfo?.role === 'LEAD_SUPERVISOR') ? (
-                      <div style={{ border: '2px dashed #dc2626', background: '#fef2f2', padding: '6px 10px', borderRadius: '6px', textAlign: 'center' }}>
-                        <div style={{ color: '#dc2626', fontWeight: 800, fontSize: '0.85rem' }}>❌ TỪ CHỐI NGHIỆM THU</div>
-                        <div style={{ fontSize: '0.72rem', color: '#991b1b' }}>{rejectionInfo?.name}</div>
-                        <div style={{ fontSize: '0.68rem', color: '#64748b' }}>{rejectionInfo?.timestamp}</div>
-                      </div>
-                    ) : isRectified && (rejectionInfo?.role === 'SUPERVISOR' || rejectionInfo?.role === 'LEAD_SUPERVISOR' || reportState.rectification?.target === 'SUPERVISOR') ? (
-                      <span style={{ color: '#7c3aed', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ TVGS nghiệm thu lại)</span>
-                    ) : (
-                      <span style={{ color: '#059669', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ TVGS kiểm tra & ký)</span>
-                    )}
+                          <div style={{ fontSize: '0.72rem' }}>✓ Đã ký số điện tử</div>
+                          {reportState.attendees?.supervisor?.signedAt && (
+                            <div style={{ fontSize: '0.65rem', color: '#64748b' }}>
+                              {reportState.attendees.supervisor.signedAt}
+                            </div>
+                          )}
+                        </div>
+                      ) : isRejected && (rejectionInfo?.role === 'SUPERVISOR' || rejectionInfo?.role === 'LEAD_SUPERVISOR') ? (
+                        <div style={{ border: '2px dashed #dc2626', background: '#fef2f2', padding: '6px 10px', borderRadius: '6px', textAlign: 'center' }}>
+                          <div style={{ color: '#dc2626', fontWeight: 800, fontSize: '0.85rem' }}>❌ TỪ CHỐI NGHIỆM THU</div>
+                          <div style={{ fontSize: '0.72rem', color: '#991b1b' }}>{rejectionInfo?.name}</div>
+                          <div style={{ fontSize: '0.68rem', color: '#64748b' }}>{rejectionInfo?.timestamp}</div>
+                        </div>
+                      ) : isRectified && (rejectionInfo?.role === 'SUPERVISOR' || rejectionInfo?.role === 'LEAD_SUPERVISOR' || reportState.rectification?.target === 'SUPERVISOR') ? (
+                        <span style={{ color: '#7c3aed', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ TVGS nghiệm thu lại)</span>
+                      ) : (
+                        <span style={{ color: '#059669', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ TVGS kiểm tra & ký)</span>
+                      )}
+                    </div>
                   </div>
-                  <strong>{supOfficerName || reportState.attendees?.supervisor?.person || 'Đinh Xuân Thám'}</strong>
+                  <strong className="screen-only">{supOfficerName || reportState.attendees?.supervisor?.person || 'Đinh Xuân Thám'}</strong>
                 </div>
 
                 {/* 3. ĐƠN VỊ THI CÔNG */}
@@ -1836,18 +1939,20 @@ export default function InspectionReportModal({
                   <strong style={{ fontSize: '0.95rem' }}>ĐƠN VỊ THI CÔNG</strong><br />
                   <span style={{ fontSize: '0.8rem', fontStyle: 'italic' }}>(Ký, ghi rõ họ tên)</span>
                   <div style={{ height: '90px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {isContractorSigned ? (
-                      <div style={{ color: '#047857', fontWeight: 'bold', textAlign: 'center' }}>
-                        <div style={{ fontSize: '1.2rem', fontFamily: 'cursive' }}>
-                          {contOfficerName || reportState.attendees?.contractor?.person || 'Phạm Thanh Nhàn'}
+                    <div className="screen-only">
+                      {isContractorSigned ? (
+                        <div style={{ color: '#047857', fontWeight: 'bold', textAlign: 'center' }}>
+                          <div style={{ fontSize: '1.2rem', fontFamily: 'cursive' }}>
+                            {contOfficerName || reportState.attendees?.contractor?.person || 'Phạm Thanh Nhàn'}
+                          </div>
+                          <div style={{ fontSize: '0.72rem' }}>✓ Đã ký số điện tử</div>
                         </div>
-                        <div style={{ fontSize: '0.72rem' }}>✓ Đã ký số điện tử</div>
-                      </div>
-                    ) : (
-                      <span style={{ color: '#2563eb', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ ĐVTC ký)</span>
-                    )}
+                      ) : (
+                        <span style={{ color: '#2563eb', fontStyle: 'italic', fontSize: '0.8rem', fontWeight: 600 }}>(Chờ ĐVTC ký)</span>
+                      )}
+                    </div>
                   </div>
-                  <strong>{contOfficerName || reportState.attendees?.contractor?.person || 'Phạm Thanh Nhàn'}</strong>
+                  <strong className="screen-only">{contOfficerName || reportState.attendees?.contractor?.person || 'Phạm Thanh Nhàn'}</strong>
                 </div>
               </div>
 

@@ -27,6 +27,7 @@ import MobileProfileSheet from './components/MobileProfileSheet';
 import ProfileView from './components/ProfileView';
 import PushGuideModal from './components/PushGuideModal';
 import ConfirmDialogModal from './components/ConfirmDialogModal';
+import StandardsManagementView from './components/StandardsManagementView';
 import { 
   MOCK_USERS, 
   MOCK_PROJECT, 
@@ -37,7 +38,7 @@ import {
   INITIAL_DAILY_LOGS,
   INITIAL_COMPLETION_REPORTS
 } from './data/mockData';
-import { getSuggestedStandards } from './data/standardsRules';
+import { getSuggestedStandards, loadStoredStandards, STANDARDS_STORAGE_KEY } from './data/standardsRules';
 
 import { 
   saveInspectionRequest, 
@@ -64,7 +65,9 @@ import {
   subscribeToCompletionReports,
   saveCompletionReport,
   updateCompletionReport,
-  deleteCompletionReport
+  deleteCompletionReport,
+  subscribeToStandards,
+  saveInspectionStandards
 } from './services/firestoreService';
 import { 
   requestPushPermission, 
@@ -193,6 +196,7 @@ export default function App() {
   });
 
   const [standards, setStandards] = useState(STANDARD_CRITERIA_LIST);
+  const [standardsData, setStandardsData] = useState(loadStoredStandards);
 
   // User Authentication State: Lấy từ localStorage nếu có, mặc định là null để hiện màn hình Login
   const [currentUser, setCurrentUser] = useState(() => {
@@ -696,6 +700,52 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  // 4d. Đồng bộ Real-Time Danh mục tiêu chuẩn do Admin quản lý từ Firestore
+  useEffect(() => {
+    const unsubscribe = subscribeToStandards((remoteStandards) => {
+      if (remoteStandards && (remoteStandards.works || remoteStandards.materials)) {
+        setStandardsData(prev => ({
+          works: Array.isArray(remoteStandards.works) ? remoteStandards.works : (prev?.works || []),
+          materials: Array.isArray(remoteStandards.materials) ? remoteStandards.materials : (prev?.materials || []),
+          mandatory: Array.isArray(remoteStandards.mandatory) ? remoteStandards.mandatory : (prev?.mandatory || [])
+        }));
+        try {
+          localStorage.setItem(STANDARDS_STORAGE_KEY, JSON.stringify(remoteStandards));
+        } catch (e) {
+          console.warn('Lỗi lưu standards từ Cloud vào localStorage:', e);
+        }
+      }
+    });
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
+  const handleSaveStandards = async (newStandards) => {
+    setStandardsData(newStandards);
+    try {
+      localStorage.setItem(STANDARDS_STORAGE_KEY, JSON.stringify(newStandards));
+    } catch (e) {
+      console.warn('Lỗi lưu standards vào localStorage:', e);
+    }
+    try {
+      await saveInspectionStandards(newStandards);
+    } catch (err) {
+      console.warn('Lỗi lưu standards lên Firestore:', err);
+    }
+  };
+
+  const handleSyncStandardsToCloud = async (payloadToSync) => {
+    const data = payloadToSync || standardsData;
+    try {
+      await saveInspectionStandards(data);
+      return true;
+    } catch (e) {
+      console.error('Lỗi đồng bộ tiêu chuẩn lên Cloud:', e);
+      return false;
+    }
+  };
 
   // ============================================================================
   // 4d. TỰ ĐỘNG ĐỒNG BỘ CẶP ĐÔI 1-1 (AUTO-HEAL PAIRS)
@@ -3252,7 +3302,7 @@ export default function App() {
                   onClick={() => setActiveTab('ADMIN_STANDARDS')}
                 >
                   <BookOpen size={18} />
-                  <span>Thư Viện TCVN ({standards.length})</span>
+                  <span>Thư Viện TCVN ({(standardsData?.works?.length || 0) + (standardsData?.materials?.length || 0)} hạng mục)</span>
                 </li>
                 <li 
                   className={`sidebar-nav-item ${activeTab === 'REQUESTS' ? 'active' : ''}`}
@@ -3416,31 +3466,12 @@ export default function App() {
                   onSyncAllUsersToCloud={handleSyncAllUsersToCloud}
                 />
               ) : (
-                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px' }}>
-                  <h3 style={{ fontSize: '1.1rem', marginBottom: '14px', color: '#1e293b' }}>
-                    Thư Viện Tiêu Chuẩn & Quy Chuẩn Xây Dựng Áp Dụng (TCVN / QCVN)
-                  </h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {standards.map(s => (
-                      <div key={s.id} style={{ 
-                        padding: '12px 16px', 
-                        background: '#f8fafc', 
-                        border: '1px solid #e2e8f0', 
-                        borderRadius: '8px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px'
-                      }}>
-                        <span style={{ fontWeight: 'bold', color: '#b91c1c', fontSize: '0.88rem', minWidth: '160px' }}>
-                          {s.code}
-                        </span>
-                        <span style={{ fontSize: '0.9rem', color: '#334155' }}>
-                          {s.title}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <StandardsManagementView
+                  standardsData={standardsData}
+                  onSaveStandards={handleSaveStandards}
+                  onSyncStandardsToCloud={handleSyncStandardsToCloud}
+                  showAlert={showAlert}
+                />
               )}
             </div>
           ) : (
@@ -4029,6 +4060,7 @@ export default function App() {
         onClose={() => setIsCreateModalOpen(false)}
         users={users}
         currentUser={currentUser}
+        standardsData={standardsData}
         onSubmitRequest={handleCreateRequest}
         showAlert={showAlert}
       />
@@ -4059,6 +4091,7 @@ export default function App() {
         currentUser={currentUser}
         users={users}
         requests={requests}
+        standardsData={standardsData}
         onSaveReport={handleSaveReport}
         onRejectReport={handleRejectReport}
         onReinspectReport={handleReinspectReport}
@@ -4085,6 +4118,9 @@ export default function App() {
         onClose={() => setIsAdminModalOpen(false)}
         users={users}
         currentUser={currentUser}
+        standardsData={standardsData}
+        onSaveStandards={handleSaveStandards}
+        onSyncStandardsToCloud={handleSyncStandardsToCloud}
         onAddUser={handleAddUser}
         onUpdateUser={handleUpdateUser}
         onDeleteUser={handleDeleteUser}

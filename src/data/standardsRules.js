@@ -415,16 +415,53 @@ export const MATERIAL_STANDARDS = [
   }
 ];
 
+export const INITIAL_STANDARDS_DATA = {
+  works: CONSTRUCTION_WORK_STANDARDS,
+  materials: MATERIAL_STANDARDS,
+  mandatory: GENERAL_MANDATORY_STANDARDS
+};
+
+export const STANDARDS_STORAGE_KEY = 'apct_custom_standards';
+
+export function loadStoredStandards() {
+  try {
+    const raw = localStorage.getItem(STANDARDS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.works) && Array.isArray(parsed.materials)) {
+        return {
+          works: parsed.works,
+          materials: parsed.materials,
+          mandatory: Array.isArray(parsed.mandatory) ? parsed.mandatory : GENERAL_MANDATORY_STANDARDS
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('Lỗi đọc tiêu chuẩn từ localStorage:', e);
+  }
+  return INITIAL_STANDARDS_DATA;
+}
+
 /**
  * Tìm kiếm tiêu chuẩn tương ứng theo công việc hoặc chủng loại vật liệu (Rule Engine)
+ * Tự động đọc từ danh mục Admin quản lý (nếu có) hoặc danh mục mặc định
  */
-export function getSuggestedStandards(taskOrMaterialName, inspectionType = 'WORK') {
-  if (!taskOrMaterialName) return [...GENERAL_MANDATORY_STANDARDS];
+export function getSuggestedStandards(taskOrMaterialName, inspectionType = 'WORK', customWorks = null, customMaterials = null, customMandatory = null) {
+  const mandatory = customMandatory || GENERAL_MANDATORY_STANDARDS;
+  if (!taskOrMaterialName) return [...mandatory];
+
+  let works = customWorks;
+  let materials = customMaterials;
+  if (!works || !materials) {
+    const stored = loadStoredStandards();
+    works = works || stored.works;
+    materials = materials || stored.materials;
+  }
 
   const lower = taskOrMaterialName.toLowerCase();
   const pool = inspectionType === 'MATERIAL' 
-    ? MATERIAL_STANDARDS 
-    : [...CONSTRUCTION_WORK_STANDARDS, ...MATERIAL_STANDARDS];
+    ? materials 
+    : [...works, ...materials];
 
   let matched = pool.find(item => lower.includes(item.name.toLowerCase()));
   if (!matched) {
@@ -435,7 +472,7 @@ export function getSuggestedStandards(taskOrMaterialName, inspectionType = 'WORK
     });
   }
 
-  const standards = [...GENERAL_MANDATORY_STANDARDS];
+  const standards = [...mandatory];
   if (matched && Array.isArray(matched.standards)) {
     matched.standards.forEach(std => {
       if (!standards.includes(std)) standards.push(std);
