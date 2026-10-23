@@ -185,6 +185,29 @@ export default function InspectionReportModal({
 
   // c) Đơn vị thi công
   const contCompany = reportState.attendees?.contractor?.company || relatedRequest?.contractorCompany || 'Công ty CP Xây dựng An Phú Gia';
+  const [isEditingContCompany, setIsEditingContCompany] = useState(false);
+  const [contCompanyVal, setContCompanyVal] = useState(contCompany);
+
+  useEffect(() => {
+    setContCompanyVal(contCompany);
+  }, [contCompany]);
+
+  const handleSaveContCompany = () => {
+    setIsEditingContCompany(false);
+    const updated = {
+      ...reportState,
+      attendees: {
+        ...reportState.attendees,
+        contractor: {
+          ...reportState.attendees?.contractor,
+          company: contCompanyVal.trim() || contCompany
+        }
+      }
+    };
+    setReportState(updated);
+    if (onSaveReport) onSaveReport(updated);
+  };
+
   const contLeadName = reportState.attendees?.contractor?.leadPerson || leadContractorUser.fullName;
   const contLeadPosition = reportState.attendees?.contractor?.leadPosition || leadContractorUser.position;
   const contOfficerName = reportState.attendees?.contractor?.person || relatedRequest?.createdByName || 'KS. Lê Văn Kỹ Thuật';
@@ -1383,7 +1406,61 @@ export default function InspectionReportModal({
                   </div>
 
                   {/* c) Đơn vị thi công */}
-                  <div style={{ marginTop: '4px' }}><strong>c) Đơn vị thi công:</strong> {contCompany}</div>
+                  <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <strong>c) Đơn vị thi công:</strong>
+                    {isEditingContCompany ? (
+                      <div className="no-print" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <input
+                          type="text"
+                          className="form-input"
+                          style={{ padding: '2px 8px', fontSize: '0.88rem', width: '280px', fontWeight: 600, color: '#0f172a' }}
+                          value={contCompanyVal}
+                          onChange={(e) => setContCompanyVal(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleSaveContCompany(); }}
+                          autoFocus
+                        />
+                        <button 
+                          type="button" 
+                          onClick={handleSaveContCompany}
+                          style={{ padding: '3px 8px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}
+                        >
+                          Lưu
+                        </button>
+                        <button 
+                          type="button" 
+                          onClick={() => { setIsEditingContCompany(false); setContCompanyVal(contCompany); }}
+                          style={{ padding: '3px 8px', background: '#e2e8f0', color: '#334155', border: 'none', borderRadius: '4px', fontSize: '0.75rem', cursor: 'pointer' }}
+                        >
+                          Hủy
+                        </button>
+                      </div>
+                    ) : (
+                      <span>
+                        {contCompanyVal}
+                        <button
+                          type="button"
+                          className="no-print"
+                          onClick={() => setIsEditingContCompany(true)}
+                          style={{
+                            marginLeft: '8px',
+                            background: 'none',
+                            border: '1px dashed #94a3b8',
+                            borderRadius: '4px',
+                            padding: '1px 6px',
+                            fontSize: '0.72rem',
+                            color: '#2563eb',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px'
+                          }}
+                          title="Sửa đơn vị thi công"
+                        >
+                          ✏️ Sửa
+                        </button>
+                      </span>
+                    )}
+                  </div>
                   <div style={{ paddingLeft: '16px' }}>
                     {contOfficerName.trim().toLowerCase() === contLeadName.trim().toLowerCase() ? (
                       <div>- Ông: <strong>{contLeadName}</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {contLeadPosition}</div>

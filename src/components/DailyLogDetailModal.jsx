@@ -392,7 +392,7 @@ export default function DailyLogDetailModal({
                 </div>
               </div>
               <div>
-                <strong>7. Đơn vị thi công xây dựng:</strong> {log.contractorName || 'Công ty CP Xây dựng An Phú Gia'}
+                <strong>7. Đơn vị thi công xây dựng:</strong> {log.contractorName || log.contractorCompany || log.representatives?.contractor?.company || 'Công ty CP Xây dựng An Phú Gia'}
                 <div style={{ paddingLeft: '16px', fontStyle: 'italic' }}>
                   - Chỉ huy trưởng công trường: {log.representatives?.contractor?.leader || 'Phạm Thanh Nhàn'}<br />
                   - Cán bộ KT thi công (Người tạo): {log.representatives?.contractor?.createdBy || log.createdByName || 'KS. Lê Văn Kỹ Thuật'}

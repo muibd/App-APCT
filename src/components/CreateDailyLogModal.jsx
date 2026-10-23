@@ -44,6 +44,20 @@ export default function CreateDailyLogModal({
     return `${randomNum}/NKTC-APG`;
   });
   const [bookNumber, setBookNumber] = useState('Quyển số: 01/2026');
+  const [contractorCompany, setContractorCompany] = useState(() => currentUser?.company || 'Công ty CP Xây dựng An Phú Gia');
+
+  useEffect(() => {
+    if (currentUser?.company) {
+      setContractorCompany(currentUser.company);
+    }
+  }, [currentUser?.company]);
+
+  const availableContractorCompanies = Array.from(new Set([
+    'Công ty CP Xây dựng An Phú Gia',
+    'Công ty TNHH Tư vấn Thiết kế Bình Hoà',
+    ...(users || []).filter(u => u.role === 'CONTRACTOR').map(u => u.company).filter(Boolean),
+    currentUser?.company
+  ].filter(Boolean)));
 
   // Thông tin công trình & hạng mục (Tự động fill)
   const [selectedBuilding, setSelectedBuilding] = useState(() => MOCK_PROJECT.buildings[0]?.name || 'Chung cư nhà ở xã hội 2');
@@ -189,7 +203,7 @@ export default function CreateDailyLogModal({
       location: 'Phường Thường Thạnh - Quận Cái Răng – TP. Cần Thơ.',
       investorName: 'Công ty TNHH An Phú Cần Thơ',
       supervisorName: 'Công ty CP Tư vấn xây dựng và Thương mại Gelicon',
-      contractorName: currentUser?.company || 'Công ty CP Xây dựng An Phú Gia',
+      contractorName: contractorCompany.trim() || currentUser?.company || 'Công ty CP Xây dựng An Phú Gia',
       supervisorUid: selectedSupervisorUser?.uid,
       supervisorFullName: selectedSupervisorUser?.fullName,
       assignedSupervisor: {
@@ -216,6 +230,7 @@ export default function CreateDailyLogModal({
           phone: selectedSupervisorUser?.phone
         },
         contractor: {
+          company: contractorCompany.trim() || currentUser?.company || 'Công ty CP Xây dựng An Phú Gia',
           leader: 'Phạm Thanh Nhàn',
           leaderPosition: 'Chỉ huy trưởng công trường',
           createdBy: currentUser?.fullName || 'KS. Lê Văn Kỹ Thuật',
@@ -286,7 +301,7 @@ export default function CreateDailyLogModal({
       updatedAt: new Date().toISOString(),
       createdByUid: currentUser?.uid || 'uid_dvtc_01',
       createdByName: currentUser?.fullName || 'KS. Lê Văn Kỹ Thuật',
-      contractorCompany: currentUser?.company || 'Công ty CP Xây dựng An Phú Gia'
+      contractorCompany: contractorCompany.trim() || currentUser?.company || 'Công ty CP Xây dựng An Phú Gia'
     };
 
     onSubmitDailyLog(newDailyLog);
@@ -358,6 +373,28 @@ export default function CreateDailyLogModal({
               </div>
 
               <div>
+                <label className="form-label" style={{ fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Đơn vị thi công (ĐVTC):</span>
+                  <span style={{ fontSize: '0.7rem', color: '#2563eb' }}>✏️ Có thể sửa</span>
+                </label>
+                <input 
+                  type="text" 
+                  className="form-input" 
+                  list="daily-contractor-companies"
+                  value={contractorCompany} 
+                  onChange={(e) => setContractorCompany(e.target.value)} 
+                  placeholder="Nhập tên Đơn vị thi công..."
+                  required 
+                  style={{ fontWeight: 600, color: '#0f172a' }}
+                />
+                <datalist id="daily-contractor-companies">
+                  {availableContractorCompanies.map((c, i) => (
+                    <option key={i} value={c} />
+                  ))}
+                </datalist>
+              </div>
+
+              <div>
                 <label className="form-label" style={{ fontSize: '0.78rem' }}>Công trình / Khối nhà:</label>
                 <select 
                   className="form-select" 
@@ -389,7 +426,7 @@ export default function CreateDailyLogModal({
             <div style={{ fontSize: '0.8rem', color: '#475569', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '6px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
               <div>🏢 <strong>Dự án:</strong> {MOCK_PROJECT.projectName}</div>
               <div>📍 <strong>Địa điểm:</strong> Phường Thường Thạnh, Q. Cái Răng, TP. Cần Thơ</div>
-              <div>🏗️ <strong>ĐVTC:</strong> {currentUser?.company || 'Công ty CP Xây dựng An Phú Gia'}</div>
+              <div>🏗️ <strong>ĐVTC:</strong> <span style={{ color: '#1d4ed8', fontWeight: 600 }}>{contractorCompany || 'Công ty CP Xây dựng An Phú Gia'}</span></div>
               <div>👁️ <strong>TVGS:</strong> Công ty CP TVXD & TM Gelicon</div>
             </div>
           </div>

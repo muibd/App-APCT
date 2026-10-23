@@ -24,6 +24,20 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
 
   // Form State
   const [requestNumber, setRequestNumber] = useState(`0${Math.floor(Math.random() * 80) + 10}/PYC-APG`);
+  const [contractorCompany, setContractorCompany] = useState(() => currentUser?.company || 'Công ty CP Xây dựng An Phú Gia');
+
+  useEffect(() => {
+    if (currentUser?.company) {
+      setContractorCompany(currentUser.company);
+    }
+  }, [currentUser?.company]);
+
+  const availableContractorCompanies = Array.from(new Set([
+    'Công ty CP Xây dựng An Phú Gia',
+    'Công ty TNHH Tư vấn Thiết kế Bình Hoà',
+    ...(users || []).filter(u => u.role === 'CONTRACTOR').map(u => u.company).filter(Boolean),
+    currentUser?.company
+  ].filter(Boolean)));
   
   // Danh sách công trình / tòa nhà (kết hợp mặc định và bổ sung)
   const [buildingsList, setBuildingsList] = useState(() => {
@@ -473,7 +487,7 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
       buildingName: selectedBuilding,
       itemName: finalItemName,
       location: MOCK_PROJECT.location,
-      contractorCompany: currentUser?.company || 'Công ty CP Xây dựng An Phú Gia',
+      contractorCompany: contractorCompany.trim() || currentUser?.company || 'Công ty CP Xây dựng An Phú Gia',
       createdByUid: currentUser?.uid || 'uid_dvtc_01',
       createdByName: currentUser?.fullName || 'KS. Lê Văn Kỹ Thuật',
       createdByRole: currentUser?.position || 'Kỹ thuật hiện trường',
@@ -596,16 +610,25 @@ export default function CreateRequestModal({ isOpen, onClose, users, currentUser
               />
             </div>
             <div className="form-group" style={{ margin: 0 }}>
-              <label className="form-label">Đơn vị thi công:</label>
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Đơn vị thi công:</span>
+                <span style={{ fontSize: '0.72rem', color: '#2563eb', fontWeight: 500 }}>✏️ Có thể sửa</span>
+              </label>
               <input 
                 type="text" 
                 className="form-input" 
-                value={currentUser?.company || 'Công ty CP Xây dựng An Phú Gia'} 
-                readOnly 
-                disabled 
-                style={{ background: '#f8fafc', color: '#0f172a', fontWeight: '600', cursor: 'not-allowed', border: '1px solid #cbd5e1' }} 
-                title="Đơn Vị / Công Ty Phụ Trách của người tạo (Cố định, không được sửa)"
+                list="req-contractor-companies"
+                value={contractorCompany} 
+                onChange={(e) => setContractorCompany(e.target.value)} 
+                placeholder="Nhập tên Đơn vị thi công..."
+                required 
+                style={{ color: '#0f172a', fontWeight: '600' }} 
               />
+              <datalist id="req-contractor-companies">
+                {availableContractorCompanies.map((c, i) => (
+                  <option key={i} value={c} />
+                ))}
+              </datalist>
             </div>
           </div>
 

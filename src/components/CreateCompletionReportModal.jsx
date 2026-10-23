@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   X, Award, Send, Users, Calendar, MapPin, CheckSquare, Square, 
   Building, Camera, ImagePlus, Trash2, Clock, ShieldCheck, FileText, CheckCircle2,
@@ -46,6 +46,20 @@ export default function CreateCompletionReportModal({
   // 'STAGE': Mẫu 2 (Ảnh 3-4): Nghiệm thu hoàn thành giai đoạn thi công (Ký 3 bên: CĐT, TVGS, ĐVTC)
   // 'DOSSIER': Mẫu 3 (Ảnh 5): Kiểm tra hồ sơ nghiệm thu chất lượng hoàn thành giai đoạn thi công (Ký 3 bên: CĐT, TVGS, ĐVTC)
   const [completionType, setCompletionType] = useState('STAGE');
+  const [contractorCompany, setContractorCompany] = useState(() => currentUser?.company || 'Công ty CP Xây dựng An Phú Gia');
+
+  useEffect(() => {
+    if (currentUser?.company) {
+      setContractorCompany(currentUser.company);
+    }
+  }, [currentUser?.company]);
+
+  const availableContractorCompanies = Array.from(new Set([
+    'Công ty CP Xây dựng An Phú Gia',
+    'Công ty TNHH Tư vấn Thiết kế Bình Hoà',
+    ...(users || []).filter(u => u.role === 'CONTRACTOR').map(u => u.company).filter(Boolean),
+    currentUser?.company
+  ].filter(Boolean)));
 
   // Thông tin chung
   const [buildingName, setBuildingName] = useState(MOCK_PROJECT.buildings[0]?.name || 'Chung cư nhà ở xã hội 2');
@@ -189,7 +203,7 @@ export default function CreateCompletionReportModal({
           uid: leadSupervisor?.uid || 'uid_tvgs_01'
         },
         contractor: {
-          company: currentUser?.company || 'Công ty CP Xây dựng An Phú Gia',
+          company: contractorCompany.trim() || currentUser?.company || 'Công ty CP Xây dựng An Phú Gia',
           leadName: currentUser?.fullName || 'Phạm Thanh Nhàn',
           leadPosition: currentUser?.position || 'Chỉ huy trưởng công trường',
           officerName: 'Nguyễn Hoàng Bách',
@@ -467,15 +481,25 @@ export default function CreateCompletionReportModal({
               </div>
 
               <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label">Đơn vị thi công lập biên bản:</label>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Đơn vị thi công lập biên bản:</span>
+                  <span style={{ fontSize: '0.72rem', color: '#2563eb', fontWeight: 500 }}>✏️ Có thể sửa</span>
+                </label>
                 <input 
                   type="text" 
                   className="form-input" 
-                  value={currentUser?.company || 'Công ty CP Xây dựng An Phú Gia'} 
-                  readOnly 
-                  disabled 
-                  style={{ background: '#f1f5f9', fontWeight: 600, color: '#334155' }}
+                  list="completion-contractor-companies"
+                  value={contractorCompany} 
+                  onChange={(e) => setContractorCompany(e.target.value)} 
+                  placeholder="Nhập tên Đơn vị thi công..."
+                  required 
+                  style={{ fontWeight: 600, color: '#0f172a' }}
                 />
+                <datalist id="completion-contractor-companies">
+                  {availableContractorCompanies.map((c, i) => (
+                    <option key={i} value={c} />
+                  ))}
+                </datalist>
               </div>
             </div>
           </div>
