@@ -94,7 +94,7 @@ export default function CompletionReportsListView({
             </p>
           </div>
 
-          {(currentRole === 'CONTRACTOR' || currentRole === 'ADMIN') && (
+          {currentRole === 'CONTRACTOR' && (
             <button 
               className="btn-primary" 
               onClick={onCreateReport}

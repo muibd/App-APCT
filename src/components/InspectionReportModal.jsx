@@ -204,10 +204,10 @@ export default function InspectionReportModal({
     r => r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR'
   );
 
-  // Người dùng có phải là người duyệt TVGS được chỉ định trên phiếu này không:
+  // Người dùng có phải là người duyệt TVGS được chỉ định trên phiếu này không (Admin chỉ xem, không duyệt):
   const isSupervisorReviewer = Boolean(
-    isAdmin ||
-    (isSupervisorRole && (
+    !isAdmin &&
+    isSupervisorRole && (
       (supAttendee?.uid && curUid && supAttendee.uid === curUid) ||
       (supAttendee?.email && curEmail && supAttendee.email.toLowerCase() === curEmail) ||
       (supAttendee?.person && curName && (
@@ -223,13 +223,13 @@ export default function InspectionReportModal({
         ))
       )) ||
       (assignedSupRecipients.length === 0 && !supAttendee?.person)
-    ))
+    )
   );
 
-  // Người dùng có phải là người duyệt CĐT được chỉ định trên phiếu này không:
+  // Người dùng có phải là người duyệt CĐT được chỉ định trên phiếu này không (Admin chỉ xem, không duyệt):
   const isInvestorReviewer = Boolean(
-    isAdmin ||
-    (isInvestorRole && (
+    !isAdmin &&
+    isInvestorRole && (
       (invAttendee?.uid && curUid && invAttendee.uid === curUid) ||
       (invAttendee?.email && curEmail && invAttendee.email.toLowerCase() === curEmail) ||
       (invAttendee?.person && curName && (
@@ -245,7 +245,7 @@ export default function InspectionReportModal({
         ))
       )) ||
       (assignedInvRecipients.length === 0 && !invAttendee?.person)
-    ))
+    )
   );
 
   const cameraInputRef = useRef(null);
@@ -2349,7 +2349,7 @@ export default function InspectionReportModal({
                   </div>
                 </div>
 
-                  {(currentRole === 'CONTRACTOR' || currentRole === 'ADMIN') && (
+                  {currentRole === 'CONTRACTOR' && (
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     <button 
                       type="button"
@@ -2391,7 +2391,7 @@ export default function InspectionReportModal({
                   </div>
                   <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
 
-                    {(currentRole === 'CONTRACTOR' || currentRole === 'ADMIN') && (
+                    {currentRole === 'CONTRACTOR' && (
                       <button 
                         type="button"
                         className="btn-primary" 
@@ -2502,7 +2502,24 @@ export default function InspectionReportModal({
             ) : isWaitingInvestor ? (
               /* GIAI ĐOẠN 2: TVGS ĐÃ ĐẠT -> CĐT PHÊ DUYỆT & KÝ SỐ */
               <>
-                {(currentRole === 'INVESTOR' || currentRole === 'ADMIN') ? (
+                {currentRole === 'ADMIN' ? (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    color: '#6b21a8',
+                    background: '#faf5ff',
+                    border: '1.5px solid #d8b4fe',
+                    padding: '7px 14px',
+                    borderRadius: '8px',
+                    fontSize: '0.84rem',
+                    fontWeight: 600,
+                    whiteSpace: 'nowrap'
+                  }}>
+                    <ShieldCheck size={16} color="#7e22ce" />
+                    <span>Admin: Chế độ chỉ xem giám sát • Đang chờ CĐT phê duyệt</span>
+                  </div>
+                ) : currentRole === 'INVESTOR' ? (
                   <>
                     <button 
                       className="btn-danger" 
@@ -2556,7 +2573,7 @@ export default function InspectionReportModal({
                   <>
 
                     {/* ĐVTC bổ sung thêm ảnh sửa nếu cần */}
-                    {(currentRole === 'CONTRACTOR' || currentRole === 'ADMIN') && (
+                    {currentRole === 'CONTRACTOR' && (
                       <button 
                         className="btn-primary" 
                         style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)', padding: '8px 14px', fontSize: '0.84rem', whiteSpace: 'nowrap' }}
@@ -2673,7 +2690,7 @@ export default function InspectionReportModal({
                 </div>
 
                 {/* ĐVTC BÁO CÁO ĐÃ SỬA & GỬI LẠI */}
-                {(currentRole === 'CONTRACTOR' || currentRole === 'ADMIN') && (
+                {currentRole === 'CONTRACTOR' && (
                   <button 
                     className="btn-primary" 
                     style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)', padding: '8px 16px', fontSize: '0.86rem' }}
@@ -2688,7 +2705,7 @@ export default function InspectionReportModal({
                   </button>
                 )}
 
-                {/* TVGS DUYỆT ĐẠT & CHUYỂN CĐT (Nếu người dùng là TVGS phụ trách hoặc Admin) */}
+                {/* TVGS DUYỆT ĐẠT & CHUYỂN CĐT (Nếu người dùng là TVGS phụ trách) */}
                 {isSupervisorReviewer && !isInvestorRole && (
                   <button 
                     className="btn-success" 
@@ -2700,7 +2717,7 @@ export default function InspectionReportModal({
                   </button>
                 )}
 
-                {/* CĐT DUYỆT ĐẠT & KÝ PHÊ DUYỆT (Nếu người dùng là CĐT phụ trách hoặc Admin) */}
+                {/* CĐT DUYỆT ĐẠT & KÝ PHÊ DUYỆT (Nếu người dùng là CĐT phụ trách) */}
                 {isInvestorReviewer && (
                   <button 
                     className="btn-success" 
@@ -2712,8 +2729,8 @@ export default function InspectionReportModal({
                   </button>
                 )}
 
-                {/* TVGS / CĐT chụp thêm ảnh lỗi */}
-                {((isSupervisorRole && isSupervisorReviewer) || (isInvestorRole && isInvestorReviewer) || currentRole === 'ADMIN') && (
+                {/* TVGS / CĐT chụp thêm ảnh lỗi (Admin không chụp lỗi/từ chối) */}
+                {!isAdmin && ((isSupervisorRole && isSupervisorReviewer) || (isInvestorRole && isInvestorReviewer)) && (
                   <button 
                     className="btn-danger" 
                     style={{ padding: '8px 14px', fontSize: '0.84rem' }}
@@ -2923,48 +2940,21 @@ export default function InspectionReportModal({
                 )}
 
                 {currentRole === 'ADMIN' && (
-                  <button className="btn-primary" style={{ background: '#7e22ce' }} onClick={() => {
-                    const now = new Date().toISOString();
-                    const nowFormatted = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('vi-VN');
-                    const updated = {
-                      ...reportState,
-                      conclusion: {
-                        ...reportState.conclusion,
-                        isAccepted: true
-                      },
-                      attendees: {
-                        ...reportState.attendees,
-                        supervisor: {
-                          ...reportState.attendees?.supervisor,
-                          signed: true,
-                          signedAt: nowFormatted
-                        },
-                        investor: {
-                          ...reportState.attendees?.investor,
-                          signed: true,
-                          signedAt: nowFormatted
-                        },
-                        contractor: {
-                          ...reportState.attendees?.contractor,
-                          signed: true
-                        }
-                      },
-                      status: 'COMPLETED',
-                      updatedAt: now
-                    };
-                    setSignatures({ investor: true, supervisor: true, contractor: true });
-                    setReportState(updated);
-                    triggerSafeConfetti();
-                    const targetReportId = reportState.id || report?.id;
-                    if (onReinspectReport) {
-                      onReinspectReport(targetReportId, updated);
-                    } else if (onSaveReport) {
-                      onSaveReport(updated);
-                    }
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    color: '#6b21a8',
+                    background: '#faf5ff',
+                    border: '1.5px solid #d8b4fe',
+                    padding: '7px 14px',
+                    borderRadius: '8px',
+                    fontSize: '0.84rem',
+                    fontWeight: 600
                   }}>
-                    <ShieldCheck size={16} />
-                    <span>Admin: Xác Thực Toàn Bộ Chữ Ký</span>
-                  </button>
+                    <ShieldCheck size={16} color="#7e22ce" />
+                    <span>Admin: Chế độ chỉ xem giám sát hồ sơ (View-Only)</span>
+                  </div>
                 )}
               </>
             )}

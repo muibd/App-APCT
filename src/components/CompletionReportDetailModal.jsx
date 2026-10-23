@@ -23,8 +23,9 @@ export default function CompletionReportDetailModal({
     report.signatures?.contractor?.signed
   );
 
-  const isSupervisorUser = currentRole === 'SUPERVISOR' || currentRole === 'LEAD_SUPERVISOR' || currentRole === 'ADMIN';
-  const isInvestorUser = currentRole === 'INVESTOR' || currentRole === 'LEAD_INVESTOR' || currentRole === 'ADMIN';
+  const isAdmin = currentRole === 'ADMIN';
+  const isSupervisorUser = !isAdmin && (currentRole === 'SUPERVISOR' || currentRole === 'LEAD_SUPERVISOR');
+  const isInvestorUser = !isAdmin && (currentRole === 'INVESTOR' || currentRole === 'LEAD_INVESTOR');
 
   const canSupervisorSign = isSupervisorUser && !report.signatures?.supervisor?.signed;
   const canInvestorSign = isInvestorUser && !report.signatures?.investor?.signed;
@@ -72,6 +73,22 @@ export default function CompletionReportDetailModal({
                 }}>
                   {isCompleted ? '✓ ĐÃ KÝ DUYỆT HOÀN TẤT' : '⏳ CHỜ KÝ DUYỆT ĐẦY ĐỦ'}
                 </span>
+                {isAdmin && (
+                  <span style={{
+                    padding: '3px 8px',
+                    borderRadius: '12px',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    background: '#faf5ff',
+                    color: '#7e22ce',
+                    border: '1px solid #e9d5ff',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}>
+                    <ShieldCheck size={12} /> Admin (Chỉ xem)
+                  </span>
+                )}
               </div>
               <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>
                 Số: <strong>{report.reportNumber}</strong> • Ngày lập: {report.date}
@@ -96,8 +113,31 @@ export default function CompletionReportDetailModal({
         {/* MODAL BODY (PRINTABLE A4 DOCUMENT) */}
         <div className="modal-body" style={{ flex: 1, overflowY: 'auto', padding: '24px 30px', background: '#f1f5f9' }}>
           
-          {/* ACTION BANNER NẾU CẦN KÝ */}
-          {!isCompleted && (canSupervisorSign || canInvestorSign) && (
+          {/* BANNER DÀNH CHO ADMIN VIEW-ONLY */}
+          {isAdmin && (
+            <div className="no-print" style={{
+              background: '#faf5ff',
+              border: '1.5px solid #d8b4fe',
+              borderRadius: '12px',
+              padding: '12px 18px',
+              marginBottom: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              color: '#6b21a8'
+            }}>
+              <ShieldCheck size={22} color="#7e22ce" style={{ flexShrink: 0 }} />
+              <div>
+                <strong style={{ fontSize: '0.92rem' }}>Chế Độ Giám Sát Hồ Sơ (Admin View-Only)</strong>
+                <div style={{ fontSize: '0.82rem', color: '#9333ea', marginTop: '2px' }}>
+                  Quản trị viên chỉ có quyền xem văn bản và giám sát tiến độ ký duyệt. Quyền ký duyệt thuộc về TVGS Trưởng và CĐT Trưởng.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ACTION BANNER NẾU CẦN KÝ (CHỈ DÀNH CHO TVGS/CĐT, ADMIN KHÔNG KÝ) */}
+          {!isCompleted && !isAdmin && (canSupervisorSign || canInvestorSign) && (
             <div className="no-print" style={{
               background: '#eff6ff',
               border: '1.5px solid #60a5fa',

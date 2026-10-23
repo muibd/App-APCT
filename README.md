@@ -41,6 +41,7 @@ Hệ thống **APCT Quality Management** là nền tảng số hóa toàn diện
 - **Cán bộ thường (TVGS / CĐT viên):** Chỉ nhận thông báo và chỉ xem được các Phiếu yêu cầu / Biên bản mà mình được người tạo **chỉ định đích danh** tiếp nhận.
 - **Cấp Trưởng (TVGS Trưởng / CĐT Trưởng):** Tự động xem được toàn bộ phiếu của tất cả cấp dưới mình quản lý và nhận thông báo các đầu việc quan trọng.
 - **Nghiệm thu hoàn thành:** **Tự động gửi thẳng đến TVGS Trưởng và CĐT Trưởng**, không cần chọn người nhận thủ công.
+- **Quản trị viên (ADMIN) - Chế độ CHỈ XEM (View-Only):** **Admin KHÔNG được quyền xác nhận, ký duyệt, từ chối hay hủy bỏ bất cứ biên bản/nhật ký/hồ sơ nghiệm thu nào. Admin chỉ có quyền xem (View-only) để giám sát và quản trị hệ thống.** Toàn bộ tính pháp lý của biên bản thuộc về ĐVTC, TVGS và CĐT thực tế trên hiện trường.
 
 ---
 

@@ -306,7 +306,7 @@ export default function DailyLogsListView({
                   </div>
 
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    {onDeleteLog && (currentRole === 'ADMIN' || !isConfirmed) && (
+                    {onDeleteLog && (currentRole === 'CONTRACTOR' && !isConfirmed) && (
                       <button
                         type="button"
                         onClick={(e) => {

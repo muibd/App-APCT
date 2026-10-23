@@ -22,7 +22,7 @@ export default function DailyLogDetailModal({
   const isConfirmed = log.status === 'CONFIRMED';
   const isSupervisorRole = currentRole === 'SUPERVISOR' || currentRole === 'LEAD_SUPERVISOR';
   const isAdmin = currentRole === 'ADMIN';
-  const canConfirm = !isConfirmed && (isSupervisorRole || isAdmin);
+  const canConfirm = !isConfirmed && isSupervisorRole && !isAdmin;
 
   // State cho form xác nhận của TVGS (Mục 5, 6, 7)
   const [isConfirming, setIsConfirming] = useState(false);
@@ -172,6 +172,22 @@ export default function DailyLogDetailModal({
                 gap: '4px'
               }}>
                 <Clock size={12} /> Chờ TVGS Xác Nhận
+              </span>
+            )}
+
+            {isAdmin && (
+              <span style={{
+                background: '#7e22ce',
+                color: '#ffffff',
+                fontSize: '0.74rem',
+                fontWeight: 700,
+                padding: '2px 8px',
+                borderRadius: '6px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}>
+                <ShieldCheck size={12} /> Admin (Chỉ xem)
               </span>
             )}
           </div>

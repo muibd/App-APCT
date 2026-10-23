@@ -341,9 +341,9 @@ export default function InvitationDetailModal({
 
                     {(() => {
                       const isSup = rec.role === 'SUPERVISOR' || rec.role === 'LEAD_SUPERVISOR';
-                      const isLeadSup = currentRole === 'LEAD_SUPERVISOR' || Boolean(currentUser?.isLead && currentRole === 'SUPERVISOR') || currentRole === 'ADMIN';
-                      const isLeadInv = currentRole === 'LEAD_INVESTOR' || Boolean(currentUser?.isLead && currentRole === 'INVESTOR') || currentRole === 'ADMIN';
-                      const canReassign = request.status !== 'COMPLETED' && ((isSup && isLeadSup) || (!isSup && isLeadInv));
+                      const isLeadSup = currentRole === 'LEAD_SUPERVISOR' || Boolean(currentUser?.isLead && currentRole === 'SUPERVISOR');
+                      const isLeadInv = currentRole === 'LEAD_INVESTOR' || Boolean(currentUser?.isLead && currentRole === 'INVESTOR');
+                      const canReassign = request.status !== 'COMPLETED' && currentRole !== 'ADMIN' && ((isSup && isLeadSup) || (!isSup && isLeadInv));
 
                       if (!canReassign) return null;
 
@@ -416,7 +416,7 @@ export default function InvitationDetailModal({
             }}
           >
             <Award size={16} />
-            <span>Mở Biên Bản Nghiệm Thu Để Đánh Giá</span>
+            <span>{currentRole === 'ADMIN' ? 'Mở Xem Biên Bản Nghiệm Thu (Chỉ Xem)' : 'Mở Biên Bản Nghiệm Thu Để Đánh Giá'}</span>
           </button>
         </div>
       </div>

@@ -15,6 +15,7 @@ export default function ReportsListView({
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'COMPLETED' | 'REJECTED' | 'RECTIFIED' | 'PENDING'
+  const isAdmin = currentRole === 'ADMIN';
 
   // Helper tính trạng thái từng biên bản
   const getReportStatus = (report) => {
@@ -627,20 +628,15 @@ export default function ReportsListView({
                   background: '#f8fafc', 
                   borderTop: '1px solid #f1f5f9',
                   display: 'flex',
+                  justifyContent: 'flex-end',
                   alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '10px',
-                  flexWrap: 'wrap'
+                  gap: '10px'
                 }}>
-                  <div style={{ fontSize: '0.74rem', color: '#94a3b8' }}>
-                    Mẫu NĐ 06/2021/NĐ-CP
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     {/* 1. NẾU ĐÃ SỬA CHỮA XONG (RECTIFIED) */}
                     {isRectified ? (
                       <>
-                        {(currentRole === 'SUPERVISOR' || currentRole === 'LEAD_SUPERVISOR' || currentRole === 'INVESTOR' || currentRole === 'LEAD_INVESTOR' || currentRole === 'ADMIN') ? (
+                        {(!isAdmin && (currentRole === 'SUPERVISOR' || currentRole === 'LEAD_SUPERVISOR' || currentRole === 'INVESTOR' || currentRole === 'LEAD_INVESTOR')) ? (
                           <button 
                             className="btn-success"
                             style={{ padding: '8px 14px', fontSize: '0.84rem' }}
@@ -651,7 +647,7 @@ export default function ReportsListView({
                           </button>
                         ) : (
                           <button 
-                            className="btn-primary"
+                            className="btn-primary" 
                             style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)', padding: '8px 14px', fontSize: '0.84rem' }}
                             onClick={() => onOpenReport(report)}
                           >
@@ -664,9 +660,9 @@ export default function ReportsListView({
                       /* 2. NẾU ĐANG CHƯA ĐẠT (CẦN SỬA) */
                       <>
                         {/* NÚT CHO ĐVTC: GỬI ẢNH SỬA & MỜI NGHIỆM THU LẠI */}
-                        {(currentRole === 'CONTRACTOR' || currentRole === 'ADMIN') && (
+                        {currentRole === 'CONTRACTOR' && (
                           <button 
-                            className="btn-primary"
+                            className="btn-primary" 
                             style={{ 
                               background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
                               padding: '8px 14px',
@@ -680,7 +676,7 @@ export default function ReportsListView({
                         )}
 
                         <button 
-                          className="btn-secondary"
+                          className="btn-secondary" 
                           style={{ padding: '8px 12px', fontSize: '0.84rem', borderColor: '#fca5a5', color: '#b91c1c' }}
                           onClick={() => onOpenReport(report)}
                         >
@@ -693,7 +689,7 @@ export default function ReportsListView({
                       <>
                         {isCompleted && (
                           <button 
-                            className="btn-secondary"
+                            className="btn-secondary" 
                             style={{ padding: '8px 12px', fontSize: '0.84rem' }}
                             onClick={() => onOpenReport(report)}
                             title="In / Xuất PDF Biên Bản A4"
@@ -708,7 +704,7 @@ export default function ReportsListView({
                           onClick={() => onOpenReport(report)}
                         >
                           <FileText size={15} />
-                          <span>{isCompleted ? 'Xem Biên Bản A4' : 'Xem & Ký Biên Bản A4'}</span>
+                          <span>{(isCompleted || isAdmin) ? 'Xem Biên Bản A4' : 'Xem & Ký Biên Bản A4'}</span>
                           <ChevronRight size={15} />
                         </button>
                       </>
