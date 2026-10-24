@@ -25,7 +25,7 @@ export default function MobileProfileSheet({
     switch (role) {
       case 'ADMIN':
         return {
-          name: 'Quản Trị Viên (Admin)',
+          name: 'Chủ Đầu Tư - CĐT (Admin)',
           icon: ShieldCheck,
           bg: '#f3e8ff',
           color: '#7e22ce',
@@ -57,19 +57,19 @@ export default function MobileProfileSheet({
         };
       case 'INVESTOR':
         return {
-          name: 'Chủ Đầu Tư (Ban QLDA)',
+          name: 'Ban Quản Lý Dự Án (Ban QLDA)',
           icon: Briefcase,
           bg: '#fffbeb',
           color: '#b45309',
-          desc: 'Giám sát chủ quản, ký xác nhận & phê duyệt hoàn tất'
+          desc: 'Giám sát chủ quản, ký xác nhận & kiểm tra nghiệm thu'
         };
       case 'LEAD_INVESTOR':
         return {
-          name: 'Đại Diện Chủ Đầu Tư Trưởng',
+          name: 'Trưởng Ban Quản Lý Dự Án',
           icon: Award,
           bg: '#fef3c7',
           color: '#b45309',
-          desc: 'Xem tất cả phiếu thuộc CĐT, phê duyệt/hủy phiếu mình phụ trách'
+          desc: 'Xem tất cả phiếu thuộc Ban QLDA, phê duyệt/hủy phiếu mình phụ trách'
         };
       default:
         return {

@@ -98,11 +98,41 @@ html, body {
   min-height: 100vh;
 }
 
-/* Headings font */
+/* Headings font for Web UI */
 h1, h2, h3, h4, h5, h6, .brand-title {
   font-family: 'Outfit', 'Inter', sans-serif;
   font-weight: 700;
   letter-spacing: -0.02em;
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+}
+
+/* --------------------------------------------------------------------------
+   QUY CHUẨN: 100% CÁC PHIẾU YÊU CẦU & BIÊN BẢN NGHIỆM THU / HOÀN THÀNH / NHẬT KÝ
+   BẮT BUỘC SỬ DỤNG FONT TIMES NEW ROMAN (NGHỊ ĐỊNH 30/2020/NĐ-CP & 06/2021/NĐ-CP)
+   -------------------------------------------------------------------------- */
+.document-paper,
+.document-paper *,
+.invitation-paper,
+.invitation-paper *,
+.report-print-sheet,
+.report-print-sheet *,
+.a4-document-print,
+.a4-document-print *,
+.daily-log-paper,
+.daily-log-paper * {
+  font-family: 'Times New Roman', Tinos, Times, 'Liberation Serif', serif !important;
+}
+
+/* Chữ ký tay điện tử cursive được giữ nét ký tự nhiên */
+.document-paper [style*="cursive"],
+.invitation-paper [style*="cursive"],
+.report-print-sheet [style*="cursive"],
+.a4-document-print [style*="cursive"],
+.daily-log-paper [style*="cursive"] {
+  font-family: cursive !important;
 }
 
 /* Scrollbar styling */
@@ -916,7 +946,7 @@ h1, h2, h3, h4, h5, h6, .brand-title {
 .badge-rejected { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
 
 .card-req-number {
-  font-family: 'Outfit', monospace;
+  font-family: 'Times New Roman', Times, serif;
   font-size: 0.8rem;
   font-weight: 800;
   color: var(--primary-700);
@@ -2044,12 +2074,19 @@ html.modal-open {
     overflow: visible !important;
   }
 
-  /* 6. Trình bày trang văn bản Biên bản A4 (.document-paper) */
-  .document-paper {
+  /* 6. Trình bày trang văn bản Biên bản A4 & Nhật ký thi công (.document-paper, .invitation-paper, .a4-document-print, .report-print-sheet, .daily-log-paper) */
+  .document-paper,
+  .invitation-paper,
+  .a4-document-print,
+  .report-print-sheet,
+  .daily-log-paper {
     position: static !important;
     display: block !important;
     width: 100% !important;
     max-width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
     margin: 0 !important;
     padding: 0 !important;
     border: none !important;
@@ -2057,9 +2094,18 @@ html.modal-open {
     box-shadow: none !important;
     background: #ffffff !important;
     color: #000000 !important;
-    font-family: 'Times New Roman', Times, 'Liberation Serif', serif !important;
+    font-family: 'Times New Roman', Tinos, Times, 'Liberation Serif', serif !important;
     font-size: 12.5pt !important;
     line-height: 1.45 !important;
+  }
+
+  .document-paper *,
+  .invitation-paper *,
+  .a4-document-print *,
+  .report-print-sheet *,
+  .daily-log-paper * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   .document-paper strong,

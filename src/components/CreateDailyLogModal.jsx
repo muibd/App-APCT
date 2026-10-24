@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   X, NotebookPen, Sun, CloudRain, Users, Wrench, ShieldCheck, 
   Calendar, Camera, Trash2, Plus, Clock, Check, Sparkles, Eye
@@ -6,11 +6,56 @@ import {
 import { MOCK_PROJECT, MOCK_USERS } from '../data/mockData';
 import { compressImageFile } from '../utils/storageHelper';
 
+const STORAGE_CUSTOM_BUILDING_ITEMS_KEY = 'apct_building_custom_items_v2';
+
+const DEFAULT_BUILDING_ITEMS_MAP = {
+  'Chung cư nhà ở xã hội 2': [
+    'Thi công phần kết cấu – Tòa A và Tòa B (Gói thầu số 02)',
+    'Thi công phần móng và hầm (Gói thầu số 01)',
+    'Thi công phần hoàn thiện Tòa A và Tòa B',
+    'Thi công hệ thống Mep Tòa A và Tòa B',
+    'Cung cấp, lắp đặt cửa gỗ',
+    'Cung cấp, lắp đặt cửa thép chống cháy',
+    'Cung cấp, lắp đặt cửa nhôm kính',
+    'Thi công hệ thống PCCC trong và ngoài nhà'
+  ],
+  'Chung cư nhà ở cao tầng': [
+    'Thi công phần kết cấu – Khối cao tầng',
+    'Thi công phần móng và cọc khoan nhồi',
+    'Thi công hệ thống Mep',
+    'Thi công hệ thống PCCC trong và ngoài nhà',
+    'Thi công hoàn thiện kiến trúc'
+  ]
+};
+
+function loadCustomBuildingItems() {
+  try {
+    const raw = localStorage.getItem(STORAGE_CUSTOM_BUILDING_ITEMS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') return parsed;
+    }
+  } catch (e) {
+    console.warn('Lỗi đọc custom building items:', e);
+  }
+  return {};
+}
+
+function saveCustomBuildingItems(map) {
+  try {
+    localStorage.setItem(STORAGE_CUSTOM_BUILDING_ITEMS_KEY, JSON.stringify(map));
+  } catch (e) {
+    console.warn('Lỗi lưu custom building items:', e);
+  }
+}
+
 export default function CreateDailyLogModal({
   isOpen,
   onClose,
   users = [],
   currentUser,
+  projects = [],
+  onSaveProjects,
   onSubmitDailyLog,
   showAlert
 }) {
@@ -59,9 +104,166 @@ export default function CreateDailyLogModal({
     currentUser?.company
   ].filter(Boolean)));
 
-  // Thông tin công trình & hạng mục (Tự động fill)
-  const [selectedBuilding, setSelectedBuilding] = useState(() => MOCK_PROJECT.buildings[0]?.name || 'Chung cư nhà ở xã hội 2');
-  const [selectedItem, setSelectedItem] = useState(() => MOCK_PROJECT.buildings[0]?.items?.[0]?.name || 'Thi công phần kết cấu – Tòa A và Tòa B (Gói thầu số 02)');
+  // Danh sách Công trình / Khối nhà
+  const buildingOptions = useMemo(() => {
+    if (projects && projects.length > 0) {
+      return projects.map(p => ({
+        id: p.id || p.code,
+        name: p.name,
+        code: p.code,
+        projectName: p.projectName || MOCK_PROJECT.projectName,
+        location: p.location || 'Phường Thường Thạnh, Q. Cái Răng, TP. Cần Thơ',
+        investor: p.investor || 'Công ty TNHH An Phú Cần Thơ',
+        supervisor: p.supervisor || 'Công ty CP TVXD & TM Gelicon'
+      }));
+    }
+    return MOCK_PROJECT.buildings.map(b => ({
+      id: b.id || b.name,
+      name: b.name,
+      code: b.code,
+      projectName: MOCK_PROJECT.projectName,
+      location: 'Phường Thường Thạnh, Q. Cái Răng, TP. Cần Thơ',
+      investor: 'Công ty TNHH An Phú Cần Thơ',
+      supervisor: 'Công ty CP TVXD & TM Gelicon'
+    }));
+  }, [projects]);
+
+  // Thông tin công trình được chọn
+  const [selectedBuilding, setSelectedBuilding] = useState(() => {
+    if (projects && projects.length > 0 && projects[0]?.name) {
+      return projects[0].name;
+    }
+    return MOCK_PROJECT.buildings[0]?.name || 'Chung cư nhà ở xã hội 2';
+  });
+
+  const selectedBuildingObj = useMemo(() => {
+    return buildingOptions.find(b => b.name === selectedBuilding) || buildingOptions[0];
+  }, [buildingOptions, selectedBuilding]);
+
+  // Custom items map lưu theo công trình (tự động load từ localStorage)
+  const [customItemsMap, setCustomItemsMap] = useState(loadCustomBuildingItems);
+  const [isAddingItem, setIsAddingItem] = useState(false);
+  const [newItemName, setNewItemName] = useState('');
+
+  // Danh sách hạng mục gắn đi kèm với công trình hiện tại
+  const currentBuildingItems = useMemo(() => {
+    const project = (projects || []).find(p => p.name === selectedBuilding);
+    const projectPackages = project?.contractors?.flatMap(c => (c.packages || []).map(pkg => pkg.name)) || [];
+    
+    const mockBld = MOCK_PROJECT.buildings.find(b => b.name === selectedBuilding);
+    const mockItems = mockBld?.items?.map(it => it.name) || [];
+
+    const defaultItems = DEFAULT_BUILDING_ITEMS_MAP[selectedBuilding] || [];
+    const customItems = customItemsMap[selectedBuilding] || [];
+
+    const combined = Array.from(new Set([
+      ...customItems,
+      ...defaultItems,
+      ...projectPackages,
+      ...mockItems
+    ])).filter(Boolean);
+
+    return combined.length > 0 ? combined : [
+      'Thi công phần kết cấu',
+      'Thi công phần hoàn thiện',
+      'Thi công hệ thống M&E'
+    ];
+  }, [selectedBuilding, projects, customItemsMap]);
+
+  // Hạng mục được chọn
+  const [selectedItem, setSelectedItem] = useState(() => {
+    const defaultItems = DEFAULT_BUILDING_ITEMS_MAP['Chung cư nhà ở xã hội 2'] || [];
+    return defaultItems[0] || 'Thi công phần kết cấu – Tòa A và Tòa B (Gói thầu số 02)';
+  });
+
+  // Khi đổi công trình -> Cập nhật hạng mục tương ứng của công trình đó
+  const handleBuildingChange = (newBuilding) => {
+    setSelectedBuilding(newBuilding);
+    const customItems = customItemsMap[newBuilding] || [];
+    const defaultItems = DEFAULT_BUILDING_ITEMS_MAP[newBuilding] || [];
+    const project = (projects || []).find(p => p.name === newBuilding);
+    const projectPackages = project?.contractors?.flatMap(c => (c.packages || []).map(pkg => pkg.name)) || [];
+    const mockBld = MOCK_PROJECT.buildings.find(b => b.name === newBuilding);
+    const mockItems = mockBld?.items?.map(it => it.name) || [];
+    const list = Array.from(new Set([...customItems, ...defaultItems, ...projectPackages, ...mockItems])).filter(Boolean);
+    if (list.length > 0) {
+      setSelectedItem(list[0]);
+    }
+    setIsAddingItem(false);
+  };
+
+  // Thêm mới hạng mục và gắn đi kèm với công trình vĩnh viễn
+  const handleAddNewItem = () => {
+    const trimmed = newItemName.trim();
+    if (!trimmed) {
+      if (showAlert) {
+        showAlert({
+          type: 'warning',
+          title: 'Thiếu Tên Hạng Mục',
+          message: 'Vui lòng nhập tên hạng mục, gói thầu mới!'
+        });
+      } else {
+        alert('Vui lòng nhập tên hạng mục, gói thầu mới!');
+      }
+      return;
+    }
+
+    // 1. Lưu vào customItemsMap gắn theo công trình được chọn
+    setCustomItemsMap(prev => {
+      const existing = prev[selectedBuilding] || [];
+      if (existing.includes(trimmed)) return prev;
+      const updated = {
+        ...prev,
+        [selectedBuilding]: [trimmed, ...existing]
+      };
+      saveCustomBuildingItems(updated);
+      return updated;
+    });
+
+    // 2. Cập nhật projects catalog nếu có
+    if (onSaveProjects && projects && projects.length > 0) {
+      const updatedProjects = projects.map(p => {
+        if (p.name === selectedBuilding) {
+          const firstContractor = p.contractors?.[0];
+          if (firstContractor) {
+            const hasPkg = firstContractor.packages?.some(pkg => pkg.name === trimmed);
+            if (!hasPkg) {
+              const newPkg = {
+                id: `pkg_custom_${Date.now()}`,
+                name: trimmed,
+                tasks: ['Nghiệm thu công việc', 'Kiểm tra chất lượng']
+              };
+              const updatedContractors = p.contractors.map((c, idx) => {
+                if (idx === 0) {
+                  return {
+                    ...c,
+                    packages: [newPkg, ...(c.packages || [])]
+                  };
+                }
+                return c;
+              });
+              return { ...p, contractors: updatedContractors };
+            }
+          }
+        }
+        return p;
+      });
+      onSaveProjects(updatedProjects);
+    }
+
+    // 3. Tự động chọn hạng mục mới vừa thêm
+    setSelectedItem(trimmed);
+    setNewItemName('');
+    setIsAddingItem(false);
+
+    if (showAlert) {
+      showAlert({
+        type: 'success',
+        title: 'Đã Thêm Hạng Mục',
+        message: `Đã thêm hạng mục mới và gắn liền với công trình "${selectedBuilding}"!`
+      });
+    }
+  };
 
   // 1. THỜI TIẾT (3 khung giờ: Sáng 7h-11h, Chiều 13h-15h, Tối 18h-24h + chọn Nắng / Mưa)
   const [morningWeather, setMorningWeather] = useState('NẮNG');
@@ -196,13 +398,13 @@ export default function CreateDailyLogModal({
       date: logDate,
       cityDateFormatted,
 
-      // Thông tin chung (tự fill)
-      projectName: MOCK_PROJECT.projectName,
+      // Thông tin chung (tự fill theo công trình được chọn)
+      projectName: selectedBuildingObj?.projectName || MOCK_PROJECT.projectName,
       buildingName: selectedBuilding,
       itemName: selectedItem,
-      location: 'Phường Thường Thạnh - Quận Cái Răng – TP. Cần Thơ.',
-      investorName: 'Công ty TNHH An Phú Cần Thơ',
-      supervisorName: 'Công ty CP Tư vấn xây dựng và Thương mại Gelicon',
+      location: selectedBuildingObj?.location || 'Phường Thường Thạnh - Quận Cái Răng – TP. Cần Thơ.',
+      investorName: selectedBuildingObj?.investor || 'Công ty TNHH An Phú Cần Thơ',
+      supervisorName: selectedBuildingObj?.supervisor || 'Công ty CP Tư vấn xây dựng và Thương mại Gelicon',
       contractorName: contractorCompany.trim() || currentUser?.company || 'Công ty CP Xây dựng An Phú Gia',
       supervisorUid: selectedSupervisorUser?.uid,
       supervisorFullName: selectedSupervisorUser?.fullName,
@@ -399,35 +601,119 @@ export default function CreateDailyLogModal({
                 <select 
                   className="form-select" 
                   value={selectedBuilding} 
-                  onChange={(e) => setSelectedBuilding(e.target.value)}
-                  style={{ fontWeight: 600 }}
+                  onChange={(e) => handleBuildingChange(e.target.value)}
+                  style={{ fontWeight: 600, color: '#0f172a' }}
                 >
-                  {MOCK_PROJECT.buildings.map(b => (
+                  {buildingOptions.map(b => (
                     <option key={b.id || b.name} value={b.name}>{b.name}</option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="form-label" style={{ fontSize: '0.78rem' }}>Hạng mục, gói thầu:</label>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <label className="form-label" style={{ fontSize: '0.78rem', margin: 0 }}>
+                    Hạng mục, gói thầu:
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddingItem(!isAddingItem);
+                      setNewItemName('');
+                    }}
+                    style={{
+                      background: isAddingItem ? '#fee2e2' : '#eff6ff',
+                      color: isAddingItem ? '#b91c1c' : '#2563eb',
+                      border: isAddingItem ? '1px solid #fca5a5' : '1px solid #bfdbfe',
+                      borderRadius: '6px',
+                      padding: '2px 8px',
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                    title="Thêm mới hạng mục và gắn đi kèm với công trình này"
+                  >
+                    {isAddingItem ? <X size={12} /> : <Plus size={12} />}
+                    <span>{isAddingItem ? 'Hủy' : '+ Thêm mới'}</span>
+                  </button>
+                </div>
+
+                {isAddingItem && (
+                  <div style={{
+                    marginBottom: '8px',
+                    padding: '8px 10px',
+                    background: '#f0fdf4',
+                    border: '1.5px solid #86efac',
+                    borderRadius: '8px'
+                  }}>
+                    <div style={{ fontSize: '0.74rem', color: '#166534', fontWeight: 600, marginBottom: '4px' }}>
+                      Thêm hạng mục mới vào &quot;{selectedBuilding}&quot;:
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="Nhập tên hạng mục, gói thầu mới..."
+                        value={newItemName}
+                        onChange={(e) => setNewItemName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddNewItem();
+                          }
+                        }}
+                        style={{ flex: 1, fontSize: '0.82rem', padding: '5px 8px' }}
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        onClick={handleAddNewItem}
+                        style={{
+                          background: '#16a34a',
+                          borderColor: '#16a34a',
+                          padding: '5px 12px',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        ✓ Lưu & Gắn
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <select 
                   className="form-select" 
                   value={selectedItem} 
-                  onChange={(e) => setSelectedItem(e.target.value)}
+                  onChange={(e) => {
+                    if (e.target.value === '__ADD_NEW__') {
+                      setIsAddingItem(true);
+                    } else {
+                      setSelectedItem(e.target.value);
+                    }
+                  }}
+                  style={{ fontWeight: 500 }}
                 >
-                  <option value="Thi công phần kết cấu – Tòa A và Tòa B (Gói thầu số 02)">Thi công phần kết cấu – Tòa A và Tòa B (Gói thầu số 02)</option>
-                  <option value="Thi công phần móng và hầm (Gói thầu số 01)">Thi công phần móng và hầm (Gói thầu số 01)</option>
-                  <option value="Thi công phần hoàn thiện Tòa A & Tòa B">Thi công phần hoàn thiện Tòa A & Tòa B</option>
-                  <option value="Thi công hệ thống cơ điện M&E">Thi công hệ thống cơ điện M&E</option>
+                  {currentBuildingItems.map((item, idx) => (
+                    <option key={idx} value={item}>{item}</option>
+                  ))}
+                  <option value="__ADD_NEW__" style={{ color: '#2563eb', fontWeight: 600 }}>
+                    + Thêm hạng mục, gói thầu mới cho công trình này...
+                  </option>
                 </select>
               </div>
             </div>
 
             <div style={{ fontSize: '0.8rem', color: '#475569', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '6px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
-              <div>🏢 <strong>Dự án:</strong> {MOCK_PROJECT.projectName}</div>
-              <div>📍 <strong>Địa điểm:</strong> Phường Thường Thạnh, Q. Cái Răng, TP. Cần Thơ</div>
+              <div>🏢 <strong>Dự án:</strong> {selectedBuildingObj?.projectName || MOCK_PROJECT.projectName}</div>
+              <div>📍 <strong>Địa điểm:</strong> {selectedBuildingObj?.location || 'Phường Thường Thạnh, Q. Cái Răng, TP. Cần Thơ'}</div>
               <div>🏗️ <strong>ĐVTC:</strong> <span style={{ color: '#1d4ed8', fontWeight: 600 }}>{contractorCompany || 'Công ty CP Xây dựng An Phú Gia'}</span></div>
-              <div>👁️ <strong>TVGS:</strong> Công ty CP TVXD & TM Gelicon</div>
+              <div>👁️ <strong>TVGS:</strong> {selectedBuildingObj?.supervisor || 'Công ty CP TVXD & TM Gelicon'}</div>
             </div>
           </div>
 

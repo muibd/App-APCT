@@ -5,11 +5,7 @@
 
 import * as XLSX from 'xlsx';
 
-export const GENERAL_MANDATORY_STANDARDS = [
-  "TCVN 5637:1991 Quản lý chất lượng xây lắp công trình xây dựng - Nguyên tắc cơ bản",
-  "TCVN 4055:2024 Tổ chức thi công",
-  "TCVN 5308:1991 Quy phạm kỹ thuật an toàn trong xây dựng"
-];
+export const GENERAL_MANDATORY_STANDARDS = [];
 
 // 1. DANH MỤC TIÊU CHUẨN CÔNG VIỆC XÂY DỰNG (Sheet A)
 export const CONSTRUCTION_WORK_STANDARDS = [
@@ -452,7 +448,7 @@ export const MATERIAL_STANDARDS = [
 export const INITIAL_STANDARDS_DATA = {
   works: CONSTRUCTION_WORK_STANDARDS,
   materials: MATERIAL_STANDARDS,
-  mandatory: GENERAL_MANDATORY_STANDARDS
+  mandatory: []
 };
 
 export const STANDARDS_STORAGE_KEY = 'apct_custom_standards';
@@ -466,7 +462,7 @@ export function loadStoredStandards() {
         return {
           works: parsed.works,
           materials: parsed.materials,
-          mandatory: Array.isArray(parsed.mandatory) ? parsed.mandatory : GENERAL_MANDATORY_STANDARDS
+          mandatory: []
         };
       }
     }
@@ -481,8 +477,7 @@ export function loadStoredStandards() {
  * Tự động đọc từ danh mục Admin quản lý (nếu có) hoặc danh mục mặc định
  */
 export function getSuggestedStandards(taskOrMaterialName, inspectionType = 'WORK', customWorks = null, customMaterials = null, customMandatory = null) {
-  const mandatory = customMandatory || GENERAL_MANDATORY_STANDARDS;
-  if (!taskOrMaterialName) return [...mandatory];
+  if (!taskOrMaterialName) return [];
 
   let works = customWorks;
   let materials = customMaterials;
@@ -506,7 +501,7 @@ export function getSuggestedStandards(taskOrMaterialName, inspectionType = 'WORK
     });
   }
 
-  const standards = [...mandatory];
+  const standards = [];
   if (matched && Array.isArray(matched.standards)) {
     matched.standards.forEach(std => {
       if (!standards.includes(std)) standards.push(std);

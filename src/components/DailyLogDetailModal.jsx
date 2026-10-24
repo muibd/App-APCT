@@ -45,7 +45,23 @@ export default function DailyLogDetailModal({
   }, [log?.id]);
 
   const handlePrint = () => {
-    window.print();
+    // 1. Tạm gỡ class modal-open để layout trang web mở khóa hoàn toàn cho print engine
+    document.body.classList.remove('modal-open');
+    document.documentElement.classList.remove('modal-open');
+
+    const executePrint = () => {
+      window.print();
+
+      // Sau khi đóng hộp thoại in thì phục hồi lại class modal-open nếu modal vẫn mở
+      setTimeout(() => {
+        if (document.querySelector('.modal-overlay')) {
+          document.body.classList.add('modal-open');
+          document.documentElement.classList.add('modal-open');
+        }
+      }, 400);
+    };
+
+    setTimeout(executePrint, 100);
   };
 
   const handleConfirmSubmit = (e) => {
@@ -236,14 +252,8 @@ export default function DailyLogDetailModal({
 
             <button
               type="button"
+              className="modal-close-btn"
               onClick={onClose}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#94a3b8',
-                cursor: 'pointer',
-                padding: '4px'
-              }}
             >
               <X size={20} />
             </button>
@@ -251,7 +261,7 @@ export default function DailyLogDetailModal({
         </div>
 
         {/* NỘI DUNG VĂN BẢN KHỔ A4 (THEO MẪU 1. NHAT KY THI CONG.DOC) */}
-        <div className="report-print-sheet" style={{
+        <div className="modal-body document-paper daily-log-paper report-print-sheet" style={{
           padding: '28px 36px',
           background: '#ffffff',
           overflowY: 'auto',
@@ -269,8 +279,7 @@ export default function DailyLogDetailModal({
               border: '2px solid #86efac',
               borderRadius: '12px',
               padding: '16px',
-              marginBottom: '20px',
-              fontFamily: 'Inter, system-ui, sans-serif'
+              marginBottom: '20px'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                 <PenTool size={18} color="#15803d" />
@@ -482,11 +491,11 @@ export default function DailyLogDetailModal({
 
             {/* ẢNH HIỆN TRƯỜNG ĐÍNH KÈM NẾU CÓ */}
             {log.evidencePhotos && log.evidencePhotos.length > 0 && (
-              <div style={{ marginBottom: '16px' }}>
+              <div style={{ marginBottom: '16px', pageBreakInside: 'avoid', breakInside: 'avoid' }}>
                 <strong>* Ảnh chụp hiện trường thi công ({log.evidencePhotos.length} ảnh):</strong>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px', marginTop: '6px' }}>
                   {log.evidencePhotos.map((photo, i) => (
-                    <div key={photo.id || i} style={{ border: '1px solid #cbd5e1', borderRadius: '4px', padding: '4px', textAlign: 'center' }}>
+                    <div key={photo.id || i} style={{ border: '1px solid #cbd5e1', borderRadius: '4px', padding: '4px', textAlign: 'center', pageBreakInside: 'avoid', breakInside: 'avoid' }}>
                       <img 
                         src={photo.url} 
                         alt={photo.caption} 
@@ -507,7 +516,9 @@ export default function DailyLogDetailModal({
               border: isConfirmed ? '1px solid #cbd5e1' : '1.5px dashed #f59e0b',
               padding: '12px 16px',
               borderRadius: '6px',
-              marginBottom: '18px'
+              marginBottom: '18px',
+              pageBreakInside: 'avoid',
+              breakInside: 'avoid'
             }}>
               {/* 5. TVGS */}
               <div style={{ marginBottom: '10px' }}>
@@ -536,98 +547,104 @@ export default function DailyLogDetailModal({
           </div>
 
           {/* CHỮ KÝ 3 BÊN */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
+          <div className="doc-signatures-grid" style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
             textAlign: 'center',
             marginTop: '24px',
-            pageBreakInside: 'avoid'
+            paddingTop: '10px',
+            pageBreakInside: 'avoid',
+            breakInside: 'avoid'
           }}>
             {/* ĐD. CHỦ ĐẦU TƯ / BAN QLDA */}
-            <div style={{ padding: '0 8px' }}>
-              <strong>ĐD. CHỦ ĐẦU TƯ / BAN QLDA</strong><br />
+            <div style={{ flex: 1, padding: '0 8px', textAlign: 'center' }}>
+              <strong style={{ fontSize: '0.92rem' }}>ĐD. CHỦ ĐẦU TƯ / BAN QLDA</strong><br />
               <span style={{ fontSize: '0.8rem', fontStyle: 'italic' }}>(Ký, ghi rõ họ tên)</span>
               
-              <div style={{ minHeight: '80px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', margin: '8px 0' }}>
-                <div className="screen-only">
-                  {log.signatures?.investor?.signed ? (
-                    <div style={{
-                      border: '1.5px solid #059669',
-                      borderRadius: '8px',
-                      padding: '6px 10px',
-                      background: '#f0fdf4',
-                      color: '#065f46',
-                      fontSize: '0.8rem',
-                      fontWeight: 700
-                    }}>
-                      ✓ ĐÃ XÁC NHẬN<br />
-                      <span style={{ fontSize: '0.72rem', fontWeight: 500 }}>Chữ ký số điện tử CĐT</span>
-                    </div>
-                  ) : (
-                    <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.8rem' }}>(Chờ xác nhận)</span>
-                  )}
-                </div>
+              <div style={{ minHeight: '75px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', margin: '8px 0' }}>
+                {log.signatures?.investor?.signed ? (
+                  <div style={{
+                    border: '1.5px solid #059669',
+                    borderRadius: '8px',
+                    padding: '6px 12px',
+                    background: '#f0fdf4',
+                    color: '#065f46',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    textAlign: 'center'
+                  }}>
+                    ✓ ĐÃ XÁC NHẬN<br />
+                    <span style={{ fontSize: '0.72rem', fontWeight: 500 }}>Chữ ký số điện tử CĐT</span>
+                  </div>
+                ) : (
+                  <span className="no-print" style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.8rem' }}>(Chờ xác nhận)</span>
+                )}
               </div>
 
-              <strong className="screen-only">{log.signatures?.investor?.name || log.representatives?.investor?.representative || 'Ngô Quý Linh'}</strong>
+              <strong style={{ fontSize: '0.92rem', color: '#000000', display: 'block', marginTop: '4px' }}>
+                {log.signatures?.investor?.name || log.representatives?.investor?.representative || 'Ngô Quý Linh'}
+              </strong>
             </div>
 
             {/* TƯ VẤN GIÁM SÁT */}
-            <div style={{ padding: '0 8px' }}>
-              <strong>TƯ VẤN GIÁM SÁT</strong><br />
+            <div style={{ flex: 1, padding: '0 8px', textAlign: 'center' }}>
+              <strong style={{ fontSize: '0.92rem' }}>TƯ VẤN GIÁM SÁT</strong><br />
               <span style={{ fontSize: '0.8rem', fontStyle: 'italic' }}>(Ký, ghi rõ họ tên)</span>
               
-              <div style={{ minHeight: '80px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', margin: '8px 0' }}>
-                <div className="screen-only">
-                  {log.signatures?.supervisor?.signed ? (
-                    <div style={{
-                      border: '1.5px solid #059669',
-                      borderRadius: '8px',
-                      padding: '6px 10px',
-                      background: '#f0fdf4',
-                      color: '#065f46',
-                      fontSize: '0.8rem',
-                      fontWeight: 700
-                    }}>
-                      ✓ ĐÃ KÝ DUYỆT<br />
-                      <span style={{ fontSize: '0.72rem', fontWeight: 500 }}>Chữ ký số điện tử TVGS</span>
-                    </div>
-                  ) : (
-                    <span style={{ color: '#d97706', fontStyle: 'italic', fontSize: '0.8rem' }}>(Chờ TVGS xác nhận)</span>
-                  )}
-                </div>
+              <div style={{ minHeight: '75px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', margin: '8px 0' }}>
+                {log.signatures?.supervisor?.signed ? (
+                  <div style={{
+                    border: '1.5px solid #059669',
+                    borderRadius: '8px',
+                    padding: '6px 12px',
+                    background: '#f0fdf4',
+                    color: '#065f46',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    textAlign: 'center'
+                  }}>
+                    ✓ ĐÃ KÝ DUYỆT<br />
+                    <span style={{ fontSize: '0.72rem', fontWeight: 500 }}>Chữ ký số điện tử TVGS</span>
+                  </div>
+                ) : (
+                  <span className="no-print" style={{ color: '#d97706', fontStyle: 'italic', fontSize: '0.8rem' }}>(Chờ TVGS xác nhận)</span>
+                )}
               </div>
 
-              <strong className="screen-only">{log.signatures?.supervisor?.name || log.assignedSupervisor?.name || log.representatives?.supervisor?.representative || 'Đinh Xuân Thám'}</strong>
+              <strong style={{ fontSize: '0.92rem', color: '#000000', display: 'block', marginTop: '4px' }}>
+                {log.signatures?.supervisor?.name || log.assignedSupervisor?.name || log.representatives?.supervisor?.representative || 'Đinh Xuân Thám'}
+              </strong>
             </div>
 
             {/* ĐƠN VỊ THI CÔNG */}
-            <div style={{ padding: '0 8px' }}>
-              <strong>ĐƠN VỊ THI CÔNG</strong><br />
+            <div style={{ flex: 1, padding: '0 8px', textAlign: 'center' }}>
+              <strong style={{ fontSize: '0.92rem' }}>ĐƠN VỊ THI CÔNG</strong><br />
               <span style={{ fontSize: '0.8rem', fontStyle: 'italic' }}>(Ký, ghi rõ họ tên)</span>
               
-              <div style={{ minHeight: '80px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', margin: '8px 0' }}>
-                <div className="screen-only">
-                  {log.signatures?.contractor?.signed !== false ? (
-                    <div style={{
-                      border: '1.5px solid #2563eb',
-                      borderRadius: '8px',
-                      padding: '6px 10px',
-                      background: '#eff6ff',
-                      color: '#1d4ed8',
-                      fontSize: '0.8rem',
-                      fontWeight: 700
-                    }}>
-                      ✓ ĐÃ LẬP & KÝ<br />
-                      <span style={{ fontSize: '0.72rem', fontWeight: 500 }}>Cán bộ KT thi công</span>
-                    </div>
-                  ) : (
-                    <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.8rem' }}>(Chưa ký)</span>
-                  )}
-                </div>
+              <div style={{ minHeight: '75px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', margin: '8px 0' }}>
+                {log.signatures?.contractor?.signed !== false ? (
+                  <div style={{
+                    border: '1.5px solid #2563eb',
+                    borderRadius: '8px',
+                    padding: '6px 12px',
+                    background: '#eff6ff',
+                    color: '#1d4ed8',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    textAlign: 'center'
+                  }}>
+                    ✓ ĐÃ LẬP & KÝ<br />
+                    <span style={{ fontSize: '0.72rem', fontWeight: 500 }}>Cán bộ KT thi công</span>
+                  </div>
+                ) : (
+                  <span className="no-print" style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.8rem' }}>(Chưa ký)</span>
+                )}
               </div>
 
-              <strong className="screen-only">{log.signatures?.contractor?.name || log.createdByName || 'KS. Lê Văn Kỹ Thuật'}</strong>
+              <strong style={{ fontSize: '0.92rem', color: '#000000', display: 'block', marginTop: '4px' }}>
+                {log.signatures?.contractor?.name || log.createdByName || 'KS. Lê Văn Kỹ Thuật'}
+              </strong>
             </div>
           </div>
 

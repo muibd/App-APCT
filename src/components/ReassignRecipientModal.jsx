@@ -13,7 +13,7 @@ export default function ReassignRecipientModal({
   if (!isOpen || !request) return null;
 
   const isSupervisor = reassignType === 'SUPERVISOR';
-  const roleTitle = isSupervisor ? 'Tư Vấn Giám Sát (TVGS)' : 'Đại Diện Chủ Đầu Tư (CĐT)';
+  const roleTitle = isSupervisor ? 'Tư Vấn Giám Sát (TVGS)' : 'Ban Quản Lý Dự Án (Ban QLDA)';
 
   // Tìm cán bộ hiện tại đang được chỉ định
   const currentOfficer = (request.assignedRecipients || []).find(r => 

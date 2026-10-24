@@ -1,30 +1,30 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { 
-  X, Send, Users, Calendar, MapPin, CheckSquare, Square, 
-  AlertCircle, Building, Camera, ImagePlus, Zap, Trash2, Plus, Clock, 
+import {
+  X, Send, Users, Calendar, MapPin, CheckSquare, Square,
+  AlertCircle, Building, Camera, ImagePlus, Zap, Trash2, Plus, Clock,
   FileSpreadsheet, Package, Hash, ChevronRight, Check, Layers, Building2
 } from 'lucide-react';
 import { MOCK_PROJECT, MOCK_USERS } from '../data/mockData';
 import { compressImageFile } from '../utils/storageHelper';
-import { 
-  CONSTRUCTION_WORK_STANDARDS, 
-  MATERIAL_STANDARDS, 
-  GENERAL_MANDATORY_STANDARDS, 
-  getSuggestedStandards 
+import {
+  CONSTRUCTION_WORK_STANDARDS,
+  MATERIAL_STANDARDS,
+  GENERAL_MANDATORY_STANDARDS,
+  getSuggestedStandards
 } from '../data/standardsRules';
-import { 
-  loadStoredProjects, 
-  loadStoredDocTypes, 
-  generateDocumentCode 
+import {
+  loadStoredProjects,
+  loadStoredDocTypes,
+  generateDocumentCode
 } from '../data/projectCatalog';
 
-export default function CreateRequestModal({ 
-  isOpen, 
-  onClose, 
-  users = [], 
-  currentUser, 
-  onSubmitRequest, 
-  showAlert, 
+export default function CreateRequestModal({
+  isOpen,
+  onClose,
+  users = [],
+  currentUser,
+  onSubmitRequest,
+  showAlert,
   standardsData,
   projects: catalogProjects = null,
   docTypes: catalogDocTypes = null
@@ -297,7 +297,7 @@ export default function CreateRequestModal({
   };
 
   const toggleApplicableStandard = (std) => {
-    setSelectedStandards(prev => 
+    setSelectedStandards(prev =>
       prev.includes(std) ? prev.filter(s => s !== std) : [...prev, std]
     );
   };
@@ -499,7 +499,7 @@ export default function CreateRequestModal({
   return (
     <div className="modal-overlay">
       <div className="modal-content" style={{ maxWidth: '880px', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
-        
+
         {/* HEADER */}
         <div className="modal-header" style={{ background: '#f8fafc', padding: '16px 22px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -514,7 +514,7 @@ export default function CreateRequestModal({
         </div>
 
         <form onSubmit={handleSubmit} className="modal-body" style={{ padding: '20px 24px', overflowY: 'auto' }}>
-          
+
           {/* TAB CHỌN LOẠI HÌNH NGHIỆM THU */}
           <div style={{
             display: 'flex',
@@ -613,12 +613,12 @@ export default function CreateRequestModal({
             <label className="form-label" style={{ fontWeight: 600, color: '#334155' }}>
               Ngày thực hiện kiểm tra: <span style={{ color: '#ef4444' }}>*</span>
             </label>
-            <input 
-              type="date" 
-              className="form-input" 
-              value={scheduledDate} 
-              onChange={(e) => setScheduledDate(e.target.value)} 
-              required 
+            <input
+              type="date"
+              className="form-input"
+              value={scheduledDate}
+              onChange={(e) => setScheduledDate(e.target.value)}
+              required
               style={{ maxWidth: '320px' }}
             />
           </div>
@@ -640,7 +640,7 @@ export default function CreateRequestModal({
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px' }}>
-              
+
               {/* BƯỚC 1: CHỌN CÔNG TRÌNH */}
               <div className="form-group" style={{ margin: 0 }}>
                 <label className="form-label" style={{ fontWeight: 700, color: '#0f172a' }}>
@@ -654,7 +654,7 @@ export default function CreateRequestModal({
                 >
                   {projectsList.map(p => (
                     <option key={p.id || p.code} value={p.code}>
-                      {p.name} (Mã: {p.code})
+                      {p.name}
                     </option>
                   ))}
                 </select>
@@ -895,22 +895,22 @@ export default function CreateRequestModal({
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '18px' }}>
             <div className="form-group" style={{ margin: 0 }}>
               <label className="form-label">Thời gian bắt đầu:</label>
-              <input 
-                type="time" 
-                className="form-input" 
-                value={startTime} 
-                onChange={(e) => setStartTime(e.target.value)} 
-                required 
+              <input
+                type="time"
+                className="form-input"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                required
               />
             </div>
             <div className="form-group" style={{ margin: 0 }}>
               <label className="form-label">Địa điểm kiểm tra:</label>
-              <input 
-                type="text" 
-                className="form-input" 
-                value={inspectionPlace} 
-                onChange={(e) => setInspectionPlace(e.target.value)} 
-                required 
+              <input
+                type="text"
+                className="form-input"
+                value={inspectionPlace}
+                onChange={(e) => setInspectionPlace(e.target.value)}
+                required
               />
             </div>
           </div>
@@ -923,21 +923,21 @@ export default function CreateRequestModal({
                 <strong style={{ fontSize: '0.92rem' }}>Đính Kèm Ảnh Hiện Trường (GPS & Thời Gian):</strong>
               </div>
               <div style={{ display: 'flex', gap: '6px' }}>
-                <input 
-                  type="file" 
-                  ref={cameraInputRef} 
-                  accept="image/*" 
-                  capture="environment" 
-                  onChange={handlePhotoCapture} 
-                  style={{ display: 'none' }} 
+                <input
+                  type="file"
+                  ref={cameraInputRef}
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handlePhotoCapture}
+                  style={{ display: 'none' }}
                 />
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  accept="image/*" 
-                  multiple 
-                  onChange={handlePhotoCapture} 
-                  style={{ display: 'none' }} 
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept="image/*"
+                  multiple
+                  onChange={handlePhotoCapture}
+                  style={{ display: 'none' }}
                 />
                 <button
                   type="button"
@@ -1010,16 +1010,16 @@ export default function CreateRequestModal({
                     </div>
                   ) : (
                     supervisorList.map(u => (
-                      <label 
-                        key={u.uid} 
+                      <label
+                        key={u.uid}
                         onClick={() => setSelectedSupervisor(u.uid)}
                         style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 10px', background: selectedSupervisor === u.uid ? '#ecfdf5' : '#fff', border: selectedSupervisor === u.uid ? '1.5px solid #10b981' : '1px solid #e2e8f0', borderRadius: '6px', cursor: 'pointer', fontSize: '0.82rem', transition: 'all 0.15s ease' }}
                       >
-                        <input 
-                          type="radio" 
-                          name="selectedSup" 
-                          checked={selectedSupervisor === u.uid} 
-                          onChange={() => setSelectedSupervisor(u.uid)} 
+                        <input
+                          type="radio"
+                          name="selectedSup"
+                          checked={selectedSupervisor === u.uid}
+                          onChange={() => setSelectedSupervisor(u.uid)}
                         />
                         <div>
                           <strong>{u.fullName}</strong> - {u.position}
@@ -1034,29 +1034,29 @@ export default function CreateRequestModal({
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                   <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#b45309', margin: 0 }}>
-                    2. CÁN BỘ CHỦ ĐẦU TƯ:
+                    2. CÁN BỘ BAN QLDA:
                   </label>
                   <span style={{ fontSize: '0.72rem', color: '#64748b' }}>(Tùy chọn • Nhấn lại để bỏ chọn)</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '160px', overflowY: 'auto' }}>
                   {investorList.length === 0 ? (
                     <div style={{ fontSize: '0.8rem', color: '#94a3b8', padding: '10px', background: '#fff', borderRadius: '6px', border: '1px dashed #cbd5e1', textAlign: 'center' }}>
-                      Chưa có cán bộ CĐT trực tiếp khả dụng
+                      Chưa có cán bộ Ban QLDA trực tiếp khả dụng
                     </div>
                   ) : (
                     investorList.map(u => (
-                      <label 
-                        key={u.uid} 
+                      <label
+                        key={u.uid}
                         onClick={(e) => {
                           e.preventDefault();
                           setSelectedInvestor(prev => prev === u.uid ? '' : u.uid);
                         }}
                         style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 10px', background: selectedInvestor === u.uid ? '#fffbeb' : '#fff', border: selectedInvestor === u.uid ? '1.5px solid #f59e0b' : '1px solid #e2e8f0', borderRadius: '6px', cursor: 'pointer', fontSize: '0.82rem', transition: 'all 0.15s ease' }}
                       >
-                        <input 
-                          type="checkbox" 
-                          checked={selectedInvestor === u.uid} 
-                          onChange={() => {}} 
+                        <input
+                          type="checkbox"
+                          checked={selectedInvestor === u.uid}
+                          onChange={() => { }}
                         />
                         <div>
                           <strong>{u.fullName}</strong> - {u.position}

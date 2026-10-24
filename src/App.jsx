@@ -176,8 +176,23 @@ export default function App() {
       const saved = localStorage.getItem(USERS_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length >= MOCK_USERS.length) {
-          return parsed.map(u => {
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const merged = [...parsed];
+          MOCK_USERS.forEach(m => {
+            const existingIdx = merged.findIndex(u => u.uid === m.uid);
+            if (existingIdx === -1) {
+              merged.push(m);
+            } else if (m.uid.startsWith('uid_admin_') || m.uid.startsWith('uid_cdt_')) {
+              merged[existingIdx] = {
+                ...merged[existingIdx],
+                fullName: m.fullName,
+                company: m.company,
+                position: m.position,
+                role: m.role
+              };
+            }
+          });
+          return merged.map(u => {
             const mock = MOCK_USERS.find(m => m.uid === u.uid);
             return {
               ...u,
@@ -796,7 +811,7 @@ export default function App() {
         setStandardsData(prev => ({
           works: Array.isArray(remoteStandards.works) ? remoteStandards.works : (prev?.works || []),
           materials: Array.isArray(remoteStandards.materials) ? remoteStandards.materials : (prev?.materials || []),
-          mandatory: Array.isArray(remoteStandards.mandatory) ? remoteStandards.mandatory : (prev?.mandatory || [])
+          mandatory: []
         }));
         try {
           localStorage.setItem(STANDARDS_STORAGE_KEY, JSON.stringify(remoteStandards));
@@ -2208,7 +2223,7 @@ export default function App() {
     if (!targetReq || !newOfficer) return;
 
     const isSupervisor = reassignType === 'SUPERVISOR';
-    const roleLabel = isSupervisor ? 'Tư Vấn Giám Sát (TVGS)' : 'Đại Diện Chủ Đầu Tư (CĐT)';
+    const roleLabel = isSupervisor ? 'Tư Vấn Giám Sát (TVGS)' : 'Ban Quản Lý Dự Án (Ban QLDA)';
 
     // Tìm cán bộ cũ đang phụ trách vai trò này
     const currentRecipients = Array.isArray(targetReq.assignedRecipients) ? [...targetReq.assignedRecipients] : [];
@@ -2798,8 +2813,8 @@ export default function App() {
 
       // Khi TVGS ký duyệt đồng ý -> Bắn thông báo mời Chủ Đầu Tư vào kiểm tra và ký phê duyệt!
       if (tvgsJustSigned && !isAllSigned) {
-        const notifTitle = `✍️ [TVGS Đã Phê Duyệt] Mời CĐT ký duyệt: ${finalReport.reportNumber || 'Biên bản'}`;
-        const notifBody = `Tư vấn giám sát (${finalReport.attendees?.supervisor?.person || 'TVGS'}) đã nghiệm thu đạt và ký duyệt. Kính mời Đại diện Chủ đầu tư vào kiểm tra & ký xác nhận!`;
+        const notifTitle = `✍️ [TVGS Đã Phê Duyệt] Mời Ban QLDA ký duyệt: ${finalReport.reportNumber || 'Biên bản'}`;
+        const notifBody = `Tư vấn giám sát (${finalReport.attendees?.supervisor?.person || 'TVGS'}) đã nghiệm thu đạt và ký duyệt. Kính mời Ban Quản Lý Dự Án vào kiểm tra & ký xác nhận!`;
 
         const pushPayload = {
           id: `notif_${Date.now()}`,
@@ -3795,9 +3810,9 @@ export default function App() {
                       {currentRole === 'CONTRACTOR' && '👷‍♂️ Phân Hệ Đơn Vị Thi Công'}
                       {currentRole === 'SUPERVISOR' && '👁️ Phân Hệ Tư Vấn Giám Sát (TVGS)'}
                       {currentRole === 'LEAD_SUPERVISOR' && '👁️ Phân Hệ Tư Vấn Giám Sát Trưởng'}
-                      {currentRole === 'INVESTOR' && '🏢 Phân Hệ Đại Diện Chủ Đầu Tư (Ban QLDA)'}
-                      {currentRole === 'LEAD_INVESTOR' && '🏢 Phân Hệ Đại Diện Chủ Đầu Tư Trưởng (Trưởng Ban QLDA)'}
-                      {currentRole === 'ADMIN' && '🛡️ Giám Sát Hồ Sơ Nghiệm Thu (Admin)'}
+                      {currentRole === 'INVESTOR' && '🏢 Phân Hệ Ban Quản Lý Dự Án (Ban QLDA)'}
+                      {currentRole === 'LEAD_INVESTOR' && '🏢 Phân Hệ Trưởng Ban Quản Lý Dự Án'}
+                      {currentRole === 'ADMIN' && '🛡️ Giám Sát Hồ Sơ Nghiệm Thu (Chủ Đầu Tư - CĐT)'}
                     </h2>
                   </div>
 
@@ -4419,6 +4434,8 @@ export default function App() {
         onClose={() => setIsCreateDailyLogModalOpen(false)}
         currentUser={currentUser}
         users={users}
+        projects={projectsList}
+        onSaveProjects={handleSaveProjects}
         onSubmitDailyLog={handleCreateDailyLog}
         showAlert={showAlert}
       />

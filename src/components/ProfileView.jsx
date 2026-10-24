@@ -37,13 +37,13 @@ export default function ProfileView({ currentUser, users = [], onUpdateProfile }
     switch (role) {
       case 'ADMIN':
         return {
-          name: 'Quản Trị Viên Hệ Thống (Admin)',
-          tag: 'Admin',
+          name: 'Chủ Đầu Tư - CĐT (Admin)',
+          tag: 'CĐT',
           icon: ShieldCheck,
           bg: '#f3e8ff',
           color: '#7e22ce',
           border: '#d8b4fe',
-          desc: 'Toàn quyền cấu hình nhân sự, phê duyệt và quản lý tiêu chuẩn kỹ thuật.'
+          desc: 'Chủ đầu tư quản lý toàn bộ hệ thống, phân quyền và cấu hình dự án.'
         };
       case 'CONTRACTOR':
         return {
@@ -77,23 +77,23 @@ export default function ProfileView({ currentUser, users = [], onUpdateProfile }
         };
       case 'INVESTOR':
         return {
-          name: 'Đại Diện Chủ Đầu Tư (Ban QLDA)',
-          tag: 'CĐT',
+          name: 'Ban Quản Lý Dự Án (Ban QLDA)',
+          tag: 'Ban QLDA',
           icon: Briefcase,
           bg: '#fffbeb',
           color: '#b45309',
           border: '#fde68a',
-          desc: 'Chủ quản theo dõi tiến độ, kiểm tra xác nhận và tham gia nghiệm thu.'
+          desc: 'Cán bộ Ban QLDA kiểm tra, theo dõi chất lượng và tham gia nghiệm thu.'
         };
       case 'LEAD_INVESTOR':
         return {
-          name: 'Đại Diện Chủ Đầu Tư Trưởng',
-          tag: 'CĐT Trưởng',
+          name: 'Trưởng Ban Quản Lý Dự Án',
+          tag: 'Trưởng Ban QLDA',
           icon: Award,
           bg: '#fef3c7',
           color: '#b45309',
           border: '#fcd34d',
-          desc: 'Trưởng ban QLDA, phê duyệt nghiệm thu cao nhất và ký biên bản.'
+          desc: 'Trưởng Ban QLDA, quản lý các cán bộ Ban QLDA và phê duyệt biên bản nghiệm thu.'
         };
       default:
         return {

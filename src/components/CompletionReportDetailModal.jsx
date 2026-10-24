@@ -128,9 +128,9 @@ export default function CompletionReportDetailModal({
             }}>
               <ShieldCheck size={22} color="#7e22ce" style={{ flexShrink: 0 }} />
               <div>
-                <strong style={{ fontSize: '0.92rem' }}>Chế Độ Giám Sát Hồ Sơ (Admin View-Only)</strong>
+                <strong style={{ fontSize: '0.92rem' }}>Chế Độ Giám Sát Hồ Sơ (CĐT View-Only)</strong>
                 <div style={{ fontSize: '0.82rem', color: '#9333ea', marginTop: '2px' }}>
-                  Quản trị viên chỉ có quyền xem văn bản và giám sát tiến độ ký duyệt. Quyền ký duyệt thuộc về TVGS Trưởng và CĐT Trưởng.
+                  Chủ đầu tư (Admin) có quyền xem văn bản và giám sát tiến độ ký duyệt. Quyền ký duyệt thuộc về TVGS Trưởng và Trưởng Ban QLDA.
                 </div>
               </div>
             </div>
@@ -185,7 +185,7 @@ export default function CompletionReportDetailModal({
                     className="btn-primary"
                     style={{ background: '#d97706', padding: '8px 16px', fontSize: '0.84rem', fontWeight: 700 }}
                   >
-                    ✓ CĐT Trưởng Ký Phê Duyệt
+                    ✓ Trưởng Ban QLDA Ký Phê Duyệt
                   </button>
                 )}
               </div>

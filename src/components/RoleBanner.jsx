@@ -9,12 +9,12 @@ export default function RoleBanner({
   pushPermissionGranted
 }) {
   const roles = [
-    { id: 'ADMIN', label: '1. Admin', sub: 'Quản trị hệ thống', icon: Shield, color: '#9333ea' },
+    { id: 'ADMIN', label: '1. CĐT (Admin)', sub: 'Chủ đầu tư quản trị hệ thống', icon: Shield, color: '#9333ea' },
     { id: 'CONTRACTOR', label: '2. ĐV Thi công', sub: 'Tạo phiếu nghiệm thu', icon: HardHat, color: '#2563eb' },
     { id: 'SUPERVISOR', label: '3. TV Giám sát', sub: 'Kiểm tra & ký duyệt', icon: Eye, color: '#059669' },
     { id: 'LEAD_SUPERVISOR', label: '4. TVGS Trưởng', sub: 'Xem mọi phiếu TVGS & duyệt phiếu của mình', icon: Award, color: '#047857' },
-    { id: 'INVESTOR', label: '5. Đại diện CĐT', sub: 'Ban QLDA kiểm tra', icon: Briefcase, color: '#d97706' },
-    { id: 'LEAD_INVESTOR', label: '6. CĐT Trưởng', sub: 'Trưởng ban QLDA xem mọi phiếu CĐT & duyệt phiếu của mình', icon: Award, color: '#b45309' },
+    { id: 'INVESTOR', label: '5. Ban QLDA', sub: 'Cán bộ Ban QLDA kiểm tra', icon: Briefcase, color: '#d97706' },
+    { id: 'LEAD_INVESTOR', label: '6. Trưởng Ban QLDA', sub: 'Trưởng Ban QLDA xem mọi phiếu Ban QLDA & duyệt', icon: Award, color: '#b45309' },
   ];
 
   return (

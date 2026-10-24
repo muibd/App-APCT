@@ -423,7 +423,7 @@ export default function CompletionReportsListView({
                         color: report.signatures?.investor?.signed ? '#047857' : '#d97706',
                         fontWeight: 600 
                       }}>
-                        {report.signatures?.investor?.signed ? '✓ CĐT Trưởng' : '⏳ CĐT Trưởng'}
+                        {report.signatures?.investor?.signed ? '✓ Trưởng Ban QLDA' : '⏳ Trưởng Ban QLDA'}
                       </span>
                     </div>
 

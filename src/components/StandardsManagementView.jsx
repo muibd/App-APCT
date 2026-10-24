@@ -15,11 +15,10 @@ export default function StandardsManagementView({
   const currentData = standardsData || INITIAL_STANDARDS_DATA;
   const worksList = currentData.works || [];
   const materialsList = currentData.materials || [];
-  const mandatoryList = currentData.mandatory || [];
 
   // Filter & Search states
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState('ALL'); // 'ALL' | 'WORK' | 'MATERIAL' | 'MANDATORY'
+  const [activeFilter, setActiveFilter] = useState('ALL'); // 'ALL' | 'WORK' | 'MATERIAL'
   const [isSyncing, setIsSyncing] = useState(false);
   const excelInputRef = useRef(null);
 
@@ -46,11 +45,11 @@ export default function StandardsManagementView({
   // -------------------------------------------------------------
   const totalCategories = worksList.length + materialsList.length;
   const totalStandardsCount = useMemo(() => {
-    let count = mandatoryList.length;
+    let count = 0;
     worksList.forEach(w => { count += (w.standards?.length || 0); });
     materialsList.forEach(m => { count += (m.standards?.length || 0); });
     return count;
-  }, [worksList, materialsList, mandatoryList]);
+  }, [worksList, materialsList]);
 
   // -------------------------------------------------------------
   // FILTERING LOGIC
@@ -74,12 +73,6 @@ export default function StandardsManagementView({
       return matchName || matchStd;
     });
   }, [materialsList, searchQuery]);
-
-  const filteredMandatory = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
-    if (!q) return mandatoryList;
-    return mandatoryList.filter(s => s.toLowerCase().includes(q));
-  }, [mandatoryList, searchQuery]);
 
   // -------------------------------------------------------------
   // CRUD OPERATIONS FOR CATEGORIES (HẠNG MỤC)
@@ -164,7 +157,7 @@ export default function StandardsManagementView({
     onSaveStandards({
       works: nextWorks,
       materials: nextMaterials,
-      mandatory: mandatoryList
+      mandatory: []
     });
 
     setCategoryModal({ isOpen: false, isEdit: false, category: null, section: 'WORK' });
@@ -183,7 +176,7 @@ export default function StandardsManagementView({
     onSaveStandards({
       works: nextWorks,
       materials: nextMaterials,
-      mandatory: mandatoryList
+      mandatory: []
     });
 
     showToast(`🗑️ Đã xóa hạng mục: "${item.name}"`);
@@ -224,19 +217,6 @@ export default function StandardsManagementView({
 
     const { categoryId, standardIndex, isEdit, section } = standardModal;
 
-    if (categoryId === '__MANDATORY__') {
-      let nextMandatory = [...mandatoryList];
-      if (isEdit && typeof standardIndex === 'number') {
-        nextMandatory[standardIndex] = text;
-      } else {
-        if (!nextMandatory.includes(text)) nextMandatory.push(text);
-      }
-      onSaveStandards({ works: worksList, materials: materialsList, mandatory: nextMandatory });
-      showToast('✅ Đã cập nhật tiêu chuẩn bắt buộc chung');
-      setStandardModal({ isOpen: false, isEdit: false, categoryId: null, standardIndex: null, standardText: '' });
-      return;
-    }
-
     let nextWorks = [...worksList];
     let nextMaterials = [...materialsList];
 
@@ -267,7 +247,7 @@ export default function StandardsManagementView({
     onSaveStandards({
       works: nextWorks,
       materials: nextMaterials,
-      mandatory: mandatoryList
+      mandatory: []
     });
 
     showToast(isEdit ? '✅ Đã cập nhật tiêu chuẩn!' : '🎉 Đã thêm tiêu chuẩn đi kèm!');
@@ -275,14 +255,6 @@ export default function StandardsManagementView({
   };
 
   const handleDeleteStandard = (categoryId, standardIndex, section = 'WORK') => {
-    if (categoryId === '__MANDATORY__') {
-      const nextMandatory = mandatoryList.filter((_, idx) => idx !== standardIndex);
-      onSaveStandards({ works: worksList, materials: materialsList, mandatory: nextMandatory });
-      showToast('🗑️ Đã xóa tiêu chuẩn bắt buộc chung');
-      setDeleteModal({ isOpen: false, type: null, target: null, parentId: null });
-      return;
-    }
-
     let nextWorks = [...worksList];
     let nextMaterials = [...materialsList];
 
@@ -301,7 +273,7 @@ export default function StandardsManagementView({
     onSaveStandards({
       works: nextWorks,
       materials: nextMaterials,
-      mandatory: mandatoryList
+      mandatory: []
     });
 
     showToast('🗑️ Đã xóa tiêu chuẩn');
@@ -324,7 +296,7 @@ export default function StandardsManagementView({
           onSaveStandards({
             works: parsed.works.length > 0 ? parsed.works : worksList,
             materials: parsed.materials.length > 0 ? parsed.materials : materialsList,
-            mandatory: mandatoryList
+            mandatory: []
           });
           const msg = `Đã nạp thành công từ Excel:\n• ${parsed.works.length} nhóm công việc (Sheet A)\n• ${parsed.materials.length} loại vật liệu (Sheet B)`;
           if (showAlert) showAlert({ type: 'success', title: 'Nạp File Excel Thành Công', message: msg });
@@ -604,22 +576,6 @@ export default function StandardsManagementView({
           >
             📦 Vật Liệu ({materialsList.length})
           </button>
-          <button
-            type="button"
-            onClick={() => setActiveFilter('MANDATORY')}
-            style={{
-              padding: '8px 12px',
-              borderRadius: '8px',
-              border: activeFilter === 'MANDATORY' ? '1.5px solid #ca8a04' : '1px solid #fef08a',
-              background: activeFilter === 'MANDATORY' ? '#ca8a04' : '#fefce8',
-              color: activeFilter === 'MANDATORY' ? '#ffffff' : '#a16207',
-              fontWeight: 700,
-              fontSize: '0.8rem',
-              cursor: 'pointer'
-            }}
-          >
-            ⚖️ Bắt Buộc ({mandatoryList.length})
-          </button>
         </div>
 
         {/* Action Buttons */}
@@ -718,51 +674,6 @@ export default function StandardsManagementView({
           </button> */}
         </div>
       </div>
-
-      {/* -------------------------------------------------------- */}
-      {/* SECTION: TIÊU CHUẨN BẮT BUỘC CHUNG */}
-      {/* -------------------------------------------------------- */}
-      {(activeFilter === 'ALL' || activeFilter === 'MANDATORY') && (
-        <div style={{
-          background: '#fffdf0',
-          border: '1.5px solid #fde047',
-          borderRadius: '14px',
-          padding: '16px 20px',
-          boxShadow: '0 2px 8px rgba(253, 224, 71, 0.15)'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <strong style={{ fontSize: '0.98rem', color: '#854d0e', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
-                ⚖️ TIÊU CHUẨN PHÁP LÝ BẮT BUỘC CHUNG (Tự động áp dụng cho mọi loại nghiệm thu)
-              </strong>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleOpenAddStandard('__MANDATORY__', 'MANDATORY')}
-              style={{
-                background: '#ca8a04',
-                color: '#ffffff',
-                border: 'none',
-                padding: '6px 12px',
-                borderRadius: '8px',
-                fontSize: '0.78rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px'
-              }}
-            >
-              <Plus size={14} />
-              <span>Thêm Tiêu Chuẩn Chung</span>
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {filteredMandatory.map((stdStr, idx) => renderStandardItem(stdStr, '__MANDATORY__', idx, 'MANDATORY'))}
-          </div>
-        </div>
-      )}
 
       {/* -------------------------------------------------------- */}
       {/* SECTION: CÔNG VIỆC XÂY DỰNG (CHIA THEO HẠNG MỤC) */}

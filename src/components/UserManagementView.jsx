@@ -105,7 +105,7 @@ export default function UserManagementView({
   const getRoleBadge = (role) => {
     switch (role) {
       case 'ADMIN':
-        return { label: 'Quản trị viên (Admin)', bg: '#faf5ff', color: '#7e22ce', border: '#e9d5ff', icon: ShieldCheck };
+        return { label: 'Chủ đầu tư (CĐT)', bg: '#faf5ff', color: '#7e22ce', border: '#e9d5ff', icon: ShieldCheck };
       case 'CONTRACTOR':
         return { label: 'Đơn vị thi công (ĐVTC)', bg: '#eff6ff', color: '#2563eb', border: '#bfdbfe', icon: HardHat };
       case 'SUPERVISOR':
@@ -113,9 +113,9 @@ export default function UserManagementView({
       case 'LEAD_SUPERVISOR':
         return { label: 'TVGS Trưởng (Giám sát trưởng)', bg: '#f0fdf4', color: '#15803d', border: '#86efac', icon: Award };
       case 'INVESTOR':
-        return { label: 'Đại diện CĐT (Ban QLDA)', bg: '#fffbeb', color: '#d97706', border: '#fde68a', icon: Briefcase };
+        return { label: 'Ban QLDA (Cán bộ QLDA)', bg: '#fffbeb', color: '#d97706', border: '#fde68a', icon: Briefcase };
       case 'LEAD_INVESTOR':
-        return { label: 'Đại diện CĐT Trưởng (Trưởng Ban QLDA)', bg: '#fef3c7', color: '#b45309', border: '#fcd34d', icon: Award };
+        return { label: 'Trưởng Ban QLDA', bg: '#fef3c7', color: '#b45309', border: '#fcd34d', icon: Award };
       default:
         return { label: role, bg: '#f1f5f9', color: '#475569', border: '#e2e8f0', icon: Users };
     }
@@ -288,12 +288,12 @@ export default function UserManagementView({
             style={{ padding: '7px 12px', fontSize: '0.84rem', borderRadius: '10px', width: 'auto' }}
           >
             <option value="ALL">Tất cả vai trò ({users.length})</option>
-            <option value="ADMIN">Quản trị viên ({stats.admin})</option>
+            <option value="ADMIN">CĐT ({stats.admin})</option>
             <option value="CONTRACTOR">Đơn vị thi công ({stats.contractor})</option>
             <option value="SUPERVISOR">Tư vấn giám sát ({stats.supervisor})</option>
             <option value="LEAD_SUPERVISOR">TVGS Trưởng ({stats.leadSupervisor})</option>
-            <option value="INVESTOR">Đại diện CĐT ({stats.investor})</option>
-            <option value="LEAD_INVESTOR">Đại diện CĐT Trưởng ({stats.leadInvestor})</option>
+            <option value="INVESTOR">Ban QLDA ({stats.investor})</option>
+            <option value="LEAD_INVESTOR">Trưởng Ban QLDA ({stats.leadInvestor})</option>
           </select>
 
           <select
@@ -476,11 +476,11 @@ export default function UserManagementView({
                             const leader = users.find(u => u.uid === user.leaderId || (u.subordinateIds && u.subordinateIds.includes(user.uid)));
                             return leader ? (
                               <span style={{ fontSize: '0.73rem', background: '#fffbeb', color: '#92400e', border: '1px solid #fde68a', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
-                                👑 CĐT Trưởng: <strong>{leader.fullName}</strong>
+                                👑 Trưởng Ban QLDA: <strong>{leader.fullName}</strong>
                               </span>
                             ) : (
                               <span style={{ fontSize: '0.73rem', background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', padding: '2px 8px', borderRadius: '6px' }}>
-                                ⚠️ Chưa gán CĐT Trưởng phụ trách
+                                ⚠️ Chưa gán Trưởng Ban QLDA phụ trách
                               </span>
                             );
                           })()}
@@ -575,12 +575,12 @@ export default function UserManagementView({
                         width: '100%'
                       }}
                     >
-                      <option value="ADMIN">ADMIN (Quản trị viên)</option>
-                      <option value="CONTRACTOR">CONTRACTOR (Đơn vị thi công)</option>
-                      <option value="SUPERVISOR">SUPERVISOR (Tư vấn giám sát)</option>
-                      <option value="LEAD_SUPERVISOR">LEAD_SUPERVISOR (TVGS Trưởng)</option>
-                      <option value="INVESTOR">INVESTOR (Đại diện CĐT)</option>
-                      <option value="LEAD_INVESTOR">LEAD_INVESTOR (CĐT Trưởng)</option>
+                      <option value="CONTRACTOR">Đơn vị thi công</option>
+                      <option value="SUPERVISOR">Tư vấn giám sát</option>
+                      <option value="LEAD_SUPERVISOR">TVGS Trưởng</option>
+                      <option value="INVESTOR">Ban QLDA</option>
+                      <option value="LEAD_INVESTOR">Trưởng Ban QLDA</option>
+                      <option value="ADMIN">CĐT</option>
                     </select>
                   </div>
 
@@ -748,13 +748,14 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
 
   // Gợi ý nhanh các công ty trong dự án
   const companyPresets = [
-    { label: 'ĐVTC: Cty TNHH TVTK Bình Hoà', name: 'Công ty TNHH Tư vấn Thiết kế Bình Hoà', role: 'CONTRACTOR', pos: 'Chỉ huy trưởng' },
-    { label: 'ĐVTC: Công ty CP Xây dựng An Phú Gia', name: 'Công ty CP Xây dựng An Phú Gia', role: 'CONTRACTOR', pos: 'Kỹ thuật hiện trường' },
-    { label: 'TVGS: Công ty CP TVXD và TM GELICON', name: 'Công ty CP Tư vấn Xây dựng và Thương mại GELICON', role: 'SUPERVISOR', pos: 'Cán bộ tư vấn giám sát' },
-    { label: 'TVGS Trưởng: GELICON', name: 'Công ty CP Tư vấn Xây dựng và Thương mại GELICON', role: 'LEAD_SUPERVISOR', pos: 'Tư vấn giám sát trưởng' },
-    { label: 'CĐT: Công ty TNHH An Phú Cần Thơ', name: 'Công ty TNHH An Phú Cần Thơ', role: 'INVESTOR', pos: 'Cán bộ ban QLDA' },
-    { label: 'CĐT Trưởng: Ban QLDA An Phú', name: 'Công ty TNHH An Phú Cần Thơ', role: 'LEAD_INVESTOR', pos: 'Trưởng Ban QLDA' },
-    { label: 'Admin: Ban Quản Trị Hệ Thống APCT', name: 'Ban Quản Trị Hệ Thống APCT', role: 'ADMIN', pos: 'Quản trị viên Hệ thống' }
+    { label: 'CĐT (Admin)', name: 'Chủ đầu tư An Phú', role: 'ADMIN', pos: 'Chủ đầu tư' },
+    { label: 'Ban QLDA: CONINCO-MI', name: 'Công ty cổ phần CONINCO Máy xây dựng và Công trình công nghiệp (CONINCO-MI)', role: 'INVESTOR', pos: 'Cán bộ Ban QLDA' },
+    { label: 'Trưởng Ban QLDA: CONINCO-MI', name: 'Công ty cổ phần CONINCO Máy xây dựng và Công trình công nghiệp (CONINCO-MI)', role: 'LEAD_INVESTOR', pos: 'Trưởng Ban QLDA' },
+    { label: 'TVGS: GELICON', name: 'CÔNG TY CỔ PHẦN TƯ VẤN XÂY DỰNG VÀ THƯƠNG MẠI GELICON', role: 'SUPERVISOR', pos: 'Cán bộ tư vấn giám sát' },
+    { label: 'TVGS Trưởng: GELICON', name: 'CÔNG TY CỔ PHẦN TƯ VẤN XÂY DỰNG VÀ THƯƠNG MẠI GELICON', role: 'LEAD_SUPERVISOR', pos: 'Tư vấn giám sát trưởng' },
+    { label: 'ĐVTC: Cty TNHH Gia Huy Vĩnh Phúc', name: 'Công ty TNHH Gia Huy Vĩnh Phúc', role: 'CONTRACTOR', pos: 'Kỹ thuật hiện trường' },
+    { label: 'ĐV PCCC (NOXH2): Phan Lê', name: 'CÔNG TY TNHH PHÁT TRIỂN XÂY DỰNG PHAN LÊ', role: 'CONTRACTOR', pos: 'Kỹ thuật thi công PCCC' },
+    { label: 'ĐV PCCC (NOTM): Bình Hoà', name: 'Cty tnhh tư vấn thiết kế Bình Hoà', role: 'CONTRACTOR', pos: 'Chỉ huy trưởng' }
   ];
 
   const handleSelectPreset = (preset) => {
@@ -980,19 +981,19 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
               {/* Vai trò */}
               <div className="form-group">
                 <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 600 }}>
-                  Vai trò hệ thống (RBAC) <span style={{ color: '#ef4444' }}>*</span>
+                  Vai trò hệ thống <span style={{ color: '#ef4444' }}>*</span>
                 </label>
                 <select
                   className="form-select"
                   value={role}
                   onChange={(e) => setRole(e.target.value)}
                 >
-                  <option value="CONTRACTOR">CONTRACTOR (Đơn vị thi công - Tạo phiếu)</option>
-                  <option value="SUPERVISOR">SUPERVISOR (Tư vấn giám sát - Ký duyệt)</option>
-                  <option value="LEAD_SUPERVISOR">LEAD_SUPERVISOR (Tư vấn giám sát trưởng)</option>
-                  <option value="INVESTOR">INVESTOR (Đại diện chủ đầu tư - QLDA)</option>
-                  <option value="LEAD_INVESTOR">LEAD_INVESTOR (Đại diện chủ đầu tư trưởng)</option>
-                  <option value="ADMIN">ADMIN (Quản trị viên toàn hệ thống)</option>
+                  <option value="CONTRACTOR">Đơn vị thi công</option>
+                  <option value="SUPERVISOR">Tư vấn giám sát</option>
+                  <option value="LEAD_SUPERVISOR">TVGS Trưởng</option>
+                  <option value="INVESTOR">Ban QLDA</option>
+                  <option value="LEAD_INVESTOR">Trưởng Ban QLDA</option>
+                  <option value="ADMIN">CĐT</option>
                 </select>
               </div>
 
@@ -1068,12 +1069,12 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
                 </div>
               )}
 
-              {/* 2. NẾU TẠO CÁN BỘ CĐT THƯỜNG -> CHỌN CĐT TRƯỞNG (TRƯỞNG BAN QLDA) PHỤ TRÁCH */}
+              {/* 2. NẾU TẠO CÁN BỘ BAN QLDA THƯỜNG -> CHỌN TRƯỞNG BAN QLDA PHỤ TRÁCH */}
               {role === 'INVESTOR' && (
                 <div className="form-group" style={{ gridColumn: 'span 2', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', padding: '12px 14px' }}>
                   <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 700, color: '#b45309', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
                     <Award size={15} color="#d97706" />
-                    <span>Chỉ định CĐT Trưởng (Trưởng Ban QLDA) trực tiếp quản lý cán bộ này:</span>
+                    <span>Chỉ định Trưởng Ban QLDA trực tiếp quản lý cán bộ này:</span>
                   </label>
                   <select
                     className="form-select"
@@ -1089,7 +1090,7 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
                     ))}
                   </select>
                   <div style={{ fontSize: '0.74rem', color: '#92400e', marginTop: '4px' }}>
-                    💡 Khi cán bộ này được chỉ định phê duyệt nghiệm thu, vị CĐT Trưởng được chọn ở trên sẽ tự động xem được phiếu.
+                    💡 Khi cán bộ này được chỉ định phê duyệt nghiệm thu, vị Trưởng Ban QLDA được chọn ở trên sẽ tự động xem được phiếu.
                   </div>
                 </div>
               )}
@@ -1170,13 +1171,13 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
                 </div>
               )}
 
-              {/* 4. NẾU TẠO CĐT TRƯỞNG -> TICK CÁC CHECKBOX CĐT DƯỚI QUYỀN */}
+              {/* 4. NẾU TẠO TRƯỞNG BAN QLDA -> TICK CÁC CHECKBOX CÁN BỘ BAN QLDA DƯỚI QUYỀN */}
               {role === 'LEAD_INVESTOR' && (
                 <div className="form-group" style={{ gridColumn: 'span 2', background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: '12px', padding: '14px 16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
                     <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: 700, color: '#b45309', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <Award size={16} color="#d97706" />
-                      <span>Tick chọn các Cán bộ Chủ Đầu Tư dưới quyền quản lý:</span>
+                      <span>Tick chọn các Cán bộ Ban QLDA dưới quyền quản lý:</span>
                     </label>
                     {candidateInvestors.length > 0 && (
                       <button
@@ -1195,11 +1196,11 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
                     )}
                   </div>
                   <div style={{ fontSize: '0.74rem', color: '#475569', marginBottom: '10px' }}>
-                    💡 CĐT Trưởng này sẽ xem được tất cả các phiếu yêu cầu & biên bản nghiệm thu do những cán bộ được tick chọn dưới đây phụ trách:
+                    💡 Trưởng Ban QLDA này sẽ xem được tất cả các phiếu yêu cầu & biên bản nghiệm thu do những cán bộ được tick chọn dưới đây phụ trách:
                   </div>
                   {candidateInvestors.length === 0 ? (
                     <div style={{ padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px dashed #fde68a', fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic' }}>
-                      Chưa có cán bộ CĐT thường nào trong hệ thống. Hãy tạo cán bộ CĐT trước hoặc bổ sung sau.
+                      Chưa có cán bộ Ban QLDA thường nào trong hệ thống. Hãy tạo cán bộ Ban QLDA trước hoặc bổ sung sau.
                     </div>
                   ) : (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '8px' }}>
@@ -1490,19 +1491,19 @@ function EditUserModal({ user, onClose, onSave, existingUsers = [] }) {
               {/* Vai trò */}
               <div className="form-group">
                 <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 600 }}>
-                  Vai trò hệ thống (RBAC) <span style={{ color: '#ef4444' }}>*</span>
+                  Vai trò hệ thống <span style={{ color: '#ef4444' }}>*</span>
                 </label>
                 <select
                   className="form-select"
                   value={role}
                   onChange={(e) => setRole(e.target.value)}
                 >
-                  <option value="CONTRACTOR">CONTRACTOR (Đơn vị thi công)</option>
-                  <option value="SUPERVISOR">SUPERVISOR (Tư vấn giám sát)</option>
-                  <option value="LEAD_SUPERVISOR">LEAD_SUPERVISOR (Tư vấn giám sát trưởng)</option>
-                  <option value="INVESTOR">INVESTOR (Đại diện chủ đầu tư)</option>
-                  <option value="LEAD_INVESTOR">LEAD_INVESTOR (Đại diện chủ đầu tư trưởng)</option>
-                  <option value="ADMIN">ADMIN (Quản trị viên)</option>
+                  <option value="CONTRACTOR">Đơn vị thi công</option>
+                  <option value="SUPERVISOR">Tư vấn giám sát</option>
+                  <option value="LEAD_SUPERVISOR">TVGS Trưởng</option>
+                  <option value="INVESTOR">Ban QLDA</option>
+                  <option value="LEAD_INVESTOR">Trưởng Ban QLDA</option>
+                  <option value="ADMIN">CĐT</option>
                 </select>
               </div>
 
@@ -1575,12 +1576,12 @@ function EditUserModal({ user, onClose, onSave, existingUsers = [] }) {
                 </div>
               )}
 
-              {/* 2. NẾU SỬA CÁN BỘ CĐT THƯỜNG -> CHỌN CĐT TRƯỞNG (TRƯỞNG BAN QLDA) PHỤ TRÁCH */}
+              {/* 2. NẾU SỬA CÁN BỘ BAN QLDA THƯỜNG -> CHỌN TRƯỞNG BAN QLDA PHỤ TRÁCH */}
               {role === 'INVESTOR' && (
                 <div className="form-group" style={{ gridColumn: 'span 2', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', padding: '12px 14px' }}>
                   <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 700, color: '#b45309', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
                     <Award size={15} color="#d97706" />
-                    <span>Chỉ định CĐT Trưởng (Trưởng Ban QLDA) trực tiếp quản lý cán bộ này:</span>
+                    <span>Chỉ định Trưởng Ban QLDA trực tiếp quản lý cán bộ này:</span>
                   </label>
                   <select
                     className="form-select"
@@ -1596,7 +1597,7 @@ function EditUserModal({ user, onClose, onSave, existingUsers = [] }) {
                     ))}
                   </select>
                   <div style={{ fontSize: '0.74rem', color: '#92400e', marginTop: '4px' }}>
-                    💡 Khi cán bộ này được chỉ định phê duyệt nghiệm thu, vị CĐT Trưởng được chọn ở trên sẽ tự động xem được phiếu.
+                    💡 Khi cán bộ này được chỉ định phê duyệt nghiệm thu, vị Trưởng Ban QLDA được chọn ở trên sẽ tự động xem được phiếu.
                   </div>
                 </div>
               )}
@@ -1677,13 +1678,13 @@ function EditUserModal({ user, onClose, onSave, existingUsers = [] }) {
                 </div>
               )}
 
-              {/* 4. NẾU SỬA CĐT TRƯỞNG -> TICK CÁC CHECKBOX CĐT DƯỚI QUYỀN */}
+              {/* 4. NẾU SỬA TRƯỞNG BAN QLDA -> TICK CÁC CHECKBOX CÁN BỘ BAN QLDA DƯỚI QUYỀN */}
               {role === 'LEAD_INVESTOR' && (
                 <div className="form-group" style={{ gridColumn: 'span 2', background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: '12px', padding: '14px 16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
                     <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: 700, color: '#b45309', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <Award size={16} color="#d97706" />
-                      <span>Tick chọn các Cán bộ Chủ Đầu Tư dưới quyền quản lý:</span>
+                      <span>Tick chọn các Cán bộ Ban QLDA dưới quyền quản lý:</span>
                     </label>
                     {candidateInvestors.length > 0 && (
                       <button
@@ -1702,11 +1703,11 @@ function EditUserModal({ user, onClose, onSave, existingUsers = [] }) {
                     )}
                   </div>
                   <div style={{ fontSize: '0.74rem', color: '#475569', marginBottom: '10px' }}>
-                    💡 CĐT Trưởng này sẽ xem được tất cả các phiếu yêu cầu & biên bản nghiệm thu do những cán bộ được tick chọn dưới đây phụ trách:
+                    💡 Trưởng Ban QLDA này sẽ xem được tất cả các phiếu yêu cầu & biên bản nghiệm thu do những cán bộ được tick chọn dưới đây phụ trách:
                   </div>
                   {candidateInvestors.length === 0 ? (
                     <div style={{ padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px dashed #fde68a', fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic' }}>
-                      Chưa có cán bộ CĐT thường nào trong hệ thống. Hãy tạo cán bộ CĐT trước hoặc bổ sung sau.
+                      Chưa có cán bộ Ban QLDA thường nào trong hệ thống. Hãy tạo cán bộ Ban QLDA trước hoặc bổ sung sau.
                     </div>
                   ) : (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '8px' }}>

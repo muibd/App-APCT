@@ -23,12 +23,12 @@ export default function Navbar({
 
   const getRoleBadgeStyle = (role) => {
     switch (role) {
-      case 'ADMIN': return { bg: '#f3e8ff', color: '#7e22ce', text: 'Admin', fullText: 'Quản Trị Viên (Admin)' };
+      case 'ADMIN': return { bg: '#f3e8ff', color: '#7e22ce', text: 'CĐT', fullText: 'Chủ Đầu Tư (CĐT)' };
       case 'CONTRACTOR': return { bg: '#eff6ff', color: '#1d4ed8', text: 'ĐVTC', fullText: 'Đơn Vị Thi Công (ĐVTC)' };
       case 'SUPERVISOR': return { bg: '#ecfdf5', color: '#047857', text: 'TVGS', fullText: 'Tư Vấn Giám Sát (TVGS)' };
       case 'LEAD_SUPERVISOR': return { bg: '#f0fdf4', color: '#15803d', text: 'TVGS Trưởng', fullText: 'Tư Vấn Giám Sát Trưởng' };
-      case 'INVESTOR': return { bg: '#fffbeb', color: '#b45309', text: 'CĐT', fullText: 'Đại Diện Chủ Đầu Tư (CĐT)' };
-      case 'LEAD_INVESTOR': return { bg: '#fef3c7', color: '#b45309', text: 'CĐT Trưởng', fullText: 'Đại Diện Chủ Đầu Tư Trưởng' };
+      case 'INVESTOR': return { bg: '#fffbeb', color: '#b45309', text: 'Ban QLDA', fullText: 'Ban Quản Lý Dự Án (Ban QLDA)' };
+      case 'LEAD_INVESTOR': return { bg: '#fef3c7', color: '#b45309', text: 'Trưởng Ban QLDA', fullText: 'Trưởng Ban Quản Lý Dự Án' };
       default: return { bg: '#f1f5f9', color: '#475569', text: role, fullText: role };
     }
   };

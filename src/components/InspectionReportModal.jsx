@@ -118,6 +118,28 @@ export default function InspectionReportModal({
   const [rectifyPhotos, setRectifyPhotos] = useState(reportState?.rectification?.photos || []);
   const [suggestedTime, setSuggestedTime] = useState(reportState?.rectification?.suggestedTime || '16h30 ngày hôm nay');
 
+  // Ngày phê duyệt HSTK BVTC & Số biện pháp thi công cho phép chỉnh sửa
+  const [designApprovalDate, setDesignApprovalDate] = useState(
+    reportState?.designApprovalDate || report?.designApprovalDate || '16/12/2025'
+  );
+  const [constructionMethodCode, setConstructionMethodCode] = useState(
+    reportState?.constructionMethodCode || report?.constructionMethodCode || '01/BPTC-APG'
+  );
+
+  const handleUpdateDesignApprovalDate = (val) => {
+    setDesignApprovalDate(val);
+    const updated = { ...reportState, designApprovalDate: val };
+    setReportState(updated);
+    if (onSaveReport) onSaveReport(updated);
+  };
+
+  const handleUpdateConstructionMethodCode = (val) => {
+    setConstructionMethodCode(val);
+    const updated = { ...reportState, constructionMethodCode: val };
+    setReportState(updated);
+    if (onSaveReport) onSaveReport(updated);
+  };
+
   // Kiểm tra trạng thái ký số độc lập của 3 bên
   const isSupervisorSigned = Boolean(signatures?.supervisor || reportState?.attendees?.supervisor?.signed);
   const isInvestorSigned = Boolean(signatures?.investor || reportState?.attendees?.investor?.signed);
@@ -606,7 +628,7 @@ export default function InspectionReportModal({
         caption: file.name ? `Hiện trường lỗi: ${file.name.replace(/\.[^/.]+$/, '')}` : 'Hiện trường kiểm tra không đạt',
         gps: '10.0076° N, 105.7823° E (P. Thường Thạnh, TP. Cần Thơ)',
         time: timeStr,
-        photographer: `${currentUser?.fullName || 'Kỹ sư'} (${currentRole === 'LEAD_SUPERVISOR' ? 'TVGS Trưởng' : currentRole === 'SUPERVISOR' ? 'TVGS' : currentRole === 'LEAD_INVESTOR' ? 'CĐT Trưởng' : currentRole === 'INVESTOR' ? 'CĐT' : 'QLDA'})`
+        photographer: `${currentUser?.fullName || 'Kỹ sư'} (${currentRole === 'LEAD_SUPERVISOR' ? 'TVGS Trưởng' : currentRole === 'SUPERVISOR' ? 'TVGS' : currentRole === 'LEAD_INVESTOR' ? 'Trưởng Ban QLDA' : currentRole === 'INVESTOR' ? 'Ban QLDA' : currentRole === 'ADMIN' ? 'CĐT' : 'ĐVTC'})`
       });
     }
 
@@ -714,7 +736,7 @@ export default function InspectionReportModal({
         caption: file.name ? `Hiện trường: ${file.name.replace(/\.[^/.]+$/, '')}` : 'Hình ảnh nghiệm thu hiện trường',
         gps: '10.0076° N, 105.7823° E (P. Thường Thạnh, TP. Cần Thơ)',
         time: timeStr,
-        photographer: `${currentUser?.fullName || 'Kỹ sư'} (${currentRole === 'LEAD_SUPERVISOR' ? 'TVGS Trưởng' : currentRole === 'SUPERVISOR' ? 'TVGS' : currentRole === 'LEAD_INVESTOR' ? 'CĐT Trưởng' : currentRole === 'INVESTOR' ? 'CĐT' : 'ĐVTC'})`
+        photographer: `${currentUser?.fullName || 'Kỹ sư'} (${currentRole === 'LEAD_SUPERVISOR' ? 'TVGS Trưởng' : currentRole === 'SUPERVISOR' ? 'TVGS' : currentRole === 'LEAD_INVESTOR' ? 'Trưởng Ban QLDA' : currentRole === 'INVESTOR' ? 'Ban QLDA' : currentRole === 'ADMIN' ? 'CĐT' : 'ĐVTC'})`
       };
       setEvidencePhotos(prev => {
         const next = [...prev, newPhoto];
@@ -792,8 +814,8 @@ export default function InspectionReportModal({
         role: currentRole,
         roleTitle: currentRole === 'LEAD_SUPERVISOR' ? 'Tư Vấn Giám Sát Trưởng' :
                    currentRole === 'SUPERVISOR' ? 'Tư Vấn Giám Sát' :
-                   currentRole === 'LEAD_INVESTOR' ? 'Đại Diện Chủ Đầu Tư Trưởng' :
-                   currentRole === 'INVESTOR' ? 'Đại Diện Chủ Đầu Tư' : 'Quản Trị Viên',
+                   currentRole === 'LEAD_INVESTOR' ? 'Trưởng Ban QLDA' :
+                   currentRole === 'INVESTOR' ? 'Ban QLDA' : 'Chủ Đầu Tư (CĐT)',
         company: currentUser?.company || 'Ban QLDA / GELICON',
         timestamp: timeStr
       },
@@ -1450,10 +1472,10 @@ export default function InspectionReportModal({
                 </h2>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', fontSize: '0.92rem' }}>
                   <div>
-                    <strong>Số:</strong> <strong style={{ color: '#0f172a', fontFamily: 'monospace', fontSize: '1rem' }}>{cleanReportNum}</strong>
+                    <strong>Số:</strong> <strong style={{ color: '#0f172a', fontSize: '1rem' }}>{cleanReportNum}</strong>
                   </div>
                   <div>
-                    <strong>Số tài liệu căn cứ:</strong> <strong style={{ color: '#0f172a', fontFamily: 'monospace', fontSize: '0.98rem' }}>{cleanRefCode}</strong>
+                    <strong>Số tài liệu căn cứ:</strong> <strong style={{ color: '#0f172a', fontSize: '0.98rem' }}>{cleanRefCode}</strong>
                   </div>
                 </div>
               </div>
@@ -1804,11 +1826,55 @@ export default function InspectionReportModal({
                     <div><strong>4.1. Tài liệu căn cứ nghiệm thu:</strong></div>
                     <div style={{ paddingLeft: '16px' }}>
                       4.1.1 Phiếu yêu cầu nghiệm thu của nhà thầu thi công số: <strong>{cleanReqCode}</strong><br />
-                      4.1.2 Hồ sơ thiết kế BVTC (đã được Chủ đầu tư phê duyệt ngày 16/12/2025):<br />
+                      4.1.2 Hồ sơ thiết kế BVTC (đã được Chủ đầu tư phê duyệt ngày{' '}
+                      <span className="screen-only">
+                        <input
+                          type="text"
+                          value={designApprovalDate}
+                          onChange={(e) => handleUpdateDesignApprovalDate(e.target.value)}
+                          style={{
+                            border: 'none',
+                            borderBottom: '1px dashed #2563eb',
+                            background: 'rgba(37, 99, 235, 0.05)',
+                            color: '#0f172a',
+                            padding: '1px 4px',
+                            fontSize: 'inherit',
+                            fontWeight: 'bold',
+                            width: '110px',
+                            textAlign: 'center',
+                            borderRadius: '3px'
+                          }}
+                          title="Bấm vào để chỉnh sửa ngày phê duyệt thiết kế"
+                        />
+                      </span>
+                      <span className="print-only"><strong>{designApprovalDate}</strong></span>
+                      ):<br />
                       &nbsp;&nbsp;&nbsp;&nbsp;+ Tên hồ sơ thiết kế: Hồ sơ thiết kế xây dựng triển khai sau hồ sơ TKCS.<br />
                       &nbsp;&nbsp;&nbsp;&nbsp;+ Những thay đổi thiết kế đã được chấp thuận: Không.<br />
-                      4.1.3 Biện pháp thi công đã được phê duyệt: Biện pháp thi công số 01/BPTC-APG.<br />
-                      4.1.4 Quy chuẩn, tiêu chuẩn xây dựng được áp dụng (Động theo file Excel):
+                      4.1.3 Biện pháp thi công đã được phê duyệt: Biện pháp thi công số{' '}
+                      <span className="screen-only">
+                        <input
+                          type="text"
+                          value={constructionMethodCode}
+                          onChange={(e) => handleUpdateConstructionMethodCode(e.target.value)}
+                          style={{
+                            border: 'none',
+                            borderBottom: '1px dashed #2563eb',
+                            background: 'rgba(37, 99, 235, 0.05)',
+                            color: '#0f172a',
+                            padding: '1px 4px',
+                            fontSize: 'inherit',
+                            fontWeight: 'bold',
+                            width: '130px',
+                            textAlign: 'center',
+                            borderRadius: '3px'
+                          }}
+                          title="Bấm vào để chỉnh sửa số biện pháp thi công"
+                        />
+                      </span>
+                      <span className="print-only"><strong>{constructionMethodCode}</strong></span>
+                      .<br />
+                      4.1.4 Quy chuẩn, tiêu chuẩn xây dựng được áp dụng:
                       <div className="doc-standards-list" style={{ paddingLeft: '16px', color: '#b91c1c' }}>
                         {displayStandards.map((stdStr, idx) => (
                           <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', margin: '2px 0' }}>
@@ -1865,17 +1931,7 @@ export default function InspectionReportModal({
                     <div>
                       - Chấp thuận nghiệm thu, đồng ý cho triển khai công việc tiếp theo:{' '}
                       {isCompleted ? (
-                        <span>
-                          <strong style={{ 
-                            color: '#059669', 
-                            background: '#ecfdf5', 
-                            padding: '3px 10px', 
-                            borderRadius: '4px', 
-                            border: '1.5px solid #a7f3d0' 
-                          }}>
-                            ☑ ĐỒNG Ý NGHIỆM THU (ĐÃ PHÊ DUYỆT ĐẠT{(reportState?.rectification || report?.rectification) ? ' SAU SỬA CHỮA' : ''})
-                          </strong>
-                        </span>
+                        <span><strong>☑ Đồng ý</strong> &nbsp;&nbsp; ☐ Không đồng ý</span>
                       ) : isRectified ? (
                         <span>
                           <strong style={{ color: '#059669', background: '#ecfdf5', padding: '3px 10px', borderRadius: '4px', border: '1.5px solid #a7f3d0' }}>
@@ -1902,16 +1958,16 @@ export default function InspectionReportModal({
                   )}
 
                   {/* NỘI DUNG SỬA CHỮA HOẶC LÝ DO TỪ CHỐI */}
-                  {((isRectified || reportState.status === 'RECTIFIED' || isCompleted) && Boolean(reportState.rectification?.description || report?.rectification?.description)) ? (
+                  {((isRectified || reportState.status === 'RECTIFIED') && !isCompleted && Boolean(reportState.rectification?.description || report?.rectification?.description)) ? (
                     <div style={{ 
                       marginTop: '8px', 
-                      background: isCompleted ? '#ecfdf5' : '#f5f3ff', 
-                      borderLeft: isCompleted ? '4px solid #10b981' : '4px solid #7c3aed', 
+                      background: '#f5f3ff', 
+                      borderLeft: '4px solid #7c3aed', 
                       padding: '10px 14px', 
                       borderRadius: '0 8px 8px 0' 
                     }}>
-                      <div style={{ color: isCompleted ? '#065f46' : '#6b21a8', fontWeight: 700, marginBottom: '2px' }}>
-                        {isCompleted ? '✓ Báo cáo khắc phục của ĐVTC đã được TVGS nghiệm thu đạt:' : '🔄 Báo cáo khắc phục của ĐVTC:'}
+                      <div style={{ color: '#6b21a8', fontWeight: 700, marginBottom: '2px' }}>
+                        🔄 Báo cáo khắc phục của ĐVTC:
                       </div>
                       <div style={{ color: '#581c87', fontSize: '0.88rem' }}>
                         "{reportState.rectification?.description || rectifyDesc}"
@@ -3169,7 +3225,7 @@ export default function InspectionReportModal({
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               <Eye size={16} color="#d97706" />
                               <span>
-                                👁️ Phiếu do <strong>{invAttendee?.person || 'Cán bộ CĐT'}</strong> phụ trách phê duyệt • Bạn đang xem với quyền CĐT Trưởng
+                                👁️ Phiếu do <strong>{invAttendee?.person || 'Cán bộ Ban QLDA'}</strong> phụ trách phê duyệt • Bạn đang xem với quyền Trưởng Ban QLDA
                               </span>
                             </div>
                             {onReassign && (
@@ -3357,11 +3413,11 @@ export default function InspectionReportModal({
                 <div>
                   <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#6b21a8' }}>
                     {(reportState.conclusion?.rejectedBy?.role === 'INVESTOR' || reportState.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR')
-                      ? 'Báo Cáo Sửa Chữa Khắc Phục & Gửi Trực Tiếp Cho Chủ Đầu Tư'
+                      ? 'Báo Cáo Sửa Chữa Khắc Phục & Gửi Trực Tiếp Cho Ban QLDA'
                       : 'Báo Cáo Sửa Chữa Khắc Phục & Gửi Cho TVGS Duyệt Lại'}
                   </h3>
                   <p style={{ margin: 0, fontSize: '0.8rem', color: '#7e22ce' }}>
-                    Người nhận duyệt: <strong>{(reportState.conclusion?.rejectedBy?.role === 'INVESTOR' || reportState.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR') ? 'Đại Diện Chủ Đầu Tư' : 'Tư Vấn Giám Sát'}</strong> • Biên bản: {cleanReportNum}
+                    Người nhận duyệt: <strong>{(reportState.conclusion?.rejectedBy?.role === 'INVESTOR' || reportState.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR') ? 'Ban Quản Lý Dự Án' : 'Tư Vấn Giám Sát'}</strong> • Biên bản: {cleanReportNum}
                   </p>
                 </div>
               </div>
@@ -3381,7 +3437,7 @@ export default function InspectionReportModal({
                 fontSize: '0.84rem'
               }}>
                 <div style={{ color: '#991b1b', fontWeight: 700, marginBottom: '2px' }}>
-                  ⚠️ Yêu cầu sửa chữa từ {(reportState.conclusion?.rejectedBy?.role === 'INVESTOR' || reportState.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR') ? 'Chủ Đầu Tư' : 'TVGS'} ({reportState.conclusion?.rejectedBy?.name || 'Cán bộ kiểm tra'}):
+                  ⚠️ Yêu cầu sửa chữa từ {(reportState.conclusion?.rejectedBy?.role === 'INVESTOR' || reportState.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR') ? 'Ban QLDA' : 'TVGS'} ({reportState.conclusion?.rejectedBy?.name || 'Cán bộ kiểm tra'}):
                 </div>
                 <div style={{ color: '#7f1d1d' }}>
                   "{reportState.conclusion?.rejectionReason || 'Cần nắn chỉnh và kiểm tra lại vị trí kỹ thuật'}"
@@ -3447,7 +3503,7 @@ export default function InspectionReportModal({
               {/* 3. THỜI GIAN ĐỀ NGHỊ NGHIỆM THU LẠI */}
               <div className="form-group">
                 <label className="form-label">
-                  3. Thời gian đề nghị {(reportState.conclusion?.rejectedBy?.role === 'INVESTOR' || reportState.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR') ? 'Chủ Đầu Tư' : 'TVGS'} kiểm tra lại:
+                  3. Thời gian đề nghị {(reportState.conclusion?.rejectedBy?.role === 'INVESTOR' || reportState.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR') ? 'Ban QLDA' : 'TVGS'} kiểm tra lại:
                 </label>
                 <input type="text" className="form-input" value={suggestedTime} onChange={(e) => setSuggestedTime(e.target.value)} placeholder="Ví dụ: 16h30 ngày hôm nay / 09h00 sáng mai" />
               </div>
@@ -3463,7 +3519,7 @@ export default function InspectionReportModal({
               >
                 <Send size={16} /> <span>
                   {(reportState.conclusion?.rejectedBy?.role === 'INVESTOR' || reportState.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR')
-                    ? 'Xác Nhận Đã Sửa & Gửi Trực Tiếp Cho Chủ Đầu Tư Duyệt'
+                    ? 'Xác Nhận Đã Sửa & Gửi Trực Tiếp Cho Ban QLDA Duyệt'
                     : 'Xác Nhận Đã Sửa & Gửi Cho TVGS Duyệt Lại'}
                 </span>
               </button>

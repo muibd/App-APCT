@@ -139,9 +139,9 @@ export default function InvitationDetailModal({
             }}>
               <Clock size={20} color="#2563eb" style={{ flexShrink: 0 }} />
               <div>
-                <strong>⏳ CHỜ CHỦ ĐẦU TƯ PHÊ DUYỆT & KÝ SỐ</strong>
+                <strong>⏳ CHỜ BAN QLDA PHÊ DUYỆT & KÝ SỐ</strong>
                 <div style={{ fontSize: '0.84rem', marginTop: '2px', color: '#1d4ed8' }}>
-                  TVGS đã kiểm tra và nghiệm thu đạt. Đang chờ đại diện Chủ đầu tư vào xem xét và ký số.
+                  TVGS đã kiểm tra và nghiệm thu đạt. Đang chờ Ban Quản Lý Dự Án vào xem xét và ký số.
                 </div>
               </div>
             </div>
@@ -170,14 +170,17 @@ export default function InvitationDetailModal({
           )}
 
           {/* VĂN BẢN NỘI DUNG PHIẾU YÊU CẦU THEO CHUẨN MẪU */}
-          <div style={{
-            background: '#ffffff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '12px',
-            padding: '20px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-            marginBottom: '20px'
-          }}>
+          <div 
+            className="document-paper invitation-paper"
+            style={{
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '12px',
+              padding: '20px',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+              marginBottom: '20px',
+              fontFamily: '"Times New Roman", Times, serif'
+            }}>
             {/* Header Quốc hiệu tiêu ngữ */}
             <div style={{ textAlign: 'center', marginBottom: '14px' }}>
               <div style={{ fontWeight: 'bold', fontSize: '0.98rem', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
@@ -205,10 +208,7 @@ export default function InvitationDetailModal({
               </h2>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', fontSize: '0.9rem' }}>
                 <div>
-                  <strong>Số:</strong> <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>{cleanReqNumber}</strong>
-                </div>
-                <div>
-                  <strong>Số tài liệu căn cứ:</strong> <strong style={{ color: '#0f172a', fontFamily: 'monospace', fontSize: '0.96rem' }}>{cleanRefDocCode}</strong>
+                  <strong>Số:</strong> <strong style={{ color: '#0f172a' }}>{cleanReqNumber}</strong>
                 </div>
               </div>
             </div>
@@ -405,8 +405,8 @@ export default function InvitationDetailModal({
                         : rec.role === 'SUPERVISOR'
                           ? 'Đại diện TVGS'
                           : rec.role === 'LEAD_INVESTOR'
-                            ? 'CĐT Trưởng'
-                            : 'Đại diện CĐT'}
+                            ? 'Trưởng Ban QLDA'
+                            : 'Ban QLDA'}
                     </span>
 
                     {(() => {

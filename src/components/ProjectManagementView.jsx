@@ -462,9 +462,6 @@ export default function ProjectManagementView({
                             </span>
                             <h4 style={{ margin: 0, fontSize: '1.1rem', color: '#0f172a' }}>{proj.name}</h4>
                           </div>
-                          <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '6px' }}>
-                            📍 Địa điểm: {proj.location || 'Phường Thường Thạnh - Quận Cái Răng - TP. Cần Thơ'}
-                          </div>
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
