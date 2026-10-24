@@ -138,25 +138,20 @@ export default function Navbar({
           />
         </div>
 
-        {/* USER PROFILE AVATAR / PILL */}
+        {/* USER PROFILE AVATAR */}
         <div
           className="user-profile-pill"
           onClick={onOpenProfile}
-          title="Thông tin tài khoản & Cài đặt"
+          title={`Tài khoản: ${currentUser?.fullName || 'Người dùng'} (${badge.fullText}) - Cài đặt`}
           role="button"
           tabIndex={0}
+          style={{ cursor: 'pointer' }}
         >
           <div
             className="avatar-circle"
             style={{ background: badge.color }}
           >
             {currentUser?.avatar || 'NV'}
-          </div>
-          <div className="user-meta-text">
-            <div className="user-name">{currentUser?.fullName || 'Người dùng'}</div>
-            <div className="user-role-title" style={{ color: badge.color, fontWeight: 700 }}>
-              {badge.fullText}
-            </div>
           </div>
         </div>
 

@@ -100,6 +100,79 @@ export const DEFAULT_PROJECTS = [
             ]
           }
         ]
+      },
+      {
+        id: "cont_apg_2203",
+        name: "Công ty CP Xây dựng An Phú Gia",
+        shortName: "An Phú Gia",
+        packages: [
+          {
+            id: "pkg_apg_ketchu_2203",
+            name: "Thi công phần kết cấu – Tòa A và Tòa B (Gói thầu số 02)",
+            tasks: [
+              "Cốt thép, ván khuôn, bê tông",
+              "Cốt thép cột, vách, dầm, sàn",
+              "Ván khuôn dầm sàn, cột vách",
+              "Bê tông thương phẩm dầm, sàn, cột",
+              "Bảo dưỡng bê tông",
+              "Chống thấm cổ ống xuyên sàn"
+            ]
+          },
+          {
+            id: "pkg_apg_mongham_2203",
+            name: "Thi công phần móng và hầm (Gói thầu số 01)",
+            tasks: [
+              "Cốt thép, ván khuôn, bê tông",
+              "Đào đất hố móng và tầng hầm",
+              "Bê tông lót móng",
+              "Cốt thép đài móng, dầm móng",
+              "Bê tông đài móng, sàn hầm",
+              "Chống thấm sàn và vách tầng hầm"
+            ]
+          },
+          {
+            id: "pkg_apg_hoanthien_2203",
+            name: "Thi công phần hoàn thiện Tòa A và Tòa B",
+            tasks: [
+              "Cốt thép, ván khuôn, bê tông",
+              "Xây tường gạch",
+              "Trát tường trong và ngoài nhà",
+              "Chống thấm khu vệ sinh, ban công",
+              "Cán nền, láng sàn",
+              "Ốp lát gạch ceramic"
+            ]
+          }
+        ]
+      },
+      {
+        id: "cont_binhhoa_2203",
+        name: "Công ty TNHH Tư vấn Thiết kế Bình Hoà",
+        shortName: "Bình Hoà",
+        packages: [
+          {
+            id: "pkg_binhhoa_kientruc_2203",
+            name: "Thi công phần hoàn thiện kiến trúc",
+            tasks: [
+              "Cốt thép, ván khuôn, bê tông",
+              "Xây tường gạch ống",
+              "Trát tường trong và ngoài",
+              "Chống thấm",
+              "Cán nền",
+              "Ốp lát gạch men",
+              "Sơn bả tường trần"
+            ]
+          },
+          {
+            id: "pkg_binhhoa_hatang_2203",
+            name: "Thi công cảnh quan sân vườn và hạ tầng kỹ thuật",
+            tasks: [
+              "Đào đắp đất nền sân đường",
+              "Lắp đặt bó vỉa, lát gạch vỉa hè",
+              "Lắp đặt ống thoát nước mưa sân đường",
+              "Trồng cây xanh và thảm cỏ"
+            ]
+          }
+        ]
       }
     ]
   },
@@ -127,6 +200,18 @@ export const DEFAULT_PROJECTS = [
               "Lắp đặt tủ điện, thiết bị đóng cắt",
               "Lắp đặt hệ thống chiếu sáng"
             ]
+          },
+          {
+            id: "pkg_hoanthien_2204",
+            name: "Thi công hoàn thiện kiến trúc",
+            tasks: [
+              "Cốt thép, ván khuôn, bê tông",
+              "Xây tường",
+              "Trát tường",
+              "Chống thấm",
+              "Cán nền",
+              "Ốp lát gạch"
+            ]
           }
         ]
       },
@@ -143,6 +228,54 @@ export const DEFAULT_PROJECTS = [
               "Lắp đặt đầu phun Sprinkler",
               "Lắp đặt tủ trung tâm báo cháy và đầu báo khói/nhiệt",
               "Thử áp lực đường ống chữa cháy"
+            ]
+          }
+        ]
+      },
+      {
+        id: "cont_apg_2204",
+        name: "Công ty CP Xây dựng An Phú Gia",
+        shortName: "An Phú Gia",
+        packages: [
+          {
+            id: "pkg_apg_ketchu_2204",
+            name: "Thi công phần kết cấu – Khối cao tầng",
+            tasks: [
+              "Cốt thép, ván khuôn, bê tông",
+              "Cốt thép cột, vách, dầm, sàn",
+              "Ván khuôn dầm sàn, cột vách",
+              "Bê tông thương phẩm",
+              "Bảo dưỡng bê tông"
+            ]
+          },
+          {
+            id: "pkg_apg_mong_2204",
+            name: "Thi công phần móng và cọc khoan nhồi",
+            tasks: [
+              "Khoan hạ lồng thép cọc khoan nhồi",
+              "Đổ bê tông cọc nhồi",
+              "Đào đất hố móng",
+              "Cốt thép đài móng giằng móng",
+              "Bê tông đài móng"
+            ]
+          }
+        ]
+      },
+      {
+        id: "cont_binhhoa_2204",
+        name: "Công ty TNHH Tư vấn Thiết kế Bình Hoà",
+        shortName: "Bình Hoà",
+        packages: [
+          {
+            id: "pkg_binhhoa_hoanthien_2204",
+            name: "Thi công hoàn thiện kiến trúc",
+            tasks: [
+              "Cốt thép, ván khuôn, bê tông",
+              "Xây tường",
+              "Trát tường",
+              "Chống thấm",
+              "Cán nền",
+              "Ốp lát gạch men"
             ]
           }
         ]
@@ -243,7 +376,20 @@ export function loadStoredProjects() {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        // Tự động hợp nhất các nhà thầu chuẩn mới (An Phú Gia, Bình Hoà, Gia Huy...) vào danh mục
+        return parsed.map(p => {
+          const defP = DEFAULT_PROJECTS.find(dp => dp.code === p.code || dp.id === p.id);
+          if (!defP) return p;
+          const existingContractorNames = (p.contractors || []).map(c => (c.name || '').toLowerCase().trim());
+          const missingContractors = (defP.contractors || []).filter(c => !existingContractorNames.includes((c.name || '').toLowerCase().trim()));
+          if (missingContractors.length > 0) {
+            return {
+              ...p,
+              contractors: [...(p.contractors || []), ...missingContractors]
+            };
+          }
+          return p;
+        });
       }
     }
   } catch (err) {

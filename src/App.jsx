@@ -3592,22 +3592,6 @@ export default function App() {
               </>
             )}
           </ul>
-
-          <div className="sidebar-section-title">Công Trình Đang Phụ Trách</div>
-          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px', fontSize: '0.82rem' }}>
-            <div style={{ fontWeight: 'bold', color: '#1e3a8a', marginBottom: '6px' }}>
-              🏗️ {MOCK_PROJECT.projectName.slice(0, 32)}...
-            </div>
-            <div style={{ paddingLeft: '10px', borderLeft: '2px solid #3b82f6', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <div style={{ color: '#0f172a', fontWeight: '600' }}>
-                🏢 Chung cư nhà ở xã hội 2
-              </div>
-              <div style={{ color: '#64748b', fontSize: '0.78rem', paddingLeft: '8px' }}>
-                • Thi công kết cấu Tòa A-B<br />
-                • Thi công phần móng hầm
-              </div>
-            </div>
-          </div>
         </aside>
 
         {/* NỘI DUNG CHÍNH (GIAO DIỆN CHUYÊN BIỆT TỪNG VAI TRÒ) */}
@@ -3821,7 +3805,7 @@ export default function App() {
                     <div style={{ display: 'flex', gap: '10px' }}>
                       <button className="btn-primary" onClick={() => setIsCreateModalOpen(true)}>
                         <Plus size={18} />
-                        <span>Tạo Phiếu Yêu Cầu</span>
+                        <span>Tạo Phiếu Yêu Cầu Nghiệm Thu</span>
                       </button>
                       <button 
                         className="btn-secondary" 

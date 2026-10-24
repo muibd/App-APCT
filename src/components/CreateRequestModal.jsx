@@ -104,32 +104,106 @@ export default function CreateRequestModal({
   }, [projectsList, selectedProjectCode]);
 
   // -------------------------------------------------------------
-  // BẬC 2: CHỌN CÔNG TY TRONG CÔNG TRÌNH ĐÓ
+  // ĐƠN VỊ THI CÔNG: TỰ ĐỘNG LẤY THEO CÔNG TY CỦA TÀI KHOẢN ĐĂNG NHẬP
+  // Không cho chọn thủ công, tự động gắn liền phiếu với công ty của người tạo
   // -------------------------------------------------------------
+  const userCompany = (currentUser?.company || '').trim();
+
   const availableContractors = useMemo(() => {
     return currentProject?.contractors || [];
   }, [currentProject]);
 
-  const [selectedContractorName, setSelectedContractorName] = useState(() => {
-    return availableContractors[0]?.name || 'Công ty TNHH Gia Huy Vĩnh Phúc';
-  });
+  const currentContractor = useMemo(() => {
+    if (!availableContractors.length) {
+      return {
+        name: userCompany || 'Đơn vị thi công',
+        shortName: userCompany || 'ĐVTC',
+        packages: [
+          {
+            name: 'Thi công phần hoàn thiện Tòa A và Tòa B',
+            tasks: ['Cốt thép, ván khuôn, bê tông', 'Xây tường', 'Trát tường', 'Chống thấm', 'Cán nền', 'Ốp lát gạch']
+          }
+        ]
+      };
+    }
 
-  // Tự động đồng bộ contractor khi đổi công trình
-  useEffect(() => {
-    if (availableContractors.length > 0) {
-      const exists = availableContractors.some(c => c.name === selectedContractorName);
-      if (!exists) {
-        setSelectedContractorName(availableContractors[0].name);
+    if (!userCompany) {
+      return availableContractors[0];
+    }
+
+    const cleanUserCo = userCompany.toLowerCase();
+
+    // 1. Khớp chính xác tên công ty
+    let match = availableContractors.find(c => (c.name || '').toLowerCase() === cleanUserCo);
+    if (match) return match;
+
+    // 2. Khớp chuỗi con hoặc tên viết tắt (shortName)
+    match = availableContractors.find(c => {
+      const cName = (c.name || '').toLowerCase();
+      const cShort = (c.shortName || '').toLowerCase();
+      return cName.includes(cleanUserCo) || cleanUserCo.includes(cName) ||
+             (cShort && (cShort.includes(cleanUserCo) || cleanUserCo.includes(cShort)));
+    });
+    if (match) return match;
+
+    // 3. Khớp theo từ khóa nhận diện đặc trưng
+    const keywords = [
+      { key: 'gia huy', matchKey: 'gia huy' },
+      { key: 'an phú gia', matchKey: 'an phú gia' },
+      { key: 'apg', matchKey: 'an phú gia' },
+      { key: 'bình hoà', matchKey: 'bình hoà' },
+      { key: 'binh hoa', matchKey: 'bình hoà' },
+      { key: 'phan lê', matchKey: 'phan lê' },
+      { key: 'phan le', matchKey: 'phan lê' }
+    ];
+    for (const item of keywords) {
+      if (cleanUserCo.includes(item.key)) {
+        match = availableContractors.find(c => {
+          const cName = (c.name || '').toLowerCase();
+          const cShort = (c.shortName || '').toLowerCase();
+          return cName.includes(item.matchKey) || cShort.includes(item.matchKey);
+        });
+        if (match) return match;
       }
     }
-  }, [availableContractors, selectedContractorName]);
 
-  const currentContractor = useMemo(() => {
-    return availableContractors.find(c => c.name === selectedContractorName) || availableContractors[0];
-  }, [availableContractors, selectedContractorName]);
+    // 4. Nếu là tài khoản Admin/CĐT/TVGS đang thao tác xem thử
+    const isSpecialRole = currentUser?.role === 'ADMIN' || currentUser?.role === 'INVESTOR' || currentUser?.role === 'LEAD_INVESTOR' || currentUser?.role === 'SUPERVISOR' || currentUser?.role === 'LEAD_SUPERVISOR';
+    if (isSpecialRole) {
+      return availableContractors[0];
+    }
+
+    // Với tài khoản ĐVTC mới, sinh đối tượng contractor động theo đúng tên công ty của họ
+    return {
+      name: userCompany,
+      shortName: userCompany,
+      packages: [
+        {
+          name: 'Thi công phần hoàn thiện Tòa A và Tòa B',
+          tasks: ['Cốt thép, ván khuôn, bê tông', 'Xây tường', 'Trát tường', 'Chống thấm', 'Cán nền', 'Ốp lát gạch']
+        },
+        {
+          name: 'Thi công kết cấu & xây thô',
+          tasks: ['Cốt thép, ván khuôn, bê tông', 'Cốt thép móng', 'Bê tông dầm sàn', 'Xây tường gạch']
+        },
+        {
+          name: 'Thi công hệ thống M&E',
+          tasks: ['Lắp đặt ống luồn và kéo dây điện', 'Lắp đặt ống cấp thoát nước', 'Lắp đặt thiết bị vệ sinh']
+        }
+      ]
+    };
+  }, [availableContractors, userCompany, currentUser?.role]);
+
+  // Tên công ty ĐVTC chính thức ghi trên phiếu:
+  const effectiveContractorName = useMemo(() => {
+    if (currentUser?.role === 'CONTRACTOR' && userCompany) {
+      return userCompany;
+    }
+    return currentContractor?.name || userCompany || 'Công ty TNHH Gia Huy Vĩnh Phúc';
+  }, [currentUser, userCompany, currentContractor]);
 
   // -------------------------------------------------------------
-  // BẬC 3: CHỌN HẠNG MỤC (GÓI THẦU) CÓ TRONG CÔNG TY ĐÓ
+  // HẠNG MỤC (GÓI THẦU) - TỰ ĐỘNG HIỂN THỊ THEO CÔNG TY ĐÓ
   // -------------------------------------------------------------
   const availablePackages = useMemo(() => {
     return currentContractor?.packages || [];
@@ -138,17 +212,19 @@ export default function CreateRequestModal({
   const [selectedPackageName, setSelectedPackageName] = useState(() => {
     return availablePackages[0]?.name || 'Thi công phần hoàn thiện Tòa A và Tòa B';
   });
+  const [customPackageInput, setCustomPackageInput] = useState('');
 
+  // Tự động đồng bộ gói thầu khi công ty / công trình thay đổi
   useEffect(() => {
     if (availablePackages.length > 0) {
       const exists = availablePackages.some(p => p.name === selectedPackageName);
-      if (!exists) {
+      if (!exists && selectedPackageName !== '__CUSTOM_PKG__') {
         setSelectedPackageName(availablePackages[0].name);
       }
     } else {
       setSelectedPackageName('Thi công hoàn thiện');
     }
-  }, [availablePackages, selectedPackageName]);
+  }, [availablePackages]);
 
   const currentPackage = useMemo(() => {
     return availablePackages.find(p => p.name === selectedPackageName) || availablePackages[0];
@@ -316,15 +392,7 @@ export default function CreateRequestModal({
     return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
   };
 
-  const [inspectionPlace, setInspectionPlace] = useState(
-    () => currentProject?.location || 'Phường Thường Thạnh - Quận Cái Răng - TP. Cần Thơ'
-  );
-
-  useEffect(() => {
-    if (currentProject?.location) {
-      setInspectionPlace(currentProject.location);
-    }
-  }, [currentProject]);
+  const inspectionPlace = currentProject?.location || 'Phường Thường Thạnh - Quận Cái Răng - TP. Cần Thơ';
 
   // Ảnh hiện trường đính kèm
   const [evidencePhotos, setEvidencePhotos] = useState([]);
@@ -445,6 +513,10 @@ export default function CreateRequestModal({
     const formattedStartTime = `${startTime.replace(':', 'h')}, ngày ${dateFormatted}`;
     const formattedEndTime = `${calculatedEndTime.replace(':', 'h')}, ngày ${dateFormatted}`;
 
+    const finalPackageName = selectedPackageName === '__CUSTOM_PKG__'
+      ? (customPackageInput.trim() || 'Hạng mục thi công')
+      : selectedPackageName;
+
     const newRequest = {
       id: `req_${Date.now()}`,
       requestNumber: 'IR',
@@ -457,12 +529,12 @@ export default function CreateRequestModal({
       projectCode: currentProject?.code || selectedProjectCode,
       projectName: currentProject?.projectName || 'Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City',
       buildingName: currentProject?.name || 'Chung cư nhà ở xã hội 2',
-      contractorCompany: selectedContractorName,
-      packageName: selectedPackageName,
-      itemName: selectedPackageName,
+      contractorCompany: effectiveContractorName,
+      packageName: finalPackageName,
+      itemName: finalPackageName,
       location: currentProject?.location || inspectionPlace,
-      createdByUid: currentUser?.uid || 'uid_dvtc_ghvp_01',
-      createdByName: currentUser?.fullName || 'Trần Mạnh Hưng',
+      createdByUid: currentUser?.uid || 'uid_dvtc_apg_01',
+      createdByName: currentUser?.fullName || 'Kỹ thuật hiện trường',
       createdByRole: currentUser?.position || 'Chỉ huy trưởng',
       taskContent: finalTask,
       startTime: formattedStartTime,
@@ -608,19 +680,32 @@ export default function CreateRequestModal({
             </div>
           </div>
 
-          {/* NGÀY THỰC HIỆN KIỂM TRA */}
-          <div className="form-group" style={{ marginBottom: '16px' }}>
-            <label className="form-label" style={{ fontWeight: 600, color: '#334155' }}>
-              Ngày thực hiện kiểm tra: <span style={{ color: '#ef4444' }}>*</span>
-            </label>
-            <input
-              type="date"
-              className="form-input"
-              value={scheduledDate}
-              onChange={(e) => setScheduledDate(e.target.value)}
-              required
-              style={{ maxWidth: '320px' }}
-            />
+          {/* NGÀY & THỜI GIAN THỰC HIỆN KIỂM TRA */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px', marginBottom: '16px' }}>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label" style={{ fontWeight: 600, color: '#334155' }}>
+                Ngày thực hiện kiểm tra: <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              <input
+                type="date"
+                className="form-input"
+                value={scheduledDate}
+                onChange={(e) => setScheduledDate(e.target.value)}
+                required
+              />
+            </div>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label" style={{ fontWeight: 600, color: '#334155' }}>
+                Thời gian bắt đầu: <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              <input
+                type="time"
+                className="form-input"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                required
+              />
+            </div>
           </div>
 
           {/* ============================================================== */}
@@ -660,23 +745,32 @@ export default function CreateRequestModal({
                 </select>
               </div>
 
-              {/* BƯỚC 2: CHỌN CÔNG TY THUỘC CÔNG TRÌNH */}
+              {/* BƯỚC 2: ĐƠN VỊ THI CÔNG (TỰ ĐỘNG THEO TÀI KHOẢN ĐĂNG NHẬP, KHÔNG CHỌN) */}
               <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label" style={{ fontWeight: 700, color: '#0f172a' }}>
-                  2. Chọn Công ty (Đơn vị thi công):
+                <label className="form-label" style={{ fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>2. Đơn vị thi công (ĐVTC):</span>
+                  <span style={{ fontSize: '0.74rem', color: '#059669', fontWeight: 600, background: '#ecfdf5', padding: '1px 6px', borderRadius: '4px', border: '1px solid #a7f3d0' }}>
+                    ✓ Auto theo tài khoản
+                  </span>
                 </label>
-                <select
-                  className="form-select"
-                  value={selectedContractorName}
-                  onChange={(e) => setSelectedContractorName(e.target.value)}
-                  style={{ fontWeight: 600, borderColor: '#3b82f6' }}
-                >
-                  {availableContractors.map((c, i) => (
-                    <option key={c.id || i} value={c.name}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                <div style={{
+                  padding: '9px 12px',
+                  background: '#f8fafc',
+                  border: '1.5px solid #cbd5e1',
+                  borderRadius: '8px',
+                  fontWeight: 700,
+                  color: '#1e3a8a',
+                  fontSize: '0.9rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  minHeight: '40px'
+                }}>
+                  <Building2 size={16} color="#2563eb" style={{ flexShrink: 0 }} />
+                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={effectiveContractorName}>
+                    {effectiveContractorName}
+                  </span>
+                </div>
               </div>
 
               {/* BƯỚC 3: CHỌN HẠNG MỤC (GÓI THẦU) TRONG CÔNG TY ĐÓ */}
@@ -721,6 +815,23 @@ export default function CreateRequestModal({
                 </div>
               )}
             </div>
+
+            {/* NẾU TỰ NHẬP HẠNG MỤC (GÓI THẦU) KHÁC */}
+            {selectedPackageName === '__CUSTOM_PKG__' && (
+              <div style={{ marginTop: '12px' }}>
+                <label className="form-label" style={{ fontWeight: 600, color: '#0f172a' }}>
+                  Nhập tên Hạng mục / Gói thầu mới: <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Ví dụ: Thi công kết cấu Tòa C..."
+                  value={customPackageInput}
+                  onChange={(e) => setCustomPackageInput(e.target.value)}
+                  required
+                />
+              </div>
+            )}
 
             {/* NẾU TỰ NHẬP HẠNG MỤC CÔNG VIỆC */}
             {inspectionType === 'WORK' && selectedTaskName === '__CUSTOM_TASK__' && (
@@ -891,29 +1002,6 @@ export default function CreateRequestModal({
             </div>
           </div>
 
-          {/* THỜI GIAN & ĐỊA ĐIỂM NGHIỆM THU */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '18px' }}>
-            <div className="form-group" style={{ margin: 0 }}>
-              <label className="form-label">Thời gian bắt đầu:</label>
-              <input
-                type="time"
-                className="form-input"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                required
-              />
-            </div>
-            <div className="form-group" style={{ margin: 0 }}>
-              <label className="form-label">Địa điểm kiểm tra:</label>
-              <input
-                type="text"
-                className="form-input"
-                value={inspectionPlace}
-                onChange={(e) => setInspectionPlace(e.target.value)}
-                required
-              />
-            </div>
-          </div>
 
           {/* ĐÍNH KÈM ẢNH HIỆN TRƯỜNG */}
           <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', marginBottom: '18px' }}>
