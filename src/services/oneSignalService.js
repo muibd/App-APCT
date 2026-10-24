@@ -58,12 +58,16 @@ export const loginOneSignalUser = (user) => {
     try {
       if (user.uid) {
         await OneSignal.login(user.uid);
+        await OneSignal.User.addTag("uid", user.uid);
       }
       if (user.role) {
         await OneSignal.User.addTag("role", user.role);
       }
       if (user.fullName) {
         await OneSignal.User.addTag("fullName", user.fullName);
+      }
+      if (user.isLead || user.role === 'LEAD_SUPERVISOR' || user.role === 'LEAD_INVESTOR') {
+        await OneSignal.User.addTag("isLead", "true");
       }
       console.log('[OneSignal User Tagged]', user.fullName, 'Role:', user.role);
     } catch (err) {

@@ -326,6 +326,26 @@ export default function App() {
   // 4. Các cán bộ thường KHÔNG được chọn và KHÔNG phải Trưởng:
   //    TUYỆT ĐỐI KHÔNG NHẬN THÔNG BÁO!
   // ============================================================================
+  // ============================================================================
+  // HỆ THỐNG LỌC VÀ ĐIỀU HƯỚNG THÔNG BÁO THEO QUY CHUẨN (NOTIFICATION ACCESS CONTROL)
+  // Quy tắc chuẩn 100% theo yêu cầu:
+  // 1. CĐT Trưởng (LEAD_INVESTOR): Nhận toàn bộ thông báo của dự án.
+  // 2. TVGS Trưởng (LEAD_SUPERVISOR): Nhận toàn bộ thông báo của dự án.
+  // 3. CĐT thường (INVESTOR):
+  //    - Nhận khi có người tạo phiếu hoặc sửa phiếu và yêu cầu mình duyệt (được phân công).
+  //    - Nhận khi 3 bên xác nhận hết (hoàn thành nghiệm thu của phiếu phân công cho mình).
+  //    - KHÔNG nhận thông báo của các người khác!
+  // 4. TVGS thường (SUPERVISOR):
+  //    - Nhận khi có người tạo phiếu hoặc sửa phiếu và yêu cầu mình duyệt (được phân công).
+  //    - Hoặc khi phiếu có tên mình duyệt bị CĐT hủy (từ chối / yêu cầu sửa).
+  //    - Hoặc 3 bên xác nhận hết (hoàn thành nghiệm thu của phiếu phân công cho mình).
+  //    - KHÔNG nhận thông báo của các người khác!
+  // 5. Kỹ thuật hiện trường (CONTRACTOR):
+  //    - Nhận thông báo khi phiếu của mình tạo có xác nhận duyệt (TVGS duyệt hoặc CĐT duyệt).
+  //    - Hoặc không đồng ý duyệt (TVGS hoặc CĐT từ chối / hủy).
+  //    - Hoặc khi cả 3 bên xác nhận duyệt xong (hoàn tất).
+  //    - KHÔNG nhận thông báo của người khác!
+  // ============================================================================
   const checkNotificationRecipient = (
     notif, 
     user = currentUserRef.current, 
@@ -335,182 +355,178 @@ export default function App() {
     if (!user || !notif) return false;
     const role = user.role;
 
-    // 1. Quản trị viên luôn nhận được thông báo
+    // 0. Quản trị viên luôn nhận được thông báo
     if (role === 'ADMIN') return true;
 
-    // 2. Tìm phiếu yêu cầu và biên bản liên quan đến thông báo này
-    const req = reqList.find(r => 
+    // 1. CĐT TRƯỞNG: Nhận toàn bộ thông báo
+    const isLeadInvestor = role === 'LEAD_INVESTOR' || Boolean(user.isLead && role === 'INVESTOR');
+    if (isLeadInvestor) return true;
+
+    // 2. TVGS TRƯỞNG: Nhận toàn bộ thông báo
+    const isLeadSupervisor = role === 'LEAD_SUPERVISOR' || Boolean(user.isLead && role === 'SUPERVISOR');
+    if (isLeadSupervisor) return true;
+
+    // Tìm phiếu yêu cầu và biên bản liên quan
+    const req = (reqList || []).find(r => 
       (notif.targetRequestId && (r.id === notif.targetRequestId || r.requestNumber === notif.targetRequestId)) ||
       (notif.targetReportId && (r.reportId === notif.targetReportId || r.id === notif.targetReportId))
     );
-    const rep = repList.find(r => 
+    const rep = (repList || []).find(r => 
       (notif.targetReportId && (r.id === notif.targetReportId || r.reportNumber === notif.targetReportId)) ||
       (notif.targetRequestId && (r.requestId === notif.targetRequestId || r.id === notif.targetRequestId))
     );
-
-    // Danh sách cán bộ được chọn tiếp nhận
-    const assignedRecipients = notif.assignedRecipients || req?.assignedRecipients || rep?.assignedRecipients || [];
 
     const curUid = user.uid;
     const curEmail = (user.email || '').trim().toLowerCase();
     const curName = (user.fullName || '').trim().toLowerCase();
 
-    // Kiểm tra xem cán bộ này có nằm trong danh sách ĐƯỢC CHỌN hay không
-    const isExplicitlyAssigned = assignedRecipients.some(rec => {
-      const rUid = rec.uid;
-      const rEmail = (rec.email || '').trim().toLowerCase();
-      const rName = (rec.fullName || '').trim().toLowerCase();
+    // Thông báo gửi đích danh trực tiếp cho UID này
+    if (notif.recipientUid && notif.recipientUid === curUid) return true;
+    if (Array.isArray(notif.extraRecipientUids) && notif.extraRecipientUids.includes(curUid)) return true;
 
-      return Boolean(
-        (curUid && rUid === curUid) ||
-        (curEmail && rEmail && curEmail === rEmail) ||
-        (curName && rName && (curName === rName || curName.includes(rName) || rName.includes(curName)))
-      );
-    });
+    // Danh sách cán bộ được phân công tiếp nhận phiếu
+    const assignedRecipients = notif.assignedRecipients || req?.assignedRecipients || rep?.assignedRecipients || [];
 
-    // Kiểm tra người lập phiếu (ĐVTC tạo phiếu)
-    const creatorUid = notif.createdByUid || req?.createdByUid;
-    const creatorName = (notif.createdByName || req?.createdByName || '').trim().toLowerCase();
+    // Hàm kiểm tra cán bộ có nằm trong danh sách phân công duyệt hay không
+    const isAssigned = (roleToCheck) => {
+      return assignedRecipients.some(rec => {
+        if (roleToCheck && rec.role && rec.role !== roleToCheck) return false;
+        const rUid = rec.uid;
+        const rEmail = (rec.email || '').trim().toLowerCase();
+        const rName = (rec.fullName || '').trim().toLowerCase();
+        return Boolean(
+          (curUid && rUid === curUid) ||
+          (curEmail && rEmail && curEmail === rEmail) ||
+          (curName && rName && (curName === rName || curName.includes(rName) || rName.includes(curName)))
+        );
+      });
+    };
+
+    // Kiểm tra người tạo phiếu (ĐVTC Kỹ thuật hiện trường)
+    const creatorUid = notif.createdByUid || req?.createdByUid || rep?.createdByUid;
+    const creatorName = (notif.createdByName || req?.createdByName || rep?.createdByName || '').trim().toLowerCase();
     const isCreator = Boolean(
       (curUid && creatorUid === curUid) ||
       (curName && creatorName && (curName === creatorName || curName.includes(creatorName) || creatorName.includes(curName)))
     );
 
-    // Kiểm tra người tham gia biên bản (Attendees)
-    const isAttendee = Boolean(
+    // Kiểm tra cán bộ tham gia ký biên bản (Attendees)
+    const isAttendeeSupervisor = Boolean(
       (rep?.attendees?.supervisor?.email && curEmail && rep.attendees.supervisor.email.toLowerCase() === curEmail) ||
+      (rep?.attendees?.supervisor?.person && curName && rep.attendees.supervisor.person.toLowerCase().includes(curName))
+    );
+    const isAttendeeInvestor = Boolean(
       (rep?.attendees?.investor?.email && curEmail && rep.attendees.investor.email.toLowerCase() === curEmail) ||
-      (rep?.attendees?.contractor?.email && curEmail && rep.attendees.contractor.email.toLowerCase() === curEmail) ||
-      (rep?.attendees?.supervisor?.person && curName && rep.attendees.supervisor.person.toLowerCase().includes(curName)) ||
-      (rep?.attendees?.investor?.person && curName && rep.attendees.investor.person.toLowerCase().includes(curName)) ||
-      (rep?.attendees?.contractor?.person && curName && rep.attendees.contractor.person.toLowerCase().includes(curName))
+      (rep?.attendees?.investor?.person && curName && rep.attendees.investor.person.toLowerCase().includes(curName))
     );
 
-    // Nếu thông báo gửi đích danh recipientUid
-    if (notif.recipientUid && notif.recipientUid === curUid) return true;
+    // Cờ 3 bên xác nhận hết (COMPLETION)
+    const isCompletion = 
+      notif.type === 'COMPLETION' || 
+      notif.type === 'COMPLETION_REPORT_CREATED' ||
+      notif.type === 'COMPLETION_REPORT_SIGNED' ||
+      Boolean(notif.targetCompletionReportId) ||
+      (notif.title && notif.title.includes('Hoàn thành nghiệm thu'));
 
-    // Nếu thông báo có danh sách nhận trực tiếp (người tạo, cán bộ mới/cũ trong đợt điều chuyển)
-    if (Array.isArray(notif.extraRecipientUids) && notif.extraRecipientUids.includes(curUid)) return true;
+    // Cờ từ chối / không đồng ý nghiệm thu
+    const isRejection = 
+      notif.type === 'REJECTION' || 
+      (notif.title && (notif.title.includes('Không đạt') || notif.title.includes('yêu cầu sửa') || notif.title.includes('Từ chối')));
 
-    // --- KIỂM TRA CHO CÁC TRƯỞNG ---
+    // Cờ xác nhận duyệt đạt
+    const isApproved = 
+      notif.type === 'APPROVAL' || 
+      (notif.title && (notif.title.includes('Đã Phê Duyệt') || notif.title.includes('Đã Ký') || notif.title.includes('Mời CĐT'))) ||
+      (notif.body && notif.body.includes('nghiệm thu đạt'));
 
-    // A. TVGS TRƯỞNG (LEAD_SUPERVISOR hoặc isSupervisorLead)
-    const isLeadSupervisor = role === 'LEAD_SUPERVISOR' || Boolean(user.isLead && role === 'SUPERVISOR');
-    if (isLeadSupervisor) {
-      const targetsTvgs = 
-        !notif.targetRoles || 
-        notif.targetRoles.includes('SUPERVISOR') || 
-        notif.targetRoles.includes('LEAD_SUPERVISOR') ||
-        notif.targetRole === 'SUPERVISOR' || 
-        notif.targetRole === 'LEAD_SUPERVISOR';
-
-      if (!targetsTvgs) return false;
-
-      // Được chọn hoặc tham gia trực tiếp
-      if (isExplicitlyAssigned || isAttendee) return true;
-
-      // Phiếu gửi cho cán bộ cấp dưới mà TVGS Trưởng này quản lý
-      const subIds = Array.isArray(user.subordinateIds) ? user.subordinateIds : [];
-      const isForSubordinate = assignedRecipients.some(rec => {
-        if (rec.role !== 'SUPERVISOR' && rec.role !== 'LEAD_SUPERVISOR') return false;
-        if (rec.leaderId && rec.leaderId === curUid) return true;
-        if (rec.uid && subIds.includes(rec.uid)) return true;
+    // --------------------------------------------------------------------------
+    // 3. CĐT THƯỜNG (INVESTOR)
+    // Quy tắc: Có thông báo khi có người tạo phiếu hoặc sửa phiếu và yêu cầu mình duyệt.
+    // 3 bên xác nhận hết. KHÔNG nhận thông báo của các người khác.
+    // --------------------------------------------------------------------------
+    if (role === 'INVESTOR') {
+      const isAssignedCdt = isAssigned('INVESTOR') || isAttendeeInvestor;
+      if (!isAssignedCdt) {
+        // Tuyệt đối không nhận thông báo của các người khác!
         return false;
-      });
-      if (isForSubordinate) return true;
+      }
 
-      // Nếu TVGS Trưởng quản lý chung toàn bộ TVGS dự án (hoặc phiếu chưa phân cán bộ cụ thể)
-      if (subIds.length === 0 || assignedRecipients.length === 0) return true;
+      // 3 bên xác nhận hết
+      if (isCompletion) return true;
 
-      return false;
-    }
-
-    // B. CĐT TRƯỞNG (Ban QLDA)
-    const isLeadInvestor = role === 'LEAD_INVESTOR' || Boolean(user.isLead && role === 'INVESTOR');
-    if (isLeadInvestor) {
-      const targetsCdt = 
-        !notif.targetRoles || 
-        notif.targetRoles.includes('INVESTOR') || 
-        notif.targetRoles.includes('LEAD_INVESTOR') ||
-        notif.targetRole === 'INVESTOR' || 
-        notif.targetRole === 'LEAD_INVESTOR';
-
-      if (!targetsCdt) return false;
-
-      // Được chọn hoặc tham gia trực tiếp
-      if (isExplicitlyAssigned || isAttendee) return true;
-
-      // Phiếu gửi cho cán bộ cấp dưới mà CĐT Trưởng này quản lý
-      const subIds = Array.isArray(user.subordinateIds) ? user.subordinateIds : [];
-      const isForSubordinate = assignedRecipients.some(rec => {
-        if (rec.role !== 'INVESTOR' && rec.role !== 'LEAD_INVESTOR') return false;
-        if (rec.leaderId && rec.leaderId === curUid) return true;
-        if (rec.uid && subIds.includes(rec.uid)) return true;
-        return false;
-      });
-      if (isForSubordinate) return true;
-
-      // Nếu CĐT Trưởng quản lý chung toàn bộ CĐT dự án
-      if (subIds.length === 0 || assignedRecipients.length === 0) return true;
-
-      return false;
-    }
-
-    // C. CHỈ HUY TRƯỞNG ĐVTC
-    const isLeadContractor = role === 'CONTRACTOR' && (
-      (user.position || '').toLowerCase().includes('chỉ huy') ||
-      (user.position || '').toLowerCase().includes('trưởng') ||
-      Boolean(user.isLead)
-    );
-    if (isLeadContractor) {
-      const targetsContractor = 
-        !notif.targetRoles || 
-        notif.targetRoles.includes('CONTRACTOR') || 
-        notif.targetRole === 'CONTRACTOR';
-
-      if (!targetsContractor) return false;
-
-      // Phiếu của công ty nhà thầu mình
-      if (isCreator || isAttendee || isExplicitlyAssigned) return true;
-      const contractorCompany = req?.contractorCompany || rep?.attendees?.contractor?.company;
-      if (contractorCompany && user.company && contractorCompany.toLowerCase().includes(user.company.toLowerCase())) {
+      // Khi có người tạo phiếu hoặc sửa phiếu và yêu cầu mình duyệt:
+      // - TVGS duyệt xong mời CĐT ký (APPROVAL / INVITATION)
+      // - ĐVTC sửa xong lỗi gửi lại yêu cầu CĐT duyệt (resubmit targeting INVESTOR)
+      // - Điều chuyển cán bộ sang cho mình
+      const targetsInvestor = !notif.targetRoles || notif.targetRoles.includes('INVESTOR');
+      if (targetsInvestor && (isApproved || notif.type === 'INVITATION' || notif.type === 'OFFICER_REASSIGNED')) {
         return true;
       }
-      return true;
-    }
 
-    // --- KIỂM TRA CHO CÁN BỘ THƯỜNG ---
-    // (TVGS thường, CĐT thường, ĐVTC kỹ thuật hiện trường)
-
-    // Khớp vai trò trước
-    if (notif.targetRoles && !notif.targetRoles.includes(role)) {
-      return false;
-    }
-    if (notif.targetRole && notif.targetRole !== role) {
       return false;
     }
 
-    // Thông báo Nghiệm thu hoàn thành
-    if (notif.targetCompletionReportId) {
-      if (notif.targetRoles && notif.targetRoles.includes(role)) return true;
-      return true;
+    // --------------------------------------------------------------------------
+    // 4. TVGS THƯỜNG (SUPERVISOR)
+    // Quy tắc: Có thông báo khi có người tạo phiếu hoặc sửa phiếu và yêu cầu mình duyệt.
+    // Hoặc khi phiếu có tên mình duyệt bị CĐT hủy. Hoặc 3 bên xác nhận hết.
+    // KHÔNG nhận thông báo của các người khác.
+    // --------------------------------------------------------------------------
+    if (role === 'SUPERVISOR') {
+      const isAssignedTvgs = isAssigned('SUPERVISOR') || isAttendeeSupervisor;
+      if (!isAssignedTvgs) {
+        // Tuyệt đối không nhận thông báo của các người khác!
+        return false;
+      }
+
+      // 3 bên xác nhận hết
+      if (isCompletion) return true;
+
+      // Khi phiếu có tên mình duyệt bị CĐT hủy (từ chối / yêu cầu sửa)
+      const isRejectedByCdt = isRejection && (
+        notif.rejectedByRole === 'INVESTOR' ||
+        (notif.title && notif.title.toLowerCase().includes('chủ đầu tư')) ||
+        (notif.body && notif.body.toLowerCase().includes('chủ đầu tư'))
+      );
+      if (isRejectedByCdt) return true;
+
+      // Có người tạo phiếu hoặc sửa phiếu và yêu cầu mình duyệt
+      const targetsSupervisor = !notif.targetRoles || notif.targetRoles.includes('SUPERVISOR');
+      if (targetsSupervisor && (
+        notif.type === 'INVITATION' || 
+        notif.type === 'REQUEST_CREATED' || 
+        notif.type === 'OFFICER_REASSIGNED' ||
+        (notif.title && notif.title.includes('Phiếu yêu cầu & Biên bản mới')) ||
+        (notif.title && notif.title.includes('Đã sửa lỗi'))
+      )) {
+        return true;
+      }
+
+      return false;
     }
 
-    // ĐVTC thường: chỉ nhận phiếu do chính mình tạo hoặc được chỉ định
+    // --------------------------------------------------------------------------
+    // 5. KỸ THUẬT HIỆN TRƯỜNG (CONTRACTOR)
+    // Quy tắc: Nhận thông báo khi phiếu của mình tạo có xác nhận duyệt hoặc không đồng ý duyệt
+    // hoặc khi cả 3 xác nhận duyệt xong. KHÔNG nhận thông báo của người khác.
+    // --------------------------------------------------------------------------
     if (role === 'CONTRACTOR') {
-      return Boolean(isCreator || isExplicitlyAssigned || isAttendee);
-    }
+      // Phải là phiếu do chính mình tạo (hoặc đích danh gửi cho mình)
+      if (!isCreator && !isAssigned('CONTRACTOR')) {
+        // Tuyệt đối không nhận thông báo của người khác!
+        return false;
+      }
 
-    // TVGS thường & CĐT thường:
-    // QUY TẮC BẮT BUỘC: CHỈ NHẬN NẾU ĐƯỢC CHỌN (isExplicitlyAssigned) HOẶC THAM GIA (isAttendee)!
-    // Cán bộ KHÔNG được chọn -> TUYỆT ĐỐI KHÔNG NHẬN!
-    if (assignedRecipients.length > 0) {
-      return Boolean(isExplicitlyAssigned || isAttendee);
-    }
+      // 1. Khi cả 3 xác nhận duyệt xong
+      if (isCompletion) return true;
 
-    // Thông báo chung không liên quan phiếu nào
-    if (!notif.targetRequestId && !notif.targetReportId) {
-      return true;
+      // 2. Khi không đồng ý duyệt (TVGS hoặc CĐT từ chối / yêu cầu sửa)
+      if (isRejection) return true;
+
+      // 3. Khi có xác nhận duyệt (TVGS duyệt hoặc CĐT duyệt)
+      if (isApproved) return true;
+
+      return false;
     }
 
     return false;
@@ -684,11 +700,16 @@ export default function App() {
       if (!isInitialNotifMountRef.current) {
         const newIncoming = cloudNotifs.filter(n => !prevNotifIdsRef.current.has(n.id) && !n.isRead);
         if (newIncoming.length > 0) {
-          const latest = newIncoming[0];
-          if (checkNotificationRecipient(latest, currentUserRef.current, requestsRef.current, reportsRef.current)) {
-            setActivePushToast(latest);
-            showSystemNotification(latest.title, latest.body);
-          }
+          let shownToast = false;
+          newIncoming.forEach(item => {
+            if (checkNotificationRecipient(item, currentUserRef.current, requestsRef.current, reportsRef.current)) {
+              if (!shownToast) {
+                setActivePushToast(item);
+                shownToast = true;
+              }
+              showSystemNotification(item.title, item.body);
+            }
+          });
         }
       } else {
         isInitialNotifMountRef.current = false;
@@ -1032,9 +1053,20 @@ export default function App() {
   const currentRole = currentUser?.role || 'CONTRACTOR';
 
   // Push Permission State
-  const [pushPermissionGranted, setPushPermissionGranted] = useState(
-    typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted'
-  );
+  const [pushPermissionGranted, setPushPermissionGranted] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const hasNotification = 'Notification' in window && Notification.permission === 'granted';
+    const isSavedEnabled = localStorage.getItem('apct_push_enabled') === 'true';
+    return Boolean(hasNotification || isSavedEnabled);
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'granted') {
+        setPushPermissionGranted(true);
+      }
+    }
+  }, []);
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
@@ -1137,6 +1169,9 @@ export default function App() {
     const res = await requestPushPermission();
     if (res.granted) {
       setPushPermissionGranted(true);
+      try {
+        localStorage.setItem('apct_push_enabled', 'true');
+      } catch (e) {}
       if (res.token) {
         saveDeviceFCMToken(currentUser?.uid, currentUser?.role, res.token);
       }
@@ -1835,7 +1870,7 @@ export default function App() {
       assignedRecipients: finalRequest.assignedRecipients || [],
       createdByUid: finalRequest.createdByUid || currentUser?.uid,
       createdByName: finalRequest.createdByName || currentUser?.fullName,
-      targetRoles: ['SUPERVISOR', 'LEAD_SUPERVISOR', 'CONTRACTOR'], // Chỉ thông báo TVGS và ĐVTC trước! CĐT chỉ nhận sau khi TVGS duyệt!
+      targetRoles: ['SUPERVISOR', 'LEAD_SUPERVISOR', 'LEAD_INVESTOR'], // TVGS và các Trưởng nhận thông báo
       createdAt: new Date().toISOString(),
       time: 'Vừa xong',
       isRead: false
@@ -1879,11 +1914,11 @@ export default function App() {
       await saveInspectionReport(newReport);
       await saveSystemNotification(pushPayload);
 
-      // Kích hoạt nổ thông báo màn hình khóa qua OneSignal: CHỈ GỬI CHO TVGS!
+      // Kích hoạt nổ thông báo màn hình khóa qua OneSignal: Gửi cho TVGS và các Trưởng
       sendOneSignalPush({
         title: '📋 Phiếu yêu cầu & Biên bản mới: ' + (finalRequest.requestNumber || 'Mới'),
         message: `ĐVTC ${finalRequest.contractorCompany} gửi TVGS kiểm tra: ${finalRequest.taskContent.slice(0, 50)}...`,
-        targetRoles: ['SUPERVISOR', 'LEAD_SUPERVISOR'],
+        targetRoles: ['SUPERVISOR', 'LEAD_SUPERVISOR', 'LEAD_INVESTOR'],
         url: 'https://app-apct-nghiemthu.web.app'
       }).catch(console.warn);
     } catch (e) {
@@ -2493,7 +2528,10 @@ export default function App() {
       assignedRecipients: updatedReq?.assignedRecipients || targetReport.assignedRecipients || [],
       createdByUid: updatedReq?.createdByUid || targetReport.createdByUid,
       createdByName: updatedReq?.createdByName || targetReport.createdByName,
-      targetRoles: ['CONTRACTOR'],
+      rejectedByRole: isInvestorReject ? 'INVESTOR' : 'SUPERVISOR',
+      targetRoles: isInvestorReject
+        ? ['CONTRACTOR', 'SUPERVISOR', 'LEAD_SUPERVISOR', 'LEAD_INVESTOR']
+        : ['CONTRACTOR', 'LEAD_SUPERVISOR', 'LEAD_INVESTOR'],
       createdAt: new Date().toISOString(),
       time: 'Vừa xong',
       isRead: false
@@ -2512,11 +2550,13 @@ export default function App() {
       }
       await saveSystemNotification(pushPayload);
 
-      // Kích hoạt nổ thông báo màn hình khóa cho ĐVTC
+      // Kích hoạt nổ thông báo màn hình khóa: CĐT hủy -> báo TVGS + ĐVTC + Trưởng; TVGS hủy -> báo ĐVTC + Trưởng
       sendOneSignalPush({
         title: notifTitle,
         message: notifBody,
-        targetRoles: ['CONTRACTOR'],
+        targetRoles: isInvestorReject
+          ? ['CONTRACTOR', 'SUPERVISOR', 'LEAD_SUPERVISOR', 'LEAD_INVESTOR']
+          : ['CONTRACTOR', 'LEAD_SUPERVISOR', 'LEAD_INVESTOR'],
         url: 'https://app-apct-nghiemthu.web.app'
       }).catch(console.warn);
     } catch (e) {
@@ -2598,7 +2638,7 @@ export default function App() {
 
       const pushPayload = {
         id: `notif_${Date.now()}`,
-        type: 'INVITATION',
+        type: 'APPROVAL',
         title: notifTitle,
         body: notifBody,
         actionText: 'Mở biên bản để ký duyệt',
@@ -2630,7 +2670,7 @@ export default function App() {
         sendOneSignalPush({
           title: notifTitle,
           message: notifBody,
-          targetRoles: ['INVESTOR', 'LEAD_INVESTOR'],
+          targetRoles: ['INVESTOR', 'LEAD_INVESTOR', 'CONTRACTOR', 'LEAD_SUPERVISOR'],
           url: 'https://app-apct-nghiemthu.web.app'
         }).catch(console.warn);
       } catch (e) {
@@ -2763,7 +2803,7 @@ export default function App() {
 
         const pushPayload = {
           id: `notif_${Date.now()}`,
-          type: 'INVITATION',
+          type: 'APPROVAL',
           title: notifTitle,
           body: notifBody,
           actionText: 'Mở biên bản để ký duyệt',
@@ -2772,7 +2812,7 @@ export default function App() {
           assignedRecipients: updatedReq?.assignedRecipients || finalReport.assignedRecipients || [],
           createdByUid: updatedReq?.createdByUid || finalReport.createdByUid,
           createdByName: updatedReq?.createdByName || finalReport.createdByName,
-          targetRoles: ['INVESTOR', 'LEAD_INVESTOR'],
+          targetRoles: ['INVESTOR', 'LEAD_INVESTOR', 'CONTRACTOR', 'LEAD_SUPERVISOR'],
           createdAt: new Date().toISOString(),
           time: 'Vừa xong',
           isRead: false
@@ -2787,7 +2827,7 @@ export default function App() {
         sendOneSignalPush({
           title: notifTitle,
           message: notifBody,
-          targetRoles: ['INVESTOR', 'LEAD_INVESTOR'],
+          targetRoles: ['INVESTOR', 'LEAD_INVESTOR', 'CONTRACTOR', 'LEAD_SUPERVISOR'],
           url: 'https://app-apct-nghiemthu.web.app'
         }).catch(console.warn);
       } else if (isAllSigned) {
@@ -2957,7 +2997,7 @@ export default function App() {
       assignedRecipients: updatedReq?.assignedRecipients || targetReport.assignedRecipients || [],
       createdByUid: updatedReq?.createdByUid || targetReport.createdByUid,
       createdByName: updatedReq?.createdByName || targetReport.createdByName,
-      targetRoles: [targetReviewer, targetReviewer === 'SUPERVISOR' ? 'LEAD_SUPERVISOR' : 'LEAD_INVESTOR'],
+      targetRoles: [targetReviewer, 'LEAD_SUPERVISOR', 'LEAD_INVESTOR'],
       createdAt: new Date().toISOString(),
       time: 'Vừa xong',
       isRead: false
@@ -2975,11 +3015,11 @@ export default function App() {
       }
       await saveSystemNotification(pushPayload);
 
-      // Kích hoạt nổ thông báo màn hình khóa cho đúng vai trò
+      // Kích hoạt nổ thông báo màn hình khóa cho đúng vai trò và các Trưởng
       sendOneSignalPush({
         title: notifTitle,
         message: notifBody,
-        targetRoles: [targetReviewer],
+        targetRoles: [targetReviewer, 'LEAD_SUPERVISOR', 'LEAD_INVESTOR'],
         url: 'https://app-apct-nghiemthu.web.app'
       }).catch(console.warn);
     } catch (e) {

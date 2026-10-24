@@ -264,62 +264,6 @@ export default function LoginScreen({ onLogin, users = MOCK_USERS }) {
             <ArrowRight size={18} />
           </button>
 
-          {/* Quick login chips for testing */}
-          <div style={{ marginTop: '16px', marginBottom: '4px' }}>
-            <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748b', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              ⚡ Đăng nhập nhanh theo vai trò:
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setEmail('admin@apct.vn');
-                  setPassword('123456');
-                  const u = users.find(x => x.email === 'admin@apct.vn');
-                  if (u) onLogin(u);
-                }}
-                style={{ padding: '8px 10px', fontSize: '0.78rem', background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: '8px', color: '#6d28d9', fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}
-              >
-                🛡️ Admin Quản trị
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setEmail('hungtm.giahuy@gmail.com');
-                  setPassword('123456');
-                  const u = users.find(x => x.email === 'hungtm.giahuy@gmail.com') || users.find(x => x.role === 'CONTRACTOR');
-                  if (u) onLogin(u);
-                }}
-                style={{ padding: '8px 10px', fontSize: '0.78rem', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', color: '#1d4ed8', fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}
-              >
-                👷 ĐVTC Gia Huy (CHT)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setEmail('lepv.phanle@gmail.com');
-                  setPassword('123456');
-                  const u = users.find(x => x.email === 'lepv.phanle@gmail.com');
-                  if (u) onLogin(u);
-                }}
-                style={{ padding: '8px 10px', fontSize: '0.78rem', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px', color: '#047857', fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}
-              >
-                👷 ĐVTC Phan Lê (PCCC)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setEmail('danhdt@gelicon.vn');
-                  setPassword('123456');
-                  const u = users.find(x => x.email === 'danhdt@gelicon.vn');
-                  if (u) onLogin(u);
-                }}
-                style={{ padding: '8px 10px', fontSize: '0.78rem', background: '#fefce8', border: '1px solid #fef08a', borderRadius: '8px', color: '#a16207', fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}
-              >
-                👁️ TVGS Trưởng Gelicon
-              </button>
-            </div>
-          </div>
         </form>
 
         {/* Footer info */}
