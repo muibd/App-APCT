@@ -33,43 +33,32 @@ export const moveCaretToEnd = (el) => {
 export const initAutoCaretToEnd = () => {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
-  // Lắng nghe sự kiện Focus (bắt đầu vào ô input bằng click, tap, phím Tab, hoặc .focus())
+  let lastHandledEl = null;
+
+  // Lắng nghe sự kiện Focus vào ô input/textarea
   document.addEventListener('focusin', (e) => {
     const el = e.target;
     if (!isTextInput(el)) return;
-
-    moveCaretToEnd(el);
-    setTimeout(() => moveCaretToEnd(el), 10);
-    setTimeout(() => moveCaretToEnd(el), 40);
-    setTimeout(() => moveCaretToEnd(el), 100);
-    setTimeout(() => moveCaretToEnd(el), 200);
+    lastHandledEl = el;
+    requestAnimationFrame(() => moveCaretToEnd(el));
+    setTimeout(() => moveCaretToEnd(el), 30);
   }, true);
 
-  // Lắng nghe sự kiện nhấp chuột (tránh trình duyệt đặt con trỏ tại vị trí click sau khi focus)
+  // Chỉ khi click vào đúng ô input vừa focus thì mới định vị lại con trỏ về cuối một lần
   document.addEventListener('mouseup', (e) => {
     const el = e.target;
-    if (!isTextInput(el)) return;
-
-    setTimeout(() => moveCaretToEnd(el), 0);
-    setTimeout(() => moveCaretToEnd(el), 30);
+    if (el && el === lastHandledEl && isTextInput(el)) {
+      setTimeout(() => moveCaretToEnd(el), 10);
+      lastHandledEl = null;
+    }
   }, true);
 
-  // Lắng nghe sự kiện chạm màn hình trên điện thoại di động (iOS Safari / Android Chrome)
+  // Hỗ trợ cảm ứng trên thiết bị di động
   document.addEventListener('touchend', (e) => {
     const el = e.target;
-    if (!isTextInput(el)) return;
-
-    setTimeout(() => moveCaretToEnd(el), 0);
-    setTimeout(() => moveCaretToEnd(el), 40);
-    setTimeout(() => moveCaretToEnd(el), 120);
-  }, true);
-
-  // Lắng nghe sự kiện Click
-  document.addEventListener('click', (e) => {
-    const el = e.target;
-    if (!isTextInput(el)) return;
-
-    setTimeout(() => moveCaretToEnd(el), 0);
-    setTimeout(() => moveCaretToEnd(el), 30);
+    if (el && el === lastHandledEl && isTextInput(el)) {
+      setTimeout(() => moveCaretToEnd(el), 20);
+      lastHandledEl = null;
+    }
   }, true);
 };

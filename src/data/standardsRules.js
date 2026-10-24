@@ -155,6 +155,40 @@ export const CONSTRUCTION_WORK_STANDARDS = [
     "standards": [
       "TCVN 7958:2017 Bảo vệ công trình xây dựng - Phòng chống mối cho công trình xây dựng mới"
     ]
+  },
+  {
+    "id": "work_16",
+    "stt": 16,
+    "name": "Cung cấp, lắp đặt cửa thép chống cháy",
+    "category": "CÔNG VIỆC XÂY DỰNG",
+    "standards": [
+      "QCVN 06:2022/BXD Quy chuẩn kỹ thuật quốc gia về An toàn cháy cho nhà và công trình",
+      "TCVN 9383:2012 Thử nghiệm khả năng chịu lửa của cửa đi và cửa chắn ngăn cháy"
+    ]
+  },
+  {
+    "id": "work_17",
+    "stt": 17,
+    "name": "Thi công hệ thống Mep",
+    "category": "CÔNG VIỆC XÂY DỰNG",
+    "standards": [
+      "TCVN 4513:1988 Cấp nước bên trong - Tiêu chuẩn thiết kế",
+      "TCVN 4474:1987 Thoát nước bên trong - Tiêu chuẩn thiết kế",
+      "TCVN 9206:2012 Đặt thiết bị điện trong nhà ở và công trình công cộng - Tiêu chuẩn thiết kế",
+      "TCVN 9207:2012 Đặt đường dẫn điện trong nhà ở và công trình công cộng - Tiêu chuẩn thiết kế"
+    ]
+  },
+  {
+    "id": "work_18",
+    "stt": 18,
+    "name": "Thi công hệ thống PCCC trong và ngoài nhà",
+    "category": "CÔNG VIỆC XÂY DỰNG",
+    "standards": [
+      "TCVN 3890:2023 Phòng cháy chữa cháy - Phương tiện phòng cháy và chữa cháy cho nhà và công trình",
+      "TCVN 7336:2021 Phòng cháy chữa cháy - Hệ thống chữa cháy tự động bằng nước, bọt - Yêu cầu thiết kế và lắp đặt",
+      "TCVN 5738:2021 Phòng cháy chữa cháy - Hệ thống báo cháy tự động - Yêu cầu kỹ thuật",
+      "QCVN 06:2022/BXD Quy chuẩn kỹ thuật quốc gia về An toàn cháy cho nhà và công trình"
+    ]
   }
 ];
 

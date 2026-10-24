@@ -28,6 +28,7 @@ import ProfileView from './components/ProfileView';
 import PushGuideModal from './components/PushGuideModal';
 import ConfirmDialogModal from './components/ConfirmDialogModal';
 import StandardsManagementView from './components/StandardsManagementView';
+import ProjectManagementView from './components/ProjectManagementView';
 import { 
   MOCK_USERS, 
   MOCK_PROJECT, 
@@ -39,6 +40,14 @@ import {
   INITIAL_COMPLETION_REPORTS
 } from './data/mockData';
 import { getSuggestedStandards, loadStoredStandards, STANDARDS_STORAGE_KEY } from './data/standardsRules';
+import { 
+  loadStoredProjects, 
+  saveStoredProjects, 
+  loadStoredDocTypes, 
+  saveStoredDocTypes,
+  generateDocumentCode,
+  getDocumentRevisionNumber 
+} from './data/projectCatalog';
 
 import { 
   saveInspectionRequest, 
@@ -116,6 +125,50 @@ if (typeof window !== 'undefined' && window.localStorage) {
   }
 }
 
+// Chuẩn hóa dữ liệu biên bản: số biên bản là WA hoặc MI, mã căn cứ theo cấu trúc [Mã CT]/[WA|MI]/[ddMMyy]-[revStr].01
+function sanitizeReportData(r) {
+  if (!r) return r;
+  const isMat = r.reportTemplate === 'FORM_12' || r.inspectionType === 'MATERIAL';
+  const docCode = isMat ? 'MI' : 'WA';
+  const projCode = r.projectCode || (
+    (r.projectInfo?.buildingName || '').includes('2204') || (r.projectInfo?.buildingName || '').includes('cao tầng') ? '2204' : '2203'
+  );
+
+  let repNum = (r.reportNumber || '').trim();
+  repNum = repNum.replace(/^\.\.\.\.\.\.\s*/, '').replace(/^\.\.\.\s*/, '').trim();
+  repNum = repNum.replace(/^IR[\/\s-]*/i, '').replace(/[\/\s-]IR$/i, '').trim();
+  if (!repNum || repNum === '......' || repNum === 'IR' || repNum === docCode) {
+    repNum = docCode;
+  } else if (!repNum.includes(docCode)) {
+    repNum = `${repNum}/${docCode}`;
+  }
+
+  const rev = getDocumentRevisionNumber(r);
+  const revStr = String(rev).padStart(2, '0');
+
+  let refNum = (r.projectCategoryCode || r.referenceDocNumber || '').trim();
+  if (!refNum || refNum.startsWith('TLCC') || refNum.includes('TLCC') || !refNum.includes('/')) {
+    refNum = generateDocumentCode(projCode, docCode, r.createdAt || new Date(), rev);
+  } else {
+    refNum = refNum.replace(/\/(IR|MI|WA)\//, `/${docCode}/`);
+    if (/-\d+(\.\d+)?$/.test(refNum)) {
+      refNum = refNum.replace(/-\d+(\.\d+)?$/, `-${revStr}.01`);
+    } else {
+      refNum = `${refNum}-${revStr}.01`;
+    }
+  }
+
+  return {
+    ...r,
+    revisionNumber: rev,
+    reportNumber: repNum,
+    projectCode: projCode,
+    docTypeCode: docCode,
+    projectCategoryCode: refNum,
+    referenceDocNumber: refNum
+  };
+}
+
 export default function App() {
   // Quản lý danh sách cán bộ: ưu tiên localStorage, tự chuẩn hóa password & status
   const [users, setUsers] = useState(() => {
@@ -161,7 +214,11 @@ export default function App() {
       const saved = localStorage.getItem(REPORTS_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const sanitized = parsed.map(sanitizeReportData);
+          safeSaveLocalStorage(REPORTS_STORAGE_KEY, sanitized);
+          return sanitized;
+        }
       }
     } catch (e) {
       console.warn('Lỗi đọc reports từ localStorage:', e);
@@ -197,6 +254,18 @@ export default function App() {
 
   const [standards, setStandards] = useState(STANDARD_CRITERIA_LIST);
   const [standardsData, setStandardsData] = useState(loadStoredStandards);
+  const [projectsList, setProjectsList] = useState(loadStoredProjects);
+  const [docTypesList, setDocTypesList] = useState(loadStoredDocTypes);
+
+  const handleSaveProjects = (newProjects) => {
+    setProjectsList(newProjects);
+    saveStoredProjects(newProjects);
+  };
+
+  const handleSaveDocTypes = (newDocTypes) => {
+    setDocTypesList(newDocTypes);
+    saveStoredDocTypes(newDocTypes);
+  };
 
   // User Authentication State: Lấy từ localStorage nếu có, mặc định là null để hiện màn hình Login
   const [currentUser, setCurrentUser] = useState(() => {
@@ -458,9 +527,10 @@ export default function App() {
       if (idbReports && idbReports.length > 0) {
         setReports(prev => {
           const map = new Map();
-          prev.forEach(r => map.set(r.reportNumber || r.id, r));
-          idbReports.forEach(ir => {
-            const key = ir.reportNumber || ir.id;
+          prev.forEach(r => map.set(r.id, r));
+          idbReports.forEach(rawIr => {
+            const ir = sanitizeReportData(rawIr);
+            const key = ir.id;
             const existing = map.get(key);
             if (!existing) {
               map.set(key, ir);
@@ -488,9 +558,9 @@ export default function App() {
       if (idbRequests && idbRequests.length > 0) {
         setRequests(prev => {
           const map = new Map();
-          prev.forEach(r => map.set(r.requestNumber || r.id, r));
+          prev.forEach(r => map.set(r.id, r));
           idbRequests.forEach(ir => {
-            const key = ir.requestNumber || ir.id;
+            const key = ir.id;
             const existing = map.get(key);
             if (!existing) {
               map.set(key, ir);
@@ -514,26 +584,23 @@ export default function App() {
       setRequests(prev => {
         const map = new Map();
 
-        // Nạp danh sách từ Firestore
+        // Nạp danh sách từ Firestore bằng ID duy nhất
         if (Array.isArray(cloudRequests)) {
           cloudRequests.forEach(item => {
-            const key = item.requestNumber || item.id;
+            const key = item.id;
             if (key) map.set(key, item);
           });
         }
 
         // BẢO VỆ DỮ LIỆU CỤC BỘ: Giữ lại TẤT CẢ bản ghi trong `prev` chưa có trên cloud
-        // Ngăn chặn 100% tình trạng người dùng vừa tạo phiếu thành công thì bị cloud snapshot đè mất!
         prev.forEach(localItem => {
-          const key = localItem.requestNumber || localItem.id;
+          const key = localItem.id;
           if (!key) return;
           const cloudItem = map.get(key);
           if (!cloudItem) {
-            // Phiếu cục bộ chưa có trên cloud -> Giữ nguyên 100% và đẩy lên cloud!
             map.set(key, localItem);
             saveInspectionRequest(localItem).catch(console.warn);
           } else {
-            // Đã có cả 2 -> Giữ bản mới hơn hoặc bản đã được sửa chữa tại hiện trường
             const localHasRectification = localItem.status === 'RECTIFIED' || Boolean(localItem.rectificationPhotos?.length) || Boolean(localItem.rectificationNotes);
             const cloudHasRectification = cloudItem.status === 'RECTIFIED' || Boolean(cloudItem.rectificationPhotos?.length) || Boolean(cloudItem.rectificationNotes);
 
@@ -564,17 +631,17 @@ export default function App() {
       setReports(prev => {
         const map = new Map();
 
-        // Nạp danh sách từ Firestore
+        // Nạp danh sách từ Firestore bằng ID duy nhất (Tránh ghi đè vì cùng mã WA)
         if (Array.isArray(cloudReports)) {
           cloudReports.forEach(item => {
-            const key = item.reportNumber || item.id;
-            if (key) map.set(key, item);
+            const key = item.id;
+            if (key) map.set(key, sanitizeReportData(item));
           });
         }
 
         // BẢO VỆ DỮ LIỆU CỤC BỘ: Giữ lại TẤT CẢ biên bản trong `prev` chưa có trên cloud
         prev.forEach(localItem => {
-          const key = localItem.reportNumber || localItem.id;
+          const key = localItem.id;
           if (!key) return;
           const cloudItem = map.get(key);
           if (!cloudItem) {
@@ -748,12 +815,13 @@ export default function App() {
   };
 
   // ============================================================================
-  // 4d. TỰ ĐỘNG ĐỒNG BỘ CẶP ĐÔI 1-1 (AUTO-HEAL PAIRS)
-  // Bất biến: Mỗi Phiếu yêu cầu luôn có đúng 1 Biên bản nghiệm thu và ngược lại
-  // Giải quyết triệt để lỗi "Phiếu mời có 6 mà Biên bản có 7"
+  // 4d. TỰ ĐỘNG ĐỒNG BỘ CẶP ĐÔI 1-1 (AUTO-HEAL PAIRS) - TỐI ƯU CHỐNG LOOP & LAG
   // ============================================================================
+  const isAutoHealingRef = useRef(false);
+
   useEffect(() => {
     if (!requests || !reports) return;
+    if (isAutoHealingRef.current) return;
 
     let requestsNeedUpdate = false;
     let reportsNeedUpdate = false;
@@ -761,20 +829,19 @@ export default function App() {
     // A. Nếu có Biên bản nào mà chưa có Phiếu yêu cầu trong requests -> Phục hồi Phiếu yêu cầu
     const currentRequests = [...requests];
     reports.forEach(rep => {
-      const matchKey = (rep.reportNumber || '').replace(/BBNT-VL|BBNT-APG/g, 'PYC');
       const hasReq = currentRequests.some(r => 
         (r.id && rep.requestId && r.id === rep.requestId) || 
         (r.reportId && r.reportId === rep.id) ||
-        (r.requestNumber && rep.requestNumber && r.requestNumber === rep.requestNumber) ||
-        (r.requestNumber && matchKey && r.requestNumber.replace(/BBNT-VL|BBNT-APG/g, 'PYC') === matchKey)
+        (r.projectCategoryCode && rep.projectCategoryCode && r.projectCategoryCode.replace(/\/(IR|WA|MI)\//, '') === rep.projectCategoryCode.replace(/\/(IR|WA|MI)\//, ''))
       );
-      if (!hasReq) {
+      if (!hasReq && rep.id) {
         const isMaterial = rep.inspectionType === 'MATERIAL';
-        const reqNum = rep.requestNumber || (rep.reportNumber ? rep.reportNumber.replace(/BBNT-VL|BBNT-APG/g, 'PYC') : `PYC-${Date.now()}`);
         const healedReq = {
           id: rep.requestId || `req_${rep.id}`,
-          requestNumber: reqNum,
-          projectId: rep.projectInfo?.projectId || 'apct_cantho_01',
+          requestNumber: 'IR',
+          projectCategoryCode: rep.projectCategoryCode || generateDocumentCode('2203', 'IR', rep.createdAt || new Date(), rep.revisionNumber || 1),
+          referenceDocNumber: rep.referenceDocNumber || rep.projectCategoryCode,
+          projectId: rep.projectInfo?.projectId || 'proj_2203',
           projectName: rep.projectInfo?.projectName || 'Đầu tư Xây Dựng Nhà Ở Phường Thường Thạnh - An Phú Eco City',
           buildingName: rep.projectInfo?.buildingName || 'Chung cư nhà ở xã hội 2',
           itemName: rep.projectInfo?.itemName || 'Thi công kết cấu – Tòa A và Tòa B',
@@ -803,27 +870,26 @@ export default function App() {
         };
         currentRequests.push(healedReq);
         requestsNeedUpdate = true;
-        saveInspectionRequest(healedReq).catch(console.warn);
       }
     });
 
     // B. Nếu có Phiếu yêu cầu nào mà chưa có Biên bản trong reports -> Phục hồi Biên bản
     const currentReports = [...reports];
     requests.forEach(req => {
-      const matchKey = (req.requestNumber || '').replace(/BBNT-VL|BBNT-APG/g, 'PYC');
       const hasRep = currentReports.some(r => 
         (r.id && req.reportId && r.id === req.reportId) || 
         (r.requestId && r.requestId === req.id) ||
-        (r.requestNumber && req.requestNumber && r.requestNumber === req.requestNumber) ||
-        (r.reportNumber && matchKey && r.reportNumber.replace(/BBNT-VL|BBNT-APG/g, 'PYC') === matchKey)
+        (r.projectCategoryCode && req.projectCategoryCode && r.projectCategoryCode.replace(/\/(IR|WA|MI)\//, '') === req.projectCategoryCode.replace(/\/(IR|WA|MI)\//, ''))
       );
-      if (!hasRep) {
+      if (!hasRep && req.id) {
         const isMaterial = req.inspectionType === 'MATERIAL';
         const newReportId = req.reportId || `rep_${req.id}`;
-        const reportNum = req.requestNumber 
-          ? req.requestNumber.replace('PYC', isMaterial ? 'BBNT-VL' : 'BBNT-APG')
-          : `0${Math.floor(Math.random() * 80) + 10}/${isMaterial ? 'BBNT-VL' : 'BBNT-APG'}`;
-        const docNum = `TLCC-0${Math.floor(Math.random() * 80) + 10}/2026`;
+        const reportDocCode = isMaterial ? 'MI' : 'WA';
+        const projectCode = req.projectCode || (
+          (req.buildingName || '').includes('2204') || (req.buildingName || '').includes('cao tầng') ? '2204' : '2203'
+        );
+        const reportNum = reportDocCode;
+        const docNum = generateDocumentCode(projectCode, reportDocCode, req.createdAt || new Date(), req.revisionNumber || 1);
         const today = new Date();
         const cityDate = `Cần Thơ, ngày ${String(today.getDate()).padStart(2, '0')} tháng ${String(today.getMonth() + 1).padStart(2, '0')} năm ${today.getFullYear()}`;
 
@@ -835,7 +901,11 @@ export default function App() {
           requestId: req.id,
           requestNumber: req.requestNumber,
           reportNumber: reportNum,
+          projectCode: projectCode,
+          docTypeCode: reportDocCode,
+          projectCategoryCode: docNum,
           referenceDocNumber: docNum,
+          revisionNumber: req.revisionNumber || 1,
           cityDate: cityDate,
           inspectionType: req.inspectionType || 'WORK',
           reportTemplate: isMaterial ? 'FORM_12' : 'CONSTRUCTION_WORK',
@@ -858,16 +928,16 @@ export default function App() {
           attendees: {
             investor: {
               company: cdtRecipient?.company || 'Công ty TNHH An Phú Cần Thơ',
-              person: cdtRecipient?.fullName || 'Ngô Quý Linh',
-              position: cdtRecipient?.position || 'Trưởng Ban QLDA',
+              person: cdtRecipient?.fullName || '',
+              position: cdtRecipient?.position || 'Cán bộ ban QLDA',
               email: cdtRecipient?.email || '',
               uid: cdtRecipient?.uid || '',
               signed: req.status === 'COMPLETED'
             },
             supervisor: {
               company: tvgsRecipient?.company || 'Công ty CP Tư vấn Xây dựng và Thương mại GELICON',
-              person: tvgsRecipient?.fullName || 'Đinh Xuân Thám',
-              position: tvgsRecipient?.position || 'Tư vấn giám sát trưởng',
+              person: tvgsRecipient?.fullName || '',
+              position: tvgsRecipient?.position || 'Cán bộ tư vấn giám sát',
               email: tvgsRecipient?.email || '',
               uid: tvgsRecipient?.uid || '',
               signed: req.status === 'COMPLETED' || req.status === 'WAITING_INVESTOR'
@@ -892,20 +962,24 @@ export default function App() {
         };
         currentReports.push(healedRep);
         reportsNeedUpdate = true;
-        saveInspectionReport(healedRep).catch(console.warn);
       }
     });
 
-    if (requestsNeedUpdate) {
-      currentRequests.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-      setRequests(currentRequests);
-      safeSaveLocalStorage(REQUESTS_STORAGE_KEY, currentRequests);
-    }
-
-    if (reportsNeedUpdate) {
-      currentReports.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-      setReports(currentReports);
-      safeSaveLocalStorage(REPORTS_STORAGE_KEY, currentReports);
+    if (requestsNeedUpdate || reportsNeedUpdate) {
+      isAutoHealingRef.current = true;
+      if (requestsNeedUpdate) {
+        currentRequests.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+        setRequests(currentRequests);
+        safeSaveLocalStorage(REQUESTS_STORAGE_KEY, currentRequests);
+      }
+      if (reportsNeedUpdate) {
+        currentReports.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+        setReports(currentReports);
+        safeSaveLocalStorage(REPORTS_STORAGE_KEY, currentReports);
+      }
+      setTimeout(() => {
+        isAutoHealingRef.current = false;
+      }, 800);
     }
   }, [requests.length, reports.length]);
 
@@ -1640,10 +1714,30 @@ export default function App() {
   const handleCreateRequest = async (newRequest) => {
     const isMaterial = newRequest.inspectionType === 'MATERIAL';
     const newReportId = `rep_${Date.now()}`;
-    const reportNum = newRequest.requestNumber 
-      ? newRequest.requestNumber.replace('PYC', isMaterial ? 'BBNT-VL' : 'BBNT-APG') 
-      : `0${Math.floor(Math.random() * 80) + 10}/${isMaterial ? 'BBNT-VL' : 'BBNT-APG'}`;
-    const docNum = `TLCC-0${Math.floor(Math.random() * 80) + 10}/2026`;
+    const projectCode = newRequest.projectCode || '2203';
+    const reportDocCode = isMaterial ? 'MI' : 'WA';
+    const reqDocCode = isMaterial ? 'MI' : 'IR';
+
+    // Số tài liệu căn cứ / Mã hạng mục công trình của biên bản (WA hoặc MI):
+    // [Mã công trình]/[WA hoặc MI]/[ddMMyy]-01.01 (Ví dụ: 2203/WA/231026-01.01 hoặc 2203/MI/231026-01.01)
+    const docNum = generateDocumentCode(
+      projectCode, 
+      reportDocCode, 
+      new Date(), 
+      newRequest.revisionNumber || 1
+    );
+
+    // Số trong form: "WA" (hoặc "MI")
+    let reportNum = reportDocCode;
+    const reqNum = (newRequest.requestNumber || '').trim();
+    const cleanPrefix = reqNum.replace(/^\.\.\.\.\.\.\s*/, '').replace(/^\.\.\.\s*/, '').trim();
+    if (cleanPrefix && cleanPrefix !== 'IR' && cleanPrefix !== 'MI' && cleanPrefix !== 'WA') {
+      const prefix = cleanPrefix.split('/')[0].split(' ')[0];
+      if (prefix && prefix !== 'IR' && prefix !== 'MI' && prefix !== 'WA') {
+        reportNum = `${prefix}/${reportDocCode}`;
+      }
+    }
+
     const today = new Date();
     const cityDate = `Cần Thơ, ngày ${String(today.getDate()).padStart(2, '0')} tháng ${String(today.getMonth() + 1).padStart(2, '0')} năm ${today.getFullYear()}`;
 
@@ -1660,13 +1754,18 @@ export default function App() {
       requestId: newRequest.id,
       requestNumber: newRequest.requestNumber,
       reportNumber: reportNum,
+      projectCode: projectCode,
+      docTypeCode: reportDocCode,
+      projectCategoryCode: docNum,
       referenceDocNumber: docNum,
+      revisionNumber: newRequest.revisionNumber || 1,
       cityDate: cityDate,
       inspectionType: newRequest.inspectionType || 'WORK',
       reportTemplate: isMaterial ? 'FORM_12' : 'CONSTRUCTION_WORK',
       materialDetails: newRequest.materialDetails || null,
       materials: newRequest.materials || newRequest.materialDetails?.materials || null,
       projectInfo: {
+        projectCode: projectCode,
         projectName: newRequest.projectName,
         buildingName: newRequest.buildingName,
         itemName: newRequest.itemName,
@@ -1683,16 +1782,16 @@ export default function App() {
       attendees: {
         investor: {
           company: cdtRecipient?.company || 'Công ty TNHH An Phú Cần Thơ',
-          person: cdtRecipient?.fullName || 'Ngô Quý Linh',
-          position: cdtRecipient?.position || 'Trưởng Ban QLDA',
+          person: cdtRecipient?.fullName || '',
+          position: cdtRecipient?.position || 'Cán bộ ban QLDA',
           email: cdtRecipient?.email || '',
           uid: cdtRecipient?.uid || '',
           signed: false
         },
         supervisor: {
           company: tvgsRecipient?.company || 'Công ty CP Tư vấn Xây dựng và Thương mại GELICON',
-          person: tvgsRecipient?.fullName || 'Đinh Xuân Thám',
-          position: tvgsRecipient?.position || 'Tư vấn giám sát trưởng',
+          person: tvgsRecipient?.fullName || '',
+          position: tvgsRecipient?.position || 'Cán bộ tư vấn giám sát',
           email: tvgsRecipient?.email || '',
           uid: tvgsRecipient?.uid || '',
           signed: false
@@ -1701,6 +1800,7 @@ export default function App() {
           company: newRequest.contractorCompany || currentUser?.company || 'Công ty CP Xây dựng An Phú Gia',
           person: newRequest.createdByName || currentUser?.fullName || 'Phạm Thanh Nhàn',
           position: newRequest.createdByRole || currentUser?.position || 'Chỉ huy trưởng',
+          uid: newRequest.createdByUid || currentUser?.uid || '',
           signed: true
         }
       },
@@ -1920,6 +2020,12 @@ export default function App() {
 
     const newReportId = `rep_${Date.now()}`;
     const isMaterial = targetReq.inspectionType === 'MATERIAL';
+    const reportDocCode = isMaterial ? 'MI' : 'WA';
+    const projectCode = targetReq.projectCode || (
+      (targetReq.buildingName || '').includes('2204') || (targetReq.buildingName || '').includes('cao tầng') ? '2204' : '2203'
+    );
+    const reportNum = reportDocCode;
+    const docNum = generateDocumentCode(projectCode, reportDocCode, targetReq.createdAt || new Date(), targetReq.revisionNumber || 1);
     const appliedStandards = (targetReq.standardsApplied && targetReq.standardsApplied.length > 0)
       ? targetReq.standardsApplied
       : getSuggestedStandards(targetReq.taskContent || targetReq.itemName, isMaterial ? 'MATERIAL' : 'WORK');
@@ -1928,10 +2034,12 @@ export default function App() {
       id: newReportId,
       requestId: targetReq.id,
       requestNumber: targetReq.requestNumber,
-      reportNumber: targetReq.requestNumber 
-        ? targetReq.requestNumber.replace('PYC', isMaterial ? 'BBNT-VL' : 'BBNT-APG') 
-        : `0${Math.floor(Math.random() * 80) + 10}/${isMaterial ? 'BBNT-VL' : 'BBNT-APG'}`,
-      referenceDocNumber: `TLCC-0${Math.floor(Math.random() * 80) + 10}/2026`,
+      reportNumber: reportNum,
+      projectCode: projectCode,
+      docTypeCode: reportDocCode,
+      projectCategoryCode: docNum,
+      referenceDocNumber: docNum,
+      revisionNumber: targetReq.revisionNumber || 1,
       cityDate: `Cần Thơ, ngày ${new Date().getDate()} tháng ${new Date().getMonth() + 1} năm ${new Date().getFullYear()}`,
       inspectionType: targetReq.inspectionType || 'WORK',
       reportTemplate: isMaterial ? 'FORM_12' : 'CONSTRUCTION_WORK',
@@ -2024,7 +2132,7 @@ export default function App() {
     };
 
     setReports(prev => {
-      const matchFn = r => r.id === newReport.id || (newReport.reportNumber && r.reportNumber === newReport.reportNumber);
+      const matchFn = r => r.id === newReport.id || (newReport.requestId && r.requestId === newReport.requestId);
       const filtered = prev.filter(r => !matchFn(r));
       const next = [newReport, ...filtered];
       safeSaveLocalStorage(REPORTS_STORAGE_KEY, next);
@@ -2195,7 +2303,7 @@ export default function App() {
       };
 
       setReports(prev => {
-        const matchFn = r => r.id === updatedReport.id || (updatedReport.reportNumber && r.reportNumber === updatedReport.reportNumber);
+        const matchFn = r => r.id === updatedReport.id || (updatedReport.requestId && r.requestId === updatedReport.requestId);
         const filtered = prev.filter(r => !matchFn(r));
         const next = [updatedReport, ...filtered];
         safeSaveLocalStorage(REPORTS_STORAGE_KEY, next);
@@ -2349,8 +2457,7 @@ export default function App() {
     setReports(prev => {
       const matchFn = r => (
         r.id === updatedReport.id || 
-        (updatedReport.requestId && r.requestId === updatedReport.requestId) ||
-        (updatedReport.reportNumber && r.reportNumber === updatedReport.reportNumber)
+        (updatedReport.requestId && r.requestId === updatedReport.requestId)
       );
       const filtered = prev.filter(r => !matchFn(r));
       const nextReports = [updatedReport, ...filtered];
@@ -2456,7 +2563,7 @@ export default function App() {
     }
 
     setReports(prev => {
-      const matchFn = r => r.id === targetReport.id || (updatedReport.reportNumber && r.reportNumber === updatedReport.reportNumber);
+      const matchFn = r => r.id === targetReport.id || (updatedReport.requestId && r.requestId === updatedReport.requestId);
       const filtered = prev.filter(r => !matchFn(r));
       const nextReports = [updatedReport, ...filtered];
       safeSaveLocalStorage(REPORTS_STORAGE_KEY, nextReports);
@@ -2610,7 +2717,7 @@ export default function App() {
     };
 
     setReports(prev => {
-      const matchFn = r => r.id === finalReport.id || (finalReport.reportNumber && r.reportNumber === finalReport.reportNumber);
+      const matchFn = r => r.id === finalReport.id || (finalReport.requestId && r.requestId === finalReport.requestId);
       const filtered = prev.filter(r => !matchFn(r));
       const nextReports = [finalReport, ...filtered];
       safeSaveLocalStorage(REPORTS_STORAGE_KEY, nextReports);
@@ -2625,9 +2732,7 @@ export default function App() {
     const newContCompany = finalReport.attendees?.contractor?.company || finalReport.contractorCompany;
     const targetReq = requests.find(r => 
       (finalReport.requestId && r.id === finalReport.requestId) ||
-      (r.reportId && r.reportId === finalReport.id) ||
-      (finalReport.requestNumber && r.requestNumber === finalReport.requestNumber) ||
-      (finalReport.reportNumber && r.requestNumber && r.requestNumber === finalReport.reportNumber.replace(/BBNT-VL|BBNT-APG|BBNT/g, 'PYC'))
+      (r.reportId && r.reportId === finalReport.id)
     );
     if (targetReq) {
       updatedReq = {
@@ -2750,9 +2855,25 @@ export default function App() {
       target: targetReviewer
     };
 
+    // Tăng số lần sửa chữa lên 1: 01.01 -> 02.01, 03.01...
+    // Chỉ tăng khi ĐVTC gửi lại; nếu fullReport đã mang revisionNumber chuẩn từ InspectionReportModal thì dùng luôn
+    const nextRevision = fullReport?.revisionNumber 
+      ? Number(fullReport.revisionNumber)
+      : (targetReport.rectificationHistory?.length || 0) + 2;
+
+    const projectCode = targetReport.projectCode || '2203';
+    const reportDocCode = (targetReport.reportTemplate === 'FORM_12' || targetReport.inspectionType === 'MATERIAL') ? 'MI' : 'WA';
+    const repCreatedAt = targetReport.createdAt || new Date();
+
+    const newReportDocNum = generateDocumentCode(projectCode, reportDocCode, repCreatedAt, nextRevision);
+    const newReqDocNum = generateDocumentCode(projectCode, 'IR', repCreatedAt, nextRevision);
+
     const updatedReport = {
       ...targetReport,
       id: targetReport.id || reportId || `rep_${Date.now()}`,
+      revisionNumber: nextRevision,
+      referenceDocNumber: newReportDocNum,
+      projectCategoryCode: newReportDocNum,
       rectification: safeRectificationData,
       status: 'RECTIFIED',
       updatedAt: new Date().toISOString()
@@ -2775,6 +2896,9 @@ export default function App() {
     if (targetReq) {
       updatedReq = {
         ...targetReq,
+        revisionNumber: nextRevision,
+        referenceDocNumber: newReqDocNum,
+        projectCategoryCode: newReqDocNum,
         status: 'RECTIFIED',
         hasReport: true,
         reportId: updatedReport.id,
@@ -2789,7 +2913,6 @@ export default function App() {
       const matchFn = r => (
         r.id === updatedReport.id || 
         (updatedReport.requestId && r.requestId === updatedReport.requestId) ||
-        (updatedReport.reportNumber && r.reportNumber === updatedReport.reportNumber) ||
         (targetReq && r.requestId === targetReq.id) ||
         (targetReq?.reportId && r.id === targetReq.reportId)
       );
@@ -2809,8 +2932,7 @@ export default function App() {
         const matchReqFn = r => (
           r.id === updatedReq.id ||
           (updatedReport.requestId && r.id === updatedReport.requestId) ||
-          (r.reportId && (r.reportId === updatedReport.id || r.reportId === reportId)) ||
-          (updatedReport.reportNumber && r.requestNumber === updatedReport.reportNumber.replace('BBNT', 'PYC'))
+          (r.reportId && (r.reportId === updatedReport.id || r.reportId === reportId))
         );
         const filtered = prev.filter(r => !matchReqFn(r));
         const nextRequests = [updatedReq, ...filtered];
@@ -2869,8 +2991,7 @@ export default function App() {
     if (!report) return;
     let rep = reports.find(r => 
       r.id === report.id || 
-      (report.requestId && r.requestId === report.requestId) || 
-      (report.reportNumber && r.reportNumber === report.reportNumber)
+      (report.requestId && r.requestId === report.requestId)
     ) || report;
 
     // Tìm request liên quan để đồng bộ
@@ -2878,10 +2999,7 @@ export default function App() {
       r.id === rep.requestId || 
       r.reportId === rep.id || 
       r.id === report.requestId || 
-      r.reportId === report.id ||
-      (rep.requestNumber && r.requestNumber === rep.requestNumber) ||
-      (rep.reportNumber && r.requestNumber === rep.reportNumber.replace('BBNT', 'PYC')) ||
-      (report.reportNumber && r.requestNumber === report.reportNumber.replace('BBNT', 'PYC'))
+      r.reportId === report.id
     );
 
     const isCompleted = rep.status === 'COMPLETED' || 
@@ -2900,8 +3018,17 @@ export default function App() {
           ? report.rectification.photos
           : [];
 
+        const effectiveRev = getDocumentRevisionNumber(rep, targetReq);
+        const projectCode = rep.projectCode || targetReq?.projectCode || '2203';
+        const reportDocCode = (rep.reportTemplate === 'FORM_12' || rep.inspectionType === 'MATERIAL') ? 'MI' : 'WA';
+        const repCreatedAt = rep.createdAt || targetReq?.createdAt || new Date();
+        const newReportDocNum = generateDocumentCode(projectCode, reportDocCode, repCreatedAt, effectiveRev);
+
         rep = {
           ...rep,
+          revisionNumber: effectiveRev,
+          referenceDocNumber: newReportDocNum,
+          projectCategoryCode: newReportDocNum,
           status: 'RECTIFIED',
           rectification: {
             description: rep.rectification?.description || targetReq?.rectificationNotes || report?.rectification?.description || 'Đã sửa chữa khắc phục theo đúng yêu cầu',
@@ -2921,8 +3048,7 @@ export default function App() {
         setReports(prev => {
           const matchFn = r => (
             r.id === rep.id || 
-            (rep.requestId && r.requestId === rep.requestId) || 
-            (rep.reportNumber && r.reportNumber === rep.reportNumber)
+            (rep.requestId && r.requestId === rep.requestId)
           );
           const filtered = prev.filter(r => !matchFn(r));
           const next = [rep, ...filtered];
@@ -2944,10 +3070,6 @@ export default function App() {
     setInitialOpenRectify(Boolean(options.openRectify));
   };
 
-  // NẾU CHƯA ĐĂNG NHẬP -> HIỆN MÀN HÌNH LOGIN
-  if (!currentUser) {
-    return <LoginScreen onLogin={handleLogin} users={users} />;
-  }
 
   // Phân quyền theo cấp bậc & chức vụ:
   // - Chỉ huy trưởng: xem toàn bộ phiếu/biên bản do cấp dưới thuộc nhà thầu thi công lập
@@ -2988,94 +3110,81 @@ export default function App() {
     // 1. Quản trị viên (ADMIN): luôn xem được tất cả
     if (role === 'ADMIN') return true;
 
-    // 2. Chỉ huy trưởng ĐVTC: xem tất cả của nhà thầu mình
-    const isContractorLead = role === 'CONTRACTOR' && (
-      (user.position || '').toLowerCase().includes('chỉ huy') ||
-      (user.position || '').toLowerCase().includes('trưởng') ||
-      Boolean(user.isLead)
-    );
-    if (isContractorLead) return true;
-
     const curUid = user.uid;
     const curEmail = (user.email || '').trim().toLowerCase();
     const curName = (user.fullName || '').trim().toLowerCase();
 
-    // 3. Kỹ thuật ĐVTC thường: xem nếu là người tạo phiếu hoặc attendee ĐVTC
+    // 2. Phân hệ Đơn Vị Thi Công (CONTRACTOR):
+    // "Ai xem được của người đó": Mỗi cán bộ ĐVTC chỉ xem phiếu/biên bản do chính mình tạo ra hoặc đứng tên ký
     if (role === 'CONTRACTOR') {
-      const isCreator = Boolean(
-        (req?.createdByUid && curUid && req.createdByUid === curUid) ||
-        (req?.createdByName && curName && req.createdByName.toLowerCase().includes(curName)) ||
-        (rep?.attendees?.contractor?.person && curName && rep.attendees.contractor.person.toLowerCase().includes(curName)) ||
-        (!req?.createdByUid && !req?.createdByName)
+      const reqCreatedUid = req?.createdByUid;
+      const reqCreatedName = (req?.createdByName || '').trim().toLowerCase();
+      const repContractorPerson = (rep?.attendees?.contractor?.person || '').trim().toLowerCase();
+      const repContractorUid = rep?.attendees?.contractor?.uid;
+
+      const isMyInspection = Boolean(
+        (curUid && reqCreatedUid && curUid === reqCreatedUid) ||
+        (curName && reqCreatedName && (reqCreatedName === curName || reqCreatedName.includes(curName) || curName.includes(reqCreatedName))) ||
+        (curUid && repContractorUid && curUid === repContractorUid) ||
+        (curName && repContractorPerson && (repContractorPerson === curName || repContractorPerson.includes(curName) || curName.includes(repContractorPerson)))
       );
-      return isCreator;
+
+      return isMyInspection;
     }
 
-    // 4. TVGS TRƯỞNG: xem nếu gửi cho mình hoặc cán bộ dưới quyền hoặc là attendee TVGS
-    const isSupervisorLead = role === 'LEAD_SUPERVISOR' || Boolean(user.isLead && role === 'SUPERVISOR');
-    if (isSupervisorLead) {
-      const subIds = Array.isArray(user.subordinateIds) ? user.subordinateIds : [];
-      const mySubordinates = (allUsers || []).filter(u => 
-        (u.role === 'SUPERVISOR' || u.role === 'LEAD_SUPERVISOR') && 
-        (u.leaderId === curUid || subIds.includes(u.uid))
-      );
-      const subUids = mySubordinates.map(u => u.uid);
-      const subEmails = mySubordinates.map(u => (u.email || '').trim().toLowerCase()).filter(Boolean);
-      const subNames = mySubordinates.map(u => (u.fullName || '').trim().toLowerCase()).filter(Boolean);
-
+    // 3. Phân hệ Tư Vấn Giám Sát (SUPERVISOR & LEAD_SUPERVISOR):
+    const isSupervisorLead = role === 'LEAD_SUPERVISOR' || Boolean(user.isLead && role === 'SUPERVISOR') || (role === 'SUPERVISOR' && (user.position || '').toLowerCase().includes('trưởng'));
+    if (role === 'SUPERVISOR' || role === 'LEAD_SUPERVISOR') {
       const recipients = req?.assignedRecipients || rep?.assignedRecipients || [];
-      if (recipients.length === 0) return true;
+      const supPerson = (rep?.attendees?.supervisor?.person || '').trim().toLowerCase();
+      const supEmail = (rep?.attendees?.supervisor?.email || '').trim().toLowerCase();
+      const supUid = rep?.attendees?.supervisor?.uid;
 
-      const isAssignedToMeOrSub = recipients.some(rec => {
+      // Kiểm tra chỉ định đích danh cho chính cán bộ này ("ai xem được của người đó")
+      const isDirectlyAssigned = recipients.some(rec => {
         if (rec.role !== 'SUPERVISOR' && rec.role !== 'LEAD_SUPERVISOR') return false;
         const rUid = rec.uid;
         const rEmail = (rec.email || '').trim().toLowerCase();
         const rName = (rec.fullName || '').trim().toLowerCase();
-        const rLeader = rec.leaderId;
-
-        if ((curUid && rUid === curUid) || (curEmail && rEmail === curEmail) || (curName && rName === curName)) return true;
-        if (rLeader && rLeader === curUid) return true;
-        if (rUid && subUids.includes(rUid)) return true;
-        if (rEmail && subEmails.includes(rEmail)) return true;
-        if (rName && subNames.some(sn => sn === rName || sn.includes(rName) || rName.includes(sn))) return true;
-        return false;
+        return (curUid && rUid === curUid) || 
+               (curEmail && rEmail && curEmail === rEmail) || 
+               (curName && rName && (curName === rName || curName.includes(rName) || rName.includes(curName)));
       });
 
-      const supPerson = (rep?.attendees?.supervisor?.person || '').trim().toLowerCase();
-      const supEmail = (rep?.attendees?.supervisor?.email || '').trim().toLowerCase();
-      const isSupAttendee = Boolean(
+      const isDirectAttendee = Boolean(
+        (curUid && supUid && curUid === supUid) ||
         (curName && supPerson && (supPerson === curName || supPerson.includes(curName) || curName.includes(supPerson))) ||
-        (curEmail && supEmail && supEmail === curEmail) ||
-        subNames.some(sn => sn === supPerson || sn.includes(supPerson) || supPerson.includes(sn)) ||
-        (supEmail && subEmails.includes(supEmail))
+        (curEmail && supEmail && curEmail === supEmail)
       );
 
-      return Boolean(isAssignedToMeOrSub || isSupAttendee);
-    }
+      // Nếu là cán bộ TVGS thường: CHỈ xem nếu được chỉ định đích danh cho chính mình
+      if (!isSupervisorLead) {
+        return Boolean(isDirectlyAssigned || isDirectAttendee);
+      }
 
-    // 5. CĐT TRƯỞNG: xem nếu gửi cho mình hoặc cán bộ dưới quyền hoặc là attendee CĐT
-    const isInvestorLead = role === 'LEAD_INVESTOR' || Boolean(user.isLead && role === 'INVESTOR');
-    if (isInvestorLead) {
+      // Nếu là TVGS Trưởng: xem nếu chỉ định cho mình HOẶC cho các cán bộ TVGS cấp dưới quyền
       const subIds = Array.isArray(user.subordinateIds) ? user.subordinateIds : [];
-      const mySubordinates = (allUsers || []).filter(u => 
-        (u.role === 'INVESTOR' || u.role === 'LEAD_INVESTOR') && 
-        (u.leaderId === curUid || subIds.includes(u.uid))
-      );
+      const hasExplicitSubs = subIds.length > 0 || (allUsers || []).some(u => u.leaderId === curUid);
+      const mySubordinates = (allUsers || []).filter(u => {
+        if (u.uid === curUid) return false;
+        if (u.role !== 'SUPERVISOR') return false;
+        if ((u.position || '').toLowerCase().includes('trưởng')) return false;
+        if (hasExplicitSubs) {
+          return u.leaderId === curUid || subIds.includes(u.uid);
+        }
+        return true;
+      });
       const subUids = mySubordinates.map(u => u.uid);
       const subEmails = mySubordinates.map(u => (u.email || '').trim().toLowerCase()).filter(Boolean);
       const subNames = mySubordinates.map(u => (u.fullName || '').trim().toLowerCase()).filter(Boolean);
 
-      const recipients = req?.assignedRecipients || rep?.assignedRecipients || [];
-      if (recipients.length === 0) return true;
-
-      const isAssignedToMeOrSub = recipients.some(rec => {
-        if (rec.role !== 'INVESTOR' && rec.role !== 'LEAD_INVESTOR') return false;
+      const isAssignedToSub = recipients.some(rec => {
+        if (rec.role !== 'SUPERVISOR') return false;
         const rUid = rec.uid;
         const rEmail = (rec.email || '').trim().toLowerCase();
         const rName = (rec.fullName || '').trim().toLowerCase();
         const rLeader = rec.leaderId;
 
-        if ((curUid && rUid === curUid) || (curEmail && rEmail === curEmail) || (curName && rName === curName)) return true;
         if (rLeader && rLeader === curUid) return true;
         if (rUid && subUids.includes(rUid)) return true;
         if (rEmail && subEmails.includes(rEmail)) return true;
@@ -3083,76 +3192,104 @@ export default function App() {
         return false;
       });
 
+      const isSubAttendee = Boolean(
+        subNames.some(sn => sn === supPerson || sn.includes(supPerson) || supPerson.includes(sn)) ||
+        (supEmail && subEmails.includes(supEmail))
+      );
+
+      return Boolean(isDirectlyAssigned || isDirectAttendee || isAssignedToSub || isSubAttendee);
+    }
+
+    // 4. Phân hệ Chủ Đầu Tư (INVESTOR & LEAD_INVESTOR):
+    const isInvestorLead = role === 'LEAD_INVESTOR' || Boolean(user.isLead && role === 'INVESTOR') || (role === 'INVESTOR' && ((user.position || '').toLowerCase().includes('trưởng') || (user.position || '').toLowerCase().includes('giám đốc')));
+    if (role === 'INVESTOR' || role === 'LEAD_INVESTOR') {
+      const recipients = req?.assignedRecipients || rep?.assignedRecipients || [];
       const invPerson = (rep?.attendees?.investor?.person || '').trim().toLowerCase();
       const invEmail = (rep?.attendees?.investor?.email || '').trim().toLowerCase();
-      const isInvAttendee = Boolean(
+      const invUid = rep?.attendees?.investor?.uid;
+
+      // Kiểm tra chỉ định đích danh cho chính cán bộ này ("ai xem được của người đó")
+      const isDirectlyAssigned = recipients.some(rec => {
+        if (rec.role !== 'INVESTOR' && rec.role !== 'LEAD_INVESTOR') return false;
+        const rUid = rec.uid;
+        const rEmail = (rec.email || '').trim().toLowerCase();
+        const rName = (rec.fullName || '').trim().toLowerCase();
+        return (curUid && rUid === curUid) || 
+               (curEmail && rEmail && curEmail === rEmail) || 
+               (curName && rName && (curName === rName || curName.includes(rName) || rName.includes(curName)));
+      });
+
+      const isDirectAttendee = Boolean(
+        (curUid && invUid && curUid === invUid) ||
         (curName && invPerson && (invPerson === curName || invPerson.includes(curName) || curName.includes(invPerson))) ||
-        (curEmail && invEmail && invEmail === curEmail) ||
+        (curEmail && invEmail && curEmail === invEmail)
+      );
+
+      // Nếu là cán bộ CĐT thường: CHỈ xem nếu được chỉ định đích danh cho chính mình
+      if (!isInvestorLead) {
+        return Boolean(isDirectlyAssigned || isDirectAttendee);
+      }
+
+      // Nếu là CĐT Trưởng: xem nếu chỉ định cho mình HOẶC cho các cán bộ CĐT cấp dưới quyền
+      const subIds = Array.isArray(user.subordinateIds) ? user.subordinateIds : [];
+      const hasExplicitSubs = subIds.length > 0 || (allUsers || []).some(u => u.leaderId === curUid);
+      const mySubordinates = (allUsers || []).filter(u => {
+        if (u.uid === curUid) return false;
+        if (u.role !== 'INVESTOR') return false;
+        if ((u.position || '').toLowerCase().includes('trưởng') || (u.position || '').toLowerCase().includes('giám đốc')) return false;
+        if (hasExplicitSubs) {
+          return u.leaderId === curUid || subIds.includes(u.uid);
+        }
+        return true;
+      });
+      const subUids = mySubordinates.map(u => u.uid);
+      const subEmails = mySubordinates.map(u => (u.email || '').trim().toLowerCase()).filter(Boolean);
+      const subNames = mySubordinates.map(u => (u.fullName || '').trim().toLowerCase()).filter(Boolean);
+
+      const isAssignedToSub = recipients.some(rec => {
+        if (rec.role !== 'INVESTOR') return false;
+        const rUid = rec.uid;
+        const rEmail = (rec.email || '').trim().toLowerCase();
+        const rName = (rec.fullName || '').trim().toLowerCase();
+        const rLeader = rec.leaderId;
+
+        if (rLeader && rLeader === curUid) return true;
+        if (rUid && subUids.includes(rUid)) return true;
+        if (rEmail && subEmails.includes(rEmail)) return true;
+        if (rName && subNames.some(sn => sn === rName || sn.includes(rName) || rName.includes(sn))) return true;
+        return false;
+      });
+
+      const isSubAttendee = Boolean(
         subNames.some(sn => sn === invPerson || sn.includes(invPerson) || invPerson.includes(sn)) ||
         (invEmail && subEmails.includes(invEmail))
       );
 
-      return Boolean(isAssignedToMeOrSub || isInvAttendee);
+      return Boolean(isDirectlyAssigned || isDirectAttendee || isAssignedToSub || isSubAttendee);
     }
 
-    // 6. CÁN BỘ TVGS & CĐT THƯỜNG:
-    // Xem nếu được chỉ định trong assignedRecipients (trên request HOẶC report) HOẶC là attendee trong report
-    const recipients = req?.assignedRecipients || rep?.assignedRecipients || [];
-
-    const isAssigned = recipients.some(rec => {
-      const rUid = rec.uid;
-      const rEmail = (rec.email || '').trim().toLowerCase();
-      const rName = (rec.fullName || '').trim().toLowerCase();
-
-      return Boolean(
-        (curUid && rUid === curUid) ||
-        (curEmail && rEmail && curEmail === rEmail) ||
-        (curName && rName && (curName === rName || curName.includes(rName) || rName.includes(curName)))
-      );
-    });
-
-    const isAttendee = Boolean(
-      (rep?.attendees?.supervisor?.person && curName && (
-        rep.attendees.supervisor.person.toLowerCase().includes(curName) ||
-        curName.includes(rep.attendees.supervisor.person.toLowerCase())
-      )) ||
-      (rep?.attendees?.investor?.person && curName && (
-        rep.attendees.investor.person.toLowerCase().includes(curName) ||
-        curName.includes(rep.attendees.investor.person.toLowerCase())
-      )) ||
-      (rep?.attendees?.supervisor?.email && curEmail && rep.attendees.supervisor.email.toLowerCase() === curEmail) ||
-      (rep?.attendees?.investor?.email && curEmail && rep.attendees.investor.email.toLowerCase() === curEmail)
-    );
-
-    // Nếu cả request và report đều chưa cấu hình người nhận cụ thể: hiển thị cho tất cả
-    if (recipients.length === 0 && !rep?.attendees?.supervisor?.person && !rep?.attendees?.investor?.person) {
-      return true;
-    }
-
-    return Boolean(isAssigned || isAttendee);
+    return false;
   };
 
-  const accessibleRequests = requests.filter(req => {
-    const matchKey = (req.requestNumber || '').replace(/BBNT-VL|BBNT-APG/g, 'PYC');
-    const matchingRep = reports.find(r => 
-      (r.requestId && r.requestId === req.id) || 
-      (r.id && r.id === req.reportId) || 
-      (r.requestNumber && req.requestNumber && r.requestNumber === req.requestNumber) ||
-      (r.reportNumber && matchKey && r.reportNumber.replace(/BBNT-VL|BBNT-APG/g, 'PYC') === matchKey)
-    );
-    return canAccessInspection(req, matchingRep, currentUser, users);
-  });
+  const accessibleRequests = useMemo(() => {
+    return requests.filter(req => {
+      const matchingRep = reports.find(r => 
+        (r.requestId && r.requestId === req.id) || 
+        (r.id && r.id === req.reportId)
+      );
+      return canAccessInspection(req, matchingRep, currentUser, users);
+    });
+  }, [requests, reports, currentUser, users]);
 
-  const accessibleReports = reports.filter(rep => {
-    const matchKey = (rep.reportNumber || '').replace(/BBNT-VL|BBNT-APG/g, 'PYC');
-    const matchingReq = requests.find(r => 
-      (r.id && r.id === rep.requestId) || 
-      (r.reportId && r.reportId === rep.id) || 
-      (r.requestNumber && rep.requestNumber && r.requestNumber === rep.requestNumber) ||
-      (r.requestNumber && matchKey && r.requestNumber.replace(/BBNT-VL|BBNT-APG/g, 'PYC') === matchKey)
-    );
-    return canAccessInspection(matchingReq, rep, currentUser, users);
-  });
+  const accessibleReports = useMemo(() => {
+    return reports.filter(rep => {
+      const matchingReq = requests.find(r => 
+        (r.id && r.id === rep.requestId) || 
+        (r.reportId && r.reportId === rep.id)
+      );
+      return canAccessInspection(matchingReq, rep, currentUser, users);
+    });
+  }, [reports, requests, currentUser, users]);
 
   const filteredRequests = accessibleRequests.filter(req => {
     const matchesSearch = 
@@ -3184,6 +3321,11 @@ export default function App() {
     completed: accessibleRequests.filter(r => r.status === 'COMPLETED').length,
     myInvitations: accessibleRequests.length
   };
+
+  // NẾU CHƯA ĐĂNG NHẬP -> HIỆN MÀN HÌNH LOGIN (Đặt sau toàn bộ Hooks để tuân thủ quy tắc React Hook)
+  if (!currentUser) {
+    return <LoginScreen onLogin={handleLogin} users={users} />;
+  }
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -3303,6 +3445,13 @@ export default function App() {
                 >
                   <BookOpen size={18} />
                   <span>Thư Viện TCVN ({(standardsData?.works?.length || 0) + (standardsData?.materials?.length || 0)} hạng mục)</span>
+                </li>
+                <li 
+                  className={`sidebar-nav-item ${activeTab === 'ADMIN_PROJECTS' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('ADMIN_PROJECTS')}
+                >
+                  <Building2 size={18} />
+                  <span>Quản Lý Công Trình & Mã ({projectsList.length} DA / {docTypesList.length} Mã)</span>
                 </li>
                 <li 
                   className={`sidebar-nav-item ${activeTab === 'REQUESTS' ? 'active' : ''}`}
@@ -3444,13 +3593,79 @@ export default function App() {
               onOpenReport={handleOpenCompletionReport}
               onDeleteReport={handleDeleteCompletionReport}
             />
-          ) : currentRole === 'ADMIN' && (activeTab === 'ADMIN_USERS' || activeTab === 'ADMIN_STANDARDS') ? (
+          ) : currentRole === 'ADMIN' && (activeTab === 'ADMIN_USERS' || activeTab === 'ADMIN_STANDARDS' || activeTab === 'ADMIN_PROJECTS') ? (
             <div>
-              <div className="dashboard-header">
+              <div className="dashboard-header" style={{ marginBottom: '16px' }}>
                 <div className="dashboard-title-row">
                   <div className="dashboard-title">
                     <h2>Bảng Quản Trị Hệ Thống APCT (Admin Portal)</h2>
                   </div>
+                </div>
+
+                {/* Sub-tabs for quick switching in Admin mode */}
+                <div style={{ display: 'flex', gap: '8px', marginTop: '14px', borderBottom: '2px solid #e2e8f0', paddingBottom: '2px', overflowX: 'auto' }}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('ADMIN_PROJECTS')}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '8px 8px 0 0',
+                      border: 'none',
+                      background: activeTab === 'ADMIN_PROJECTS' ? '#7e22ce' : '#f1f5f9',
+                      color: activeTab === 'ADMIN_PROJECTS' ? '#ffffff' : '#475569',
+                      fontWeight: 700,
+                      fontSize: '0.88rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <Building2 size={16} />
+                    <span>Quản Lý Công Trình & Mã ({projectsList.length} DA / {docTypesList.length} Mã)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('ADMIN_USERS')}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '8px 8px 0 0',
+                      border: 'none',
+                      background: activeTab === 'ADMIN_USERS' ? '#7e22ce' : '#f1f5f9',
+                      color: activeTab === 'ADMIN_USERS' ? '#ffffff' : '#475569',
+                      fontWeight: 700,
+                      fontSize: '0.88rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <Users size={16} />
+                    <span>Quản Lý Cán Bộ ({users.length})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('ADMIN_STANDARDS')}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '8px 8px 0 0',
+                      border: 'none',
+                      background: activeTab === 'ADMIN_STANDARDS' ? '#7e22ce' : '#f1f5f9',
+                      color: activeTab === 'ADMIN_STANDARDS' ? '#ffffff' : '#475569',
+                      fontWeight: 700,
+                      fontSize: '0.88rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <BookOpen size={16} />
+                    <span>Thư Viện TCVN</span>
+                  </button>
                 </div>
               </div>
 
@@ -3465,11 +3680,19 @@ export default function App() {
                   onToggleUserStatus={handleToggleUserStatus}
                   onSyncAllUsersToCloud={handleSyncAllUsersToCloud}
                 />
-              ) : (
+              ) : activeTab === 'ADMIN_STANDARDS' ? (
                 <StandardsManagementView
                   standardsData={standardsData}
                   onSaveStandards={handleSaveStandards}
                   onSyncStandardsToCloud={handleSyncStandardsToCloud}
+                  showAlert={showAlert}
+                />
+              ) : (
+                <ProjectManagementView
+                  projects={projectsList}
+                  docTypes={docTypesList}
+                  onSaveProjects={handleSaveProjects}
+                  onSaveDocTypes={handleSaveDocTypes}
                   showAlert={showAlert}
                 />
               )}
@@ -4061,6 +4284,8 @@ export default function App() {
         users={users}
         currentUser={currentUser}
         standardsData={standardsData}
+        projects={projectsList}
+        docTypes={docTypesList}
         onSubmitRequest={handleCreateRequest}
         showAlert={showAlert}
       />
@@ -4069,8 +4294,11 @@ export default function App() {
         isOpen={Boolean(selectedRequest)}
         onClose={() => setSelectedRequest(null)}
         request={selectedRequest}
+        reports={reports}
         currentRole={currentRole}
         currentUser={currentUser}
+        projects={projectsList}
+        docTypes={docTypesList}
         onOpenReport={(reportId, isCreate) => {
           setSelectedRequest(null);
           handleOpenOrCreateReport(reportId, isCreate);
@@ -4092,6 +4320,8 @@ export default function App() {
         users={users}
         requests={requests}
         standardsData={standardsData}
+        projects={projectsList}
+        docTypes={docTypesList}
         onSaveReport={handleSaveReport}
         onRejectReport={handleRejectReport}
         onReinspectReport={handleReinspectReport}
@@ -4119,6 +4349,10 @@ export default function App() {
         users={users}
         currentUser={currentUser}
         standardsData={standardsData}
+        projects={projectsList}
+        docTypes={docTypesList}
+        onSaveProjects={handleSaveProjects}
+        onSaveDocTypes={handleSaveDocTypes}
         onSaveStandards={handleSaveStandards}
         onSyncStandardsToCloud={handleSyncStandardsToCloud}
         onAddUser={handleAddUser}

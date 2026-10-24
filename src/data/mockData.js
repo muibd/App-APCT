@@ -506,6 +506,66 @@ export const MOCK_USERS = [
     "email": "nguyenthanhtuan24122001@gmail.com",
     "password": "123456",
     "status": "ACTIVE"
+  },
+  {
+    "uid": "uid_dvtc_ghvp_01",
+    "fullName": "Trần Mạnh Hưng",
+    "role": "CONTRACTOR",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
+    "position": "Chỉ huy trưởng",
+    "avatar": "MH",
+    "phone": "0912345678",
+    "email": "hungtm.giahuy@gmail.com",
+    "password": "123456",
+    "status": "ACTIVE"
+  },
+  {
+    "uid": "uid_dvtc_ghvp_02",
+    "fullName": "Lê Văn Kỹ Thuật",
+    "role": "CONTRACTOR",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
+    "position": "Kỹ thuật hiện trường",
+    "avatar": "KT",
+    "phone": "0912345679",
+    "email": "thuatlv.giahuy@gmail.com",
+    "password": "123456",
+    "status": "ACTIVE"
+  },
+  {
+    "uid": "uid_dvtc_ghvp_03",
+    "fullName": "Nguyễn Văn QC",
+    "role": "CONTRACTOR",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
+    "position": "Nhân viên QA/QC",
+    "avatar": "QC",
+    "phone": "0912345680",
+    "email": "qcvn.giahuy@gmail.com",
+    "password": "123456",
+    "status": "ACTIVE"
+  },
+  {
+    "uid": "uid_dvtc_phanle_01",
+    "fullName": "Phan Văn Lê",
+    "role": "CONTRACTOR",
+    "company": "Công ty TNHH Phát Triển và Xây Dựng Phan Lê",
+    "position": "Chỉ huy trưởng",
+    "avatar": "PL",
+    "phone": "0987654321",
+    "email": "lephan.phanle@gmail.com",
+    "password": "123456",
+    "status": "ACTIVE"
+  },
+  {
+    "uid": "uid_dvtc_phanle_02",
+    "fullName": "Trần Kỹ Thuật PCCC",
+    "role": "CONTRACTOR",
+    "company": "Công ty TNHH Phát Triển và Xây Dựng Phan Lê",
+    "position": "Kỹ thuật hiện trường PCCC",
+    "avatar": "PC",
+    "phone": "0987654322",
+    "email": "pccc.phanle@gmail.com",
+    "password": "123456",
+    "status": "ACTIVE"
   }
 ];
 
@@ -520,37 +580,100 @@ export const MOCK_PROJECT = {
   buildings: [
     {
       id: "bld_chungcu_02",
+      code: "2203",
       name: "Chung cư nhà ở xã hội 2",
       items: [
         {
-          id: "item_ketcau_AB",
-          name: "Thi công phần kết cấu – Tòa A và Tòa B",
+          id: "item_hoanthien_AB",
+          name: "Thi công phần hoàn thiện Tòa A và Tòa B",
           tasks: [
-            "Nghiệm thu công tác định vị tim trục dầm sàn tầng 2 trục 1-13/A-D Tòa A",
-            "Nghiệm thu cốt thép dầm sàn tầng 2 trục 1-13/A-D Tòa A",
-            "Nghiệm thu ván khuôn dầm sàn tầng 2 Tòa A",
-            "Nghiệm thu công tác đổ bê tông dầm sàn tầng 2 Tòa A"
+            "Cốt thép, ván khuôn, bê tông",
+            "Xây tường",
+            "Trát tường",
+            "Chống thấm",
+            "Cán nền",
+            "Ốp lát gạch",
+            "Ốp lát đá",
+            "Ốp bậc nhựa giả gỗ",
+            "Lắp đặt trần thạch cao",
+            "Bả matit",
+            "Sơn lót, sơn hoàn thiện",
+            "Lắp đặt lan can"
           ]
         },
         {
-          id: "item_mong_AB",
-          name: "Thi công phần móng và hầm",
+          id: "item_mep_AB",
+          name: "Thi công hệ thống Mep Tòa A và Tòa B",
           tasks: [
-            "Nghiệm thu trắc đạc tim cọc đài móng ĐM-01 Tòa A",
-            "Nghiệm thu cốt thép đài móng và giằng móng Tòa B"
+            "Lắp đặt đường ống cấp thoát nước",
+            "Lắp đặt thiết bị vệ sinh",
+            "Lắp đặt ống luồn dây điện và kéo dây",
+            "Lắp đặt tủ điện, thiết bị đóng cắt",
+            "Lắp đặt hệ thống chiếu sáng",
+            "Lắp đặt hệ thống hút mùi, thông gió"
+          ]
+        },
+        {
+          id: "item_cuago",
+          name: "Cung cấp, lắp đặt cửa gỗ",
+          tasks: [
+            "Lắp đặt khuôn cửa gỗ",
+            "Lắp đặt cánh cửa gỗ và phụ kiện khóa"
+          ]
+        },
+        {
+          id: "item_cuathep",
+          name: "Cung cấp, lắp đặt cửa thép chống cháy",
+          tasks: [
+            "Lắp đặt khuôn cửa thép chống cháy",
+            "Lắp đặt cánh cửa thép chống cháy và tay co thủy lực"
+          ]
+        },
+        {
+          id: "item_cuanhomkinh",
+          name: "Cung cấp, lắp đặt cửa nhôm kính",
+          tasks: [
+            "Lắp đặt khung nhôm định hình",
+            "Lắp đặt kính an toàn và phụ kiện"
+          ]
+        },
+        {
+          id: "item_pccc_2203",
+          name: "Thi công hệ thống PCCC trong và ngoài nhà",
+          tasks: [
+            "Lắp đặt đường ống cấp nước chữa cháy vách tường",
+            "Lắp đặt đầu phun Sprinkler",
+            "Lắp đặt van báo động, trụ chữa cháy ngoài nhà",
+            "Lắp đặt tủ trung tâm báo cháy và đầu báo khói/nhiệt",
+            "Thử áp lực đường ống chữa cháy"
           ]
         }
       ]
     },
     {
-      id: "bld_nhapho_01",
-      name: "Dãy nhà phố liền kề thương mại LK-01",
+      id: "bld_chungcu_caotang",
+      code: "2204",
+      name: "Chung cư nhà ở cao tầng",
       items: [
         {
-          id: "item_xaytho",
-          name: "Thi công phần xây thô tường tầng 1",
+          id: "item_mep_2204",
+          name: "Thi công hệ thống Mep",
           tasks: [
-            "Nghiệm thu xây tường bao gạch ống dày 200mm LK-01"
+            "Lắp đặt đường ống cấp thoát nước",
+            "Lắp đặt thiết bị vệ sinh",
+            "Lắp đặt ống luồn dây điện và kéo dây",
+            "Lắp đặt tủ điện, thiết bị đóng cắt",
+            "Lắp đặt hệ thống chiếu sáng"
+          ]
+        },
+        {
+          id: "item_pccc_2204",
+          name: "Thi công hệ thống PCCC trong và ngoài nhà",
+          tasks: [
+            "Lắp đặt đường ống cấp nước chữa cháy vách tường",
+            "Lắp đặt đầu phun Sprinkler",
+            "Lắp đặt tủ trung tâm báo cháy và đầu báo khói/nhiệt",
+            "Thử áp lực đường ống chữa cháy"
           ]
         }
       ]

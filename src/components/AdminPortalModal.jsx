@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { X, ShieldCheck, Users, BookOpen, Settings, Cloud, RotateCcw } from 'lucide-react';
+import { X, ShieldCheck, Users, BookOpen, Settings, Cloud, RotateCcw, Building2 } from 'lucide-react';
 import UserManagementView from './UserManagementView';
 import StandardsManagementView from './StandardsManagementView';
+import ProjectManagementView from './ProjectManagementView';
 
 export default function AdminPortalModal({ 
   isOpen, 
@@ -9,6 +10,10 @@ export default function AdminPortalModal({
   users, 
   currentUser,
   standardsData,
+  projects = [],
+  docTypes = [],
+  onSaveProjects,
+  onSaveDocTypes,
   onSaveStandards,
   onSyncStandardsToCloud,
   onAddUser,
@@ -22,7 +27,7 @@ export default function AdminPortalModal({
 }) {
   if (!isOpen) return null;
 
-  const [activeTab, setActiveTab] = useState('USERS'); // 'USERS' | 'STANDARDS' | 'CONFIG' | 'LOGS'
+  const [activeTab, setActiveTab] = useState('PROJECTS'); // 'PROJECTS' | 'USERS' | 'STANDARDS' | 'CONFIG'
   return (
     <div className="modal-overlay">
       <div className="modal-content" style={{ maxWidth: '1050px', height: '90vh' }}>
@@ -42,6 +47,27 @@ export default function AdminPortalModal({
 
         {/* Tab Navigation */}
         <div style={{ display: 'flex', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', padding: '0 24px', overflowX: 'auto' }}>
+          <button 
+            style={{
+              padding: '12px 18px',
+              border: 'none',
+              background: activeTab === 'PROJECTS' ? '#ffffff' : 'transparent',
+              fontWeight: 700,
+              fontSize: '0.88rem',
+              color: activeTab === 'PROJECTS' ? '#7e22ce' : '#64748b',
+              borderBottom: activeTab === 'PROJECTS' ? '2px solid #7e22ce' : 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              whiteSpace: 'nowrap'
+            }}
+            onClick={() => setActiveTab('PROJECTS')}
+          >
+            <Building2 size={16} />
+            <span>Quản Lý Công Trình & Mã Loại ({projects.length})</span>
+          </button>
+
           <button 
             style={{
               padding: '12px 18px',
@@ -107,6 +133,17 @@ export default function AdminPortalModal({
         </div>
 
         <div className="modal-body" style={{ padding: '24px' }}>
+          {/* TAB 0: QUẢN LÝ CÔNG TRÌNH & MÃ LOẠI VĂN BẢN */}
+          {activeTab === 'PROJECTS' && (
+            <ProjectManagementView
+              projects={projects}
+              docTypes={docTypes}
+              onSaveProjects={onSaveProjects}
+              onSaveDocTypes={onSaveDocTypes}
+              showAlert={showAlert}
+            />
+          )}
+
           {/* TAB 1: DANH SÁCH NGƯỜI DÙNG */}
           {activeTab === 'USERS' && (
             <UserManagementView

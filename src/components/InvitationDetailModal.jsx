@@ -1,12 +1,14 @@
 import React from 'react';
 import { X, MapPin, FileText, Calendar, Award, Building, UserCheck, Camera, Clock, AlertTriangle, RotateCcw, CheckCircle2, ArrowLeftRight } from 'lucide-react';
+import { getDocumentRevisionNumber } from '../data/projectCatalog';
 
-export default function InvitationDetailModal({ 
-  isOpen, 
-  onClose, 
-  request, 
-  currentRole, 
-  currentUser, 
+export default function InvitationDetailModal({
+  isOpen,
+  onClose,
+  request,
+  reports = [],
+  currentRole,
+  currentUser,
   onOpenReport,
   onReassign
 }) {
@@ -28,6 +30,37 @@ export default function InvitationDetailModal({
     }
   })();
 
+  const docCode = request.docTypeCode || (request.inspectionType === 'MATERIAL' ? 'MI' : 'IR');
+  let rawReqNum = (request.requestNumber || '').trim();
+  rawReqNum = rawReqNum.replace(/^\.\.\.\.\.\.\s*/, '').replace(/^\.\.\.\s*/, '').trim();
+  let cleanReqNumber = rawReqNum;
+  if (!cleanReqNumber || cleanReqNumber === '......' || cleanReqNumber === docCode) {
+    cleanReqNumber = docCode;
+  } else if (!cleanReqNumber.includes(docCode)) {
+    cleanReqNumber = `${cleanReqNumber}/${docCode}`;
+  }
+
+  const relatedReport = (reports || []).find(r => 
+    (request.reportId && r.id === request.reportId) ||
+    r.requestId === request.id ||
+    (request.requestNumber && r.requestNumber === request.requestNumber)
+  );
+
+  const rev = getDocumentRevisionNumber(request, relatedReport);
+  const revStr = String(rev).padStart(2, '0');
+
+  let cleanRefDocCode = (request.projectCategoryCode || request.referenceDocNumber || '').trim();
+  if (!cleanRefDocCode || cleanRefDocCode.startsWith('TLCC') || cleanRefDocCode.includes('TLCC')) {
+    cleanRefDocCode = `2203/IR/231026-${revStr}.01`;
+  } else {
+    cleanRefDocCode = cleanRefDocCode.replace(/\/(WA|MI)\//, '/IR/');
+    if (/-\d+(\.\d+)?$/.test(cleanRefDocCode)) {
+      cleanRefDocCode = cleanRefDocCode.replace(/-\d+(\.\d+)?$/, `-${revStr}.01`);
+    } else {
+      cleanRefDocCode = `${cleanRefDocCode}-${revStr}.01`;
+    }
+  }
+
   return (
     <div className="modal-overlay">
       <div className="modal-content" style={{ maxWidth: '780px' }}>
@@ -39,7 +72,7 @@ export default function InvitationDetailModal({
             <div>
               <h3 style={{ margin: 0, fontSize: '1.2rem' }}>Phiếu Yêu Cầu Nghiệm Thu</h3>
               <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>
-                Mã số: <strong>{request.requestNumber}</strong> • Ngày gửi: {new Date(request.createdAt).toLocaleDateString('vi-VN')}
+                Mã số: <strong>{cleanReqNumber}</strong> • Ngày gửi: {new Date(request.createdAt).toLocaleDateString('vi-VN')}
               </p>
             </div>
           </div>
@@ -137,40 +170,67 @@ export default function InvitationDetailModal({
           )}
 
           {/* VĂN BẢN NỘI DUNG PHIẾU YÊU CẦU THEO CHUẨN MẪU */}
-          <div style={{ 
-            background: '#ffffff', 
-            border: '1px solid #e2e8f0', 
-            borderRadius: '12px', 
-            padding: '20px', 
+          <div style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '20px',
             boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
             marginBottom: '20px'
           }}>
-            <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-              <div style={{ fontSize: '0.78rem', color: '#64748b', fontStyle: 'italic' }}>Cần Thơ, ngày ... tháng ... năm 20...</div>
-              <h2 style={{ fontSize: '1.25rem', color: '#0f172a', margin: '4px 0', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
-                PHIẾU YÊU CẦU NGHIỆM THU
-              </h2>
-              <div style={{ fontFamily: 'monospace', fontWeight: 'bold', color: '#2563eb' }}>{request.requestNumber}</div>
+            {/* Header Quốc hiệu tiêu ngữ */}
+            <div style={{ textAlign: 'center', marginBottom: '14px' }}>
+              <div style={{ fontWeight: 'bold', fontSize: '0.98rem', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                CỘNG HOÀ XÃ HỘI CHỦ NGHĨA VIỆT NAM
+              </div>
+              <div style={{ fontWeight: 'bold', fontSize: '0.92rem', marginTop: '2px' }}>
+                <u>Độc lập - Tự do - Hạnh phúc</u>
+              </div>
+              <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '1px' }}>
+                ----------***---------
+              </div>
+              <div style={{ textAlign: 'right', fontSize: '0.85rem', fontStyle: 'italic', marginTop: '6px' }}>
+                Cần Thơ, ngày ... tháng ... năm 20...
+              </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.9rem' }}>
-              <div><strong>Dự án:</strong> {request.projectName}</div>
+            {/* Tiêu đề & Mã số */}
+            <div style={{
+              textAlign: 'center',
+              margin: '12px 0 16px 0',
+              padding: '8px 12px'
+            }}>
+              <h2 style={{ fontSize: '1.25rem', color: '#0f172a', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.02em', fontWeight: 800 }}>
+                PHIẾU YÊU CẦU NGHIỆM THU
+              </h2>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', fontSize: '0.9rem' }}>
+                <div>
+                  <strong>Số:</strong> <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>{cleanReqNumber}</strong>
+                </div>
+                <div>
+                  <strong>Số tài liệu căn cứ:</strong> <strong style={{ color: '#0f172a', fontFamily: 'monospace', fontSize: '0.96rem' }}>{cleanRefDocCode}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.9rem', lineHeight: 1.6 }}>
+              <div><strong>Dự án:</strong> {request.projectName || 'Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City'}</div>
               <div><strong>Công trình:</strong> {request.buildingName}</div>
-              <div><strong>Hạng mục:</strong> {request.itemName}</div>
-              <div><strong>Địa điểm xây dựng:</strong> {request.location}</div>
+              <div><strong>Hạng mục:</strong> {request.itemName || request.packageName}</div>
+              <div><strong>Địa điểm xây dựng:</strong> {request.location || 'Phường Thường Thạnh - Quận Cái Răng - Thành phố Cần Thơ'}</div>
               <div><strong>Đơn vị yêu cầu nghiệm thu:</strong> {request.contractorCompany}</div>
-              
-              <div style={{ 
-                background: request.inspectionType === 'MATERIAL' ? '#f0fdf4' : '#f1f5f9', 
-                padding: '12px', 
-                borderRadius: '8px', 
-                margin: '8px 0', 
-                borderLeft: request.inspectionType === 'MATERIAL' ? '4px solid #059669' : '4px solid #2563eb' 
+
+              <div style={{
+                background: request.inspectionType === 'MATERIAL' ? '#f0fdf4' : '#f1f5f9',
+                padding: '12px',
+                borderRadius: '8px',
+                margin: '8px 0',
+                borderLeft: request.inspectionType === 'MATERIAL' ? '4px solid #059669' : '4px solid #2563eb'
               }}>
                 <strong style={{ color: request.inspectionType === 'MATERIAL' ? '#065f46' : '#1e40af' }}>
                   {request.inspectionType === 'MATERIAL' ? 'Vật liệu đầu vào yêu cầu nghiệm thu (Mẫu số 12):' : 'Công tác xây dựng yêu cầu nghiệm thu:'}
                 </strong>
-                
+
                 {request.materials && request.materials.length > 0 ? (
                   <div style={{ marginTop: '8px', overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', background: '#ffffff', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
@@ -225,20 +285,30 @@ export default function InvitationDetailModal({
               </div>
 
               <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px dashed #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem', color: '#64748b' }}>
-                <div>Người lập phiếu: <strong>{request.createdByName || 'KS. Lê Văn Kỹ Thuật'}</strong> ({request.createdByRole || 'Kỹ thuật hiện trường'})</div>
+                <div>Đại diện đơn vị thi công: <strong>{request.createdByName || 'KS. Lê Văn Kỹ Thuật'}</strong> ({request.createdByRole || 'Kỹ thuật hiện trường'})</div>
                 <span style={{ color: '#059669', fontWeight: 600 }}>✓ ĐVTC đã ký xác nhận gửi</span>
+              </div>
+
+              {/* Nơi nhận theo mẫu 03 */}
+              <div style={{ marginTop: '14px', paddingTop: '10px', borderTop: '1px solid #e2e8f0', fontSize: '0.82rem', color: '#475569' }}>
+                <strong>Nơi nhận:</strong>
+                <div style={{ paddingLeft: '14px', marginTop: '3px', lineHeight: 1.5 }}>
+                  - TVGS: Công ty CP Tư vấn Xây dựng và Thương mại GELICON<br />
+                  - CĐT: Ban QLDA - Công ty TNHH An Phú Cần Thơ<br />
+                  - Lưu: {request.contractorCompany || 'Đơn vị thi công'}
+                </div>
               </div>
             </div>
           </div>
 
           {/* ẢNH THI CÔNG HIỆN TRƯỜNG ĐÍNH KÈM (NẾU CÓ) */}
           {request.evidencePhotos && request.evidencePhotos.length > 0 && (
-            <div style={{ 
-              background: '#f8fafc', 
-              border: '1px solid #e2e8f0', 
-              borderRadius: '12px', 
-              padding: '16px', 
-              marginBottom: '18px' 
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '12px',
+              padding: '16px',
+              marginBottom: '18px'
             }}>
               <h4 style={{ margin: '0 0 12px 0', fontSize: '0.88rem', color: '#1e293b', textTransform: 'uppercase', letterSpacing: '0.03em', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Camera size={16} color="#2563eb" />
@@ -247,29 +317,29 @@ export default function InvitationDetailModal({
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
                 {request.evidencePhotos.map((photo, i) => (
-                  <div key={photo.id || i} style={{ 
-                    background: '#ffffff', 
-                    borderRadius: '8px', 
-                    overflow: 'hidden', 
+                  <div key={photo.id || i} style={{
+                    background: '#ffffff',
+                    borderRadius: '8px',
+                    overflow: 'hidden',
                     border: '1px solid #e2e8f0',
                     boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
                   }}>
                     <div style={{ position: 'relative' }}>
-                      <img 
-                        src={photo.url} 
-                        alt={photo.caption || `Ảnh ${i + 1}`} 
+                      <img
+                        src={photo.url}
+                        alt={photo.caption || `Ảnh ${i + 1}`}
                         style={{ width: '100%', height: '130px', objectFit: 'cover', display: 'block' }}
                       />
-                      <div style={{ 
-                        position: 'absolute', 
-                        bottom: '4px', 
-                        left: '4px', 
-                        right: '4px', 
-                        background: 'rgba(15, 23, 42, 0.85)', 
-                        color: '#ffffff', 
-                        padding: '4px 6px', 
-                        borderRadius: '4px', 
-                        fontSize: '0.66rem' 
+                      <div style={{
+                        position: 'absolute',
+                        bottom: '4px',
+                        left: '4px',
+                        right: '4px',
+                        background: 'rgba(15, 23, 42, 0.85)',
+                        color: '#ffffff',
+                        padding: '4px 6px',
+                        borderRadius: '4px',
+                        fontSize: '0.66rem'
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
                           <Clock size={10} color="#34d399" />
@@ -295,21 +365,21 @@ export default function InvitationDetailModal({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {request.assignedRecipients?.map((rec, i) => (
-                <div key={i} style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'space-between', 
-                  padding: '9px 14px', 
-                  background: '#ffffff', 
-                  borderRadius: '8px', 
-                  border: '1px solid #e2e8f0' 
+                <div key={i} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '9px 14px',
+                  background: '#ffffff',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0'
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div className="avatar-circle" style={{ 
-                      width: '32px', 
-                      height: '32px', 
+                    <div className="avatar-circle" style={{
+                      width: '32px',
+                      height: '32px',
                       fontSize: '0.75rem',
-                      background: (rec.role === 'SUPERVISOR' || rec.role === 'LEAD_SUPERVISOR') ? '#059669' : '#d97706' 
+                      background: (rec.role === 'SUPERVISOR' || rec.role === 'LEAD_SUPERVISOR') ? '#059669' : '#d97706'
                     }}>
                       {(rec.role === 'SUPERVISOR' || rec.role === 'LEAD_SUPERVISOR') ? 'TV' : 'ĐT'}
                     </div>
@@ -330,13 +400,13 @@ export default function InvitationDetailModal({
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span className="badge-status badge-confirmed" style={{ fontSize: '0.75rem', padding: '3px 8px' }}>
-                      {rec.role === 'LEAD_SUPERVISOR' 
-                        ? 'TVGS Trưởng' 
-                        : rec.role === 'SUPERVISOR' 
-                        ? 'Đại diện TVGS' 
-                        : rec.role === 'LEAD_INVESTOR' 
-                        ? 'CĐT Trưởng' 
-                        : 'Đại diện CĐT'}
+                      {rec.role === 'LEAD_SUPERVISOR'
+                        ? 'TVGS Trưởng'
+                        : rec.role === 'SUPERVISOR'
+                          ? 'Đại diện TVGS'
+                          : rec.role === 'LEAD_INVESTOR'
+                            ? 'CĐT Trưởng'
+                            : 'Đại diện CĐT'}
                     </span>
 
                     {(() => {
@@ -378,7 +448,7 @@ export default function InvitationDetailModal({
           </div>
 
           {/* HƯỚNG DẪN ĐỒNG BỘ VỚI BIÊN BẢN */}
-          <div style={{ 
+          {/* <div style={{ 
             background: '#f0fdf4', 
             border: '1px solid #bbf7d0', 
             borderRadius: '10px', 
@@ -396,7 +466,7 @@ export default function InvitationDetailModal({
                 TVGS và CĐT trực tiếp kiểm tra tại hiện trường và tiến hành nghiệm thu (Đồng ý hoặc Không đồng ý) trên biên bản.
               </div>
             </div>
-          </div>
+          </div> */}
         </div>
 
         {/* FOOTER ACTIONS */}
@@ -405,8 +475,8 @@ export default function InvitationDetailModal({
             Đóng
           </button>
 
-          <button 
-            className="btn-primary" 
+          <button
+            className="btn-primary"
             style={{ background: '#059669' }}
             onClick={() => {
               onClose();

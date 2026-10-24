@@ -9,6 +9,7 @@ import { STANDARD_CRITERIA_LIST } from '../data/mockData';
 import { getSuggestedStandards, GENERAL_MANDATORY_STANDARDS } from '../data/standardsRules';
 import { triggerSafeConfetti } from '../utils/confettiHelper';
 import { compressImageFile } from '../utils/storageHelper';
+import { generateDocumentCode, getDocumentRevisionNumber } from '../data/projectCatalog';
 
 
 
@@ -159,6 +160,88 @@ export default function InspectionReportModal({
     r.reportId === reportState.id ||
     (reportState.requestNumber && r.requestNumber === reportState.requestNumber)
   );
+
+  const docCode = isMaterialReport ? 'MI' : 'WA';
+  const projCode = reportState.projectCode || relatedRequest?.projectCode || (
+    (reportState.projectInfo?.buildingName || '').includes('2204') || (reportState.projectInfo?.buildingName || '').includes('cao tầng') ? '2204' : '2203'
+  );
+
+  // Chuẩn hóa số biên bản: WA hoặc MI (hoặc [Số]/WA, [Số]/MI nếu có số thứ tự), tuyệt đối không để IR hoặc ...... IR
+  const cleanReportNum = (() => {
+    let raw = (reportState.reportNumber || '').trim();
+    raw = raw.replace(/^\.\.\.\.\.\.\s*/, '').replace(/^\.\.\.\s*/, '').trim();
+    raw = raw.replace(/^IR[\/\s-]*/i, '').replace(/[\/\s-]IR$/i, '').trim();
+    if (!raw || raw === '......' || raw === 'IR' || raw === docCode) {
+      return docCode;
+    }
+    if (!raw.includes(docCode)) {
+      return `${raw}/${docCode}`;
+    }
+    return raw;
+  })();
+
+  // Chuẩn hóa số tài liệu căn cứ: [Mã CT]/[WA hoặc MI]/[ddMMyy]-[Lần sửa].01 (VD: 2203/WA/241026-01.01, sửa xong gửi lại tăng lên 02.01, 03.01...)
+  // Loại bỏ hoàn toàn mã cũ dạng TLCC-...
+  const cleanRefCode = (() => {
+    const rev = getDocumentRevisionNumber(reportState, relatedRequest);
+    const revStr = String(rev).padStart(2, '0');
+
+    const rawRef = (reportState.projectCategoryCode || reportState.referenceDocNumber || relatedRequest?.projectCategoryCode || '').trim();
+    if (rawRef && !rawRef.startsWith('TLCC') && !rawRef.includes('TLCC') && rawRef.includes('/')) {
+      const baseRef = rawRef.replace(/\/(IR|MI|WA)\//, `/${docCode}/`);
+      if (/-\d+(\.\d+)?$/.test(baseRef)) {
+        return baseRef.replace(/-\d+(\.\d+)?$/, `-${revStr}.01`);
+      }
+      return `${baseRef}-${revStr}.01`;
+    }
+    return generateDocumentCode(
+      projCode,
+      docCode,
+      reportState.createdAt || new Date(),
+      rev
+    );
+  })();
+
+  // Chuẩn hóa số Phiếu yêu cầu nghiệm thu (của nhà thầu thi công) dùng làm tài liệu căn cứ:
+  // Định dạng chuẩn: [Mã công trình]/IR/[ddMMyy]-[Lần sửa].01 (Ví dụ: 2203/IR/241026-01.01, sửa xong gửi lại tăng lên 02.01, 03.01...)
+  const cleanReqCode = (() => {
+    const rev = getDocumentRevisionNumber(reportState, relatedRequest);
+    const revStr = String(rev).padStart(2, '0');
+
+    const updateRevSuffix = (code) => {
+      if (!code) return '';
+      const trimmed = code.trim();
+      if (/-\d+(\.\d+)?$/.test(trimmed)) {
+        return trimmed.replace(/-\d+(\.\d+)?$/, `-${revStr}.01`);
+      }
+      return `${trimmed}-${revStr}.01`;
+    };
+
+    const reqRef = (relatedRequest?.referenceDocNumber || relatedRequest?.projectCategoryCode || '').trim();
+    if (reqRef && !reqRef.startsWith('TLCC') && !reqRef.includes('TLCC') && reqRef.includes('/')) {
+      const baseRef = reqRef.replace(/\/(WA|MI)\//, '/IR/');
+      return updateRevSuffix(baseRef);
+    }
+
+    const repRef = (reportState.referenceDocNumber || reportState.projectCategoryCode || '').trim();
+    if (repRef && !repRef.startsWith('TLCC') && !repRef.includes('TLCC') && repRef.includes('/')) {
+      const baseRef = repRef.replace(/\/(WA|MI)\//, '/IR/');
+      return updateRevSuffix(baseRef);
+    }
+
+    const rawReq = (relatedRequest?.requestNumber || reportState.requestNumber || '').trim();
+    const cleanRaw = rawReq.replace(/^\.\.\.\.\.\.\s*/, '').replace(/^\.\.\.\s*/, '').trim();
+    if (cleanRaw && cleanRaw.includes('/') && cleanRaw !== 'IR' && cleanRaw !== '...... IR') {
+      return updateRevSuffix(cleanRaw);
+    }
+
+    return generateDocumentCode(
+      projCode,
+      'IR',
+      relatedRequest?.createdAt || reportState.createdAt || new Date(),
+      rev
+    );
+  })();
 
   const effectiveAssignedRecipients = (reportState.assignedRecipients && reportState.assignedRecipients.length > 0)
     ? reportState.assignedRecipients
@@ -813,8 +896,16 @@ export default function InspectionReportModal({
       }
     };
 
+    // Tăng số lần sửa chữa lên 1: 01.01 -> 02.01, 03.01...
+    // Chỉ tăng khi ĐVTC bấm gửi lại, số lần tăng = (số lần trong lịch sử sửa + 2)
+    const nextRevision = (reportState.rectificationHistory?.length || 0) + 2;
+    const newReportDocNum = generateDocumentCode(projCode, docCode, reportState.createdAt || new Date(), nextRevision);
+
     const updated = {
       ...reportState,
+      revisionNumber: nextRevision,
+      referenceDocNumber: newReportDocNum,
+      projectCategoryCode: newReportDocNum,
       status: 'RECTIFIED',
       rectification: rectificationPayload
     };
@@ -1062,7 +1153,7 @@ export default function InspectionReportModal({
                 )}
               </div>
               <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>
-                Mã biên bản: <strong>{reportState.reportNumber}</strong> • Căn cứ: Nghị định 06/2021/NĐ-CP
+                Mã biên bản: <strong>{cleanReportNum}</strong> • Căn cứ: Nghị định 06/2021/NĐ-CP
               </p>
             </div>
           </div>
@@ -1330,40 +1421,49 @@ export default function InspectionReportModal({
                 </div>
               )}
 
-              {/* Quốc hiệu tiêu ngữ */}
-              <div className="doc-header-national" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-                <div style={{ width: '45%', textAlign: 'center', fontSize: '0.82rem' }}>
-                  <strong>CÔNG TY CP XÂY DỰNG AN PHÚ GIA</strong><br />
-                  Số: {reportState.reportNumber}<br />
-                  Số TLCC: {reportState.referenceDocNumber || 'TLCC-01/2026'}
+              {/* Quốc hiệu tiêu ngữ & ngày tháng căn phải chuẩn Image 2 */}
+              <div className="doc-header-national" style={{ textAlign: 'center', marginBottom: '16px' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '0.98rem', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                  CỘNG HOÀ XÃ HỘI CHỦ NGHĨA VIỆT NAM
                 </div>
-                <div style={{ width: '50%', textAlign: 'center', fontSize: '0.82rem' }}>
-                  <strong>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</strong><br />
-                  <u>Độc lập - Tự do - Hạnh phúc</u><br /><br />
-                  <em>{reportState.cityDate || 'Cần Thơ, ngày 05 tháng 10 năm 2026'}</em>
+                <div style={{ fontWeight: 'bold', fontSize: '0.92rem', marginTop: '2px' }}>
+                  <u>Độc lập - Tự do - Hạnh phúc</u>
+                </div>
+                <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '1px' }}>
+                  --------***--------
+                </div>
+                <div style={{ textAlign: 'right', fontSize: '0.86rem', fontStyle: 'italic', marginTop: '8px' }}>
+                  {reportState.cityDate || 'Cần Thơ, ngày .....tháng.....năm 202...'}
                 </div>
               </div>
 
-              {/* Tiêu đề biên bản */}
-              <div className="doc-main-title" style={{ textAlign: 'center', margin: '14px 0 20px 0' }}>
-                <h2 style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: '0 0 4px 0', textTransform: 'uppercase', lineHeight: 1.4 }}>
+              {/* Tiêu đề biên bản & Mã Số - Số Tài Liệu Căn Cứ chuẩn */}
+              <div className="doc-main-title" style={{
+                textAlign: 'center',
+                margin: '14px 0 18px 0',
+                padding: '8px 12px'
+              }}>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: '0 0 6px 0', textTransform: 'uppercase', color: '#0f172a', lineHeight: 1.35 }}>
                   {isMaterialReport 
                     ? 'BIÊN BẢN NGHIỆM THU VẬT LIỆU, THIẾT BỊ, SẢN PHẨM CHẾ TẠO SẴN TRƯỚC KHI ĐƯA VÀO SỬ DỤNG'
                     : 'BIÊN BẢN NGHIỆM THU CÔNG VIỆC XÂY DỰNG'}
                 </h2>
-                <div style={{ fontSize: '0.85rem', fontStyle: 'italic', color: '#475569' }}>
-                  {isMaterialReport 
-                    ? '(Mẫu số 12 - Danh mục tiêu chuẩn vật liệu nghiệm thu)'
-                    : '(Căn cứ Nghị định số 06/2021/NĐ-CP ngày 26/01/2021 của Chính phủ)'}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', fontSize: '0.92rem' }}>
+                  <div>
+                    <strong>Số:</strong> <strong style={{ color: '#0f172a', fontFamily: 'monospace', fontSize: '1rem' }}>{cleanReportNum}</strong>
+                  </div>
+                  <div>
+                    <strong>Số tài liệu căn cứ:</strong> <strong style={{ color: '#0f172a', fontFamily: 'monospace', fontSize: '0.98rem' }}>{cleanRefCode}</strong>
+                  </div>
                 </div>
               </div>
 
               {/* Thông tin dự án */}
-              <div style={{ marginBottom: '14px' }}>
+              <div style={{ marginBottom: '14px', lineHeight: 1.6 }}>
                 <div><strong>Dự án:</strong> {reportState.projectInfo?.projectName || 'Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City'}</div>
                 <div><strong>Công trình:</strong> {reportState.projectInfo?.buildingName || 'Chung cư nhà ở xã hội 2'}</div>
                 <div><strong>Hạng mục:</strong> {reportState.projectInfo?.itemName || 'Thi công phần hoàn thiện Tòa A & Tòa B'}</div>
-                <div><strong>Địa điểm xây dựng:</strong> {reportState.projectInfo?.location || 'Đường Trương Vĩnh Nguyên, Phường Cái Răng, TP. Cần Thơ'}</div>
+                <div><strong>Địa điểm xây dựng:</strong> {reportState.projectInfo?.location || 'Phường Thường Thạnh - Quận Cái Răng - Thành phố Cần Thơ'}</div>
               </div>
 
               {/* 1. Đối tượng nghiệm thu */}
@@ -1618,7 +1718,7 @@ export default function InspectionReportModal({
                   <div style={{ paddingLeft: '16px', marginTop: '4px' }}>
                     <div><strong>4.1. Các tài liệu làm căn cứ nghiệm thu:</strong></div>
                     <div style={{ paddingLeft: '16px' }}>
-                      - Phiếu yêu cầu nghiệm thu của nhà thầu thi công xây dựng số: <strong>{reportState.requestNumber || (reportState.requestId && !reportState.requestId.startsWith('req_') ? reportState.requestId : null) || '01/PYC-APG'}</strong><br />
+                      - Phiếu yêu cầu nghiệm thu của nhà thầu thi công xây dựng số: <strong>{cleanReqCode}</strong><br />
                       - Hồ sơ thiết kế bản vẽ thi công được chủ đầu tư phê duyệt.<br />
                       - Tiêu chuẩn, quy phạm xây dựng được áp dụng (Động theo file Excel DANH MỤC TIÊU CHUẨN NGHIỆM THU.xls):
                       <div className="doc-standards-list" style={{ paddingLeft: '16px', color: '#b91c1c' }}>
@@ -1703,7 +1803,7 @@ export default function InspectionReportModal({
                   <div style={{ paddingLeft: '16px', marginTop: '4px' }}>
                     <div><strong>4.1. Tài liệu căn cứ nghiệm thu:</strong></div>
                     <div style={{ paddingLeft: '16px' }}>
-                      4.1.1 Phiếu yêu cầu nghiệm thu của nhà thầu thi công số: <strong>{reportState.requestNumber || (reportState.requestId && !reportState.requestId.startsWith('req_') ? reportState.requestId : null) || '01/PYC-APG'}</strong><br />
+                      4.1.1 Phiếu yêu cầu nghiệm thu của nhà thầu thi công số: <strong>{cleanReqCode}</strong><br />
                       4.1.2 Hồ sơ thiết kế BVTC (đã được Chủ đầu tư phê duyệt ngày 16/12/2025):<br />
                       &nbsp;&nbsp;&nbsp;&nbsp;+ Tên hồ sơ thiết kế: Hồ sơ thiết kế xây dựng triển khai sau hồ sơ TKCS.<br />
                       &nbsp;&nbsp;&nbsp;&nbsp;+ Những thay đổi thiết kế đã được chấp thuận: Không.<br />
@@ -2018,7 +2118,7 @@ export default function InspectionReportModal({
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
                       <div style={{ width: '45%', textAlign: 'center', fontSize: '0.82rem' }}>
                         <strong>{reportState.attendees?.contractor?.company || 'CÔNG TY CP XÂY DỰNG AN PHÚ GIA'}</strong><br />
-                        Số: {reportState.reportNumber}
+                        Số: {cleanReportNum}
                       </div>
                       <div style={{ width: '50%', textAlign: 'center', fontSize: '0.82rem' }}>
                         <strong>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</strong><br />
@@ -2029,7 +2129,7 @@ export default function InspectionReportModal({
                       PHỤ LỤC HÌNH ẢNH HIỆN TRƯỜNG KÈM THEO BIÊN BẢN
                     </h3>
                     <div style={{ fontSize: '0.88rem', fontStyle: 'italic', color: '#334155' }}>
-                      (Kèm theo Biên bản nghiệm thu số: <strong>{reportState.reportNumber}</strong> - Ngày: {reportState.time?.startTime || reportState.cityDate})
+                      (Kèm theo Biên bản nghiệm thu số: <strong>{cleanReportNum}</strong> - Ngày: {reportState.time?.startTime || reportState.cityDate})
                     </div>
                   </div>
 
@@ -3174,7 +3274,7 @@ export default function InspectionReportModal({
                       : (isRectified ? 'TVGS: Không Đồng Ý Sau Sửa & Yêu Cầu Sửa Tiếp' : 'TVGS: Không Đồng Ý Nghiệm Thu & Yêu Cầu Sửa Chữa')}
                   </h3>
                   <p style={{ margin: 0, fontSize: '0.8rem', color: '#b91c1c' }}>
-                    Thông báo gửi trực tiếp đến <strong>Đơn Vị Thi Công</strong> • Biên bản số: <strong>{reportState.reportNumber}</strong>
+                    Thông báo gửi trực tiếp đến <strong>Đơn Vị Thi Công</strong> • Biên bản số: <strong>{cleanReportNum}</strong>
                   </p>
                 </div>
               </div>
@@ -3261,7 +3361,7 @@ export default function InspectionReportModal({
                       : 'Báo Cáo Sửa Chữa Khắc Phục & Gửi Cho TVGS Duyệt Lại'}
                   </h3>
                   <p style={{ margin: 0, fontSize: '0.8rem', color: '#7e22ce' }}>
-                    Người nhận duyệt: <strong>{(reportState.conclusion?.rejectedBy?.role === 'INVESTOR' || reportState.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR') ? 'Đại Diện Chủ Đầu Tư' : 'Tư Vấn Giám Sát'}</strong> • Biên bản: {reportState.reportNumber}
+                    Người nhận duyệt: <strong>{(reportState.conclusion?.rejectedBy?.role === 'INVESTOR' || reportState.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR') ? 'Đại Diện Chủ Đầu Tư' : 'Tư Vấn Giám Sát'}</strong> • Biên bản: {cleanReportNum}
                   </p>
                 </div>
               </div>

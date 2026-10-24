@@ -22,12 +22,21 @@ export default function ReassignRecipientModal({
       : (r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR')
   );
 
-  // Danh sách ứng viên hợp lệ
+  // Danh sách ứng viên hợp lệ (chỉ chọn cán bộ cấp dưới trực tiếp nghiệm thu, không chọn các anh Trưởng)
   const candidateList = users.filter(u => {
     if (u.status === 'INACTIVE') return false;
-    return isSupervisor
-      ? (u.role === 'SUPERVISOR' || u.role === 'LEAD_SUPERVISOR')
-      : (u.role === 'INVESTOR' || u.role === 'LEAD_INVESTOR');
+    const roleStr = (u.role || '').toUpperCase();
+    const pos = (u.position || '').toLowerCase();
+    if (pos.includes('trưởng') || pos.includes('chỉ huy') || pos.includes('giám đốc') || Boolean(u.isLead)) return false;
+    if (isSupervisor) {
+      if (roleStr !== 'SUPERVISOR' || roleStr === 'LEAD_SUPERVISOR') return false;
+      if (pos.includes('thi công') || pos.includes('nhà thầu') || pos.includes('quản lý dự án') || pos.includes('ban qlda')) return false;
+      return true;
+    } else {
+      if (roleStr !== 'INVESTOR' || roleStr === 'LEAD_INVESTOR') return false;
+      if (pos.includes('tư vấn') || pos.includes('giám sát') || pos.includes('thi công')) return false;
+      return true;
+    }
   });
 
   // State chọn cán bộ mới

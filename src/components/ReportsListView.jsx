@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   FileText, Search, Filter, CheckCircle2, Clock, XCircle, 
   AlertTriangle, Printer, Eye, Award, MapPin, Calendar, 
@@ -6,6 +6,7 @@ import {
   Building2, Layers, Check, ChevronRight, AlertCircle, 
   RotateCcw, Wrench
 } from 'lucide-react';
+import { getDocumentRevisionNumber } from '../data/projectCatalog';
 
 export default function ReportsListView({ 
   reports, 
@@ -37,33 +38,46 @@ export default function ReportsListView({
     return 'PENDING';
   };
 
-  // Lọc theo search & status
-  const filteredReports = reports.filter(rep => {
+  // Lọc theo search & status (Tối ưu với useMemo để tránh lag khi gõ)
+  const filteredReports = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
-    const matchesSearch = 
-      rep.reportNumber?.toLowerCase().includes(query) ||
-      rep.inspectionObject?.toLowerCase().includes(query) ||
-      rep.projectInfo?.buildingName?.toLowerCase().includes(query) ||
-      rep.projectInfo?.itemName?.toLowerCase().includes(query) ||
-      rep.referenceDocNumber?.toLowerCase().includes(query);
+    return (reports || []).filter(rep => {
+      const matchesSearch = !query || 
+        rep.reportNumber?.toLowerCase().includes(query) ||
+        rep.inspectionObject?.toLowerCase().includes(query) ||
+        rep.projectInfo?.buildingName?.toLowerCase().includes(query) ||
+        rep.projectInfo?.itemName?.toLowerCase().includes(query) ||
+        rep.referenceDocNumber?.toLowerCase().includes(query);
 
-    const repStatus = getReportStatus(rep);
-    let matchesStatus = true;
-    if (statusFilter === 'COMPLETED') matchesStatus = repStatus === 'COMPLETED';
-    if (statusFilter === 'REJECTED') matchesStatus = repStatus === 'REJECTED';
-    if (statusFilter === 'RECTIFIED') matchesStatus = repStatus === 'RECTIFIED';
-    if (statusFilter === 'PENDING') matchesStatus = repStatus === 'PENDING' || repStatus === 'WAITING_INVESTOR';
+      const repStatus = getReportStatus(rep);
+      let matchesStatus = true;
+      if (statusFilter === 'COMPLETED') matchesStatus = repStatus === 'COMPLETED';
+      if (statusFilter === 'REJECTED') matchesStatus = repStatus === 'REJECTED';
+      if (statusFilter === 'RECTIFIED') matchesStatus = repStatus === 'RECTIFIED';
+      if (statusFilter === 'PENDING') matchesStatus = repStatus === 'PENDING' || repStatus === 'WAITING_INVESTOR';
 
-    return matchesSearch && matchesStatus;
-  });
+      return matchesSearch && matchesStatus;
+    });
+  }, [reports, searchQuery, statusFilter]);
 
-  const stats = {
-    total: reports.length,
-    completed: reports.filter(r => getReportStatus(r) === 'COMPLETED').length,
-    rejected: reports.filter(r => getReportStatus(r) === 'REJECTED').length,
-    rectified: reports.filter(r => getReportStatus(r) === 'RECTIFIED').length,
-    pending: reports.filter(r => getReportStatus(r) === 'PENDING').length,
-  };
+  // Thống kê 1 lượt duy nhất qua danh sách biên bản (O(N) thay vì O(5N))
+  const stats = useMemo(() => {
+    let completed = 0, rejected = 0, rectified = 0, pending = 0;
+    (reports || []).forEach(r => {
+      const st = getReportStatus(r);
+      if (st === 'COMPLETED') completed++;
+      else if (st === 'REJECTED') rejected++;
+      else if (st === 'RECTIFIED') rectified++;
+      else if (st === 'PENDING' || st === 'WAITING_INVESTOR') pending++;
+    });
+    return {
+      total: (reports || []).length,
+      completed,
+      rejected,
+      rectified,
+      pending
+    };
+  }, [reports]);
 
   return (
     <div style={{ maxWidth: '1440px', margin: '0 auto', width: '100%' }}>
@@ -254,36 +268,66 @@ export default function ReportsListView({
                   gap: '10px',
                   flexWrap: 'wrap'
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div style={{
-                      background: '#1e3a8a',
-                      color: '#ffffff',
-                      padding: '5px 10px',
-                      borderRadius: '8px',
-                      fontWeight: 800,
-                      fontSize: '0.85rem',
-                      fontFamily: 'monospace',
-                      letterSpacing: '0.03em',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '5px'
-                    }}>
-                      <FileText size={14} />
-                      <span>{report.reportNumber}</span>
-                    </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    {(() => {
+                      const docCode = (report.reportTemplate === 'FORM_12' || report.inspectionType === 'MATERIAL') ? 'MI' : 'WA';
+                      let repNum = (report.reportNumber || '').trim().replace(/^\.\.\.\.\.\.\s*/, '').replace(/^\.\.\.\s*/, '').replace(/^IR[\/\s-]*/i, '').replace(/[\/\s-]IR$/i, '').trim();
+                      if (!repNum || repNum === '......' || repNum === 'IR' || repNum === docCode) repNum = docCode;
+                      else if (!repNum.includes(docCode)) repNum = `${repNum}/${docCode}`;
 
-                    {report.referenceDocNumber && (
-                      <span style={{ 
-                        fontSize: '0.76rem', 
-                        color: '#475569', 
-                        background: '#e2e8f0', 
-                        padding: '4px 8px', 
-                        borderRadius: '6px',
-                        fontWeight: 600
-                      }}>
-                        {report.referenceDocNumber}
-                      </span>
-                    )}
+                      const rev = getDocumentRevisionNumber(report);
+                      const revStr = String(rev).padStart(2, '0');
+
+                      let refNum = (report.projectCategoryCode || report.referenceDocNumber || '').trim();
+                      if (!refNum || refNum.startsWith('TLCC') || refNum.includes('TLCC')) {
+                        refNum = `2203/${docCode}/231026-${revStr}.01`;
+                      } else {
+                        if (refNum.includes('/IR/')) {
+                          refNum = refNum.replace('/IR/', `/${docCode}/`);
+                        }
+                        if (/-\d+(\.\d+)?$/.test(refNum)) {
+                          refNum = refNum.replace(/-\d+(\.\d+)?$/, `-${revStr}.01`);
+                        } else {
+                          refNum = `${refNum}-${revStr}.01`;
+                        }
+                      }
+
+                      return (
+                        <>
+                          <div style={{
+                            background: '#1e3a8a',
+                            color: '#ffffff',
+                            padding: '5px 10px',
+                            borderRadius: '8px',
+                            fontWeight: 800,
+                            fontSize: '0.85rem',
+                            fontFamily: 'monospace',
+                            letterSpacing: '0.03em',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px'
+                          }}>
+                            <FileText size={14} />
+                            <span>{repNum}</span>
+                          </div>
+
+                          {refNum && (
+                            <span style={{ 
+                              fontSize: '0.78rem', 
+                              color: '#1d4ed8', 
+                              background: '#eff6ff', 
+                              border: '1px solid #bfdbfe',
+                              padding: '3px 8px', 
+                              borderRadius: '6px',
+                              fontWeight: 700,
+                              fontFamily: 'monospace'
+                            }}>
+                              {refNum}
+                            </span>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
 
                   {/* STATUS BADGE */}

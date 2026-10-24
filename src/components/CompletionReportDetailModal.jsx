@@ -238,6 +238,12 @@ export default function CompletionReportDetailModal({
                     HẠNG MỤC CÔNG TRÌNH HOẶC CÔNG TRÌNH ĐƯA VÀO SỬ DỤNG
                   </>
                 )}
+                {completionType === 'EQUIPMENT_STAGE' && (
+                  <>
+                    BIÊN BẢN NGHIỆM THU HOÀN THÀNH BỘ PHẬN CÔNG TRÌNH XÂY DỰNG,<br />
+                    GIAI ĐOẠN LẮP ĐẶT THIẾT BỊ
+                  </>
+                )}
                 {completionType === 'STAGE' && (
                   <>
                     BIÊN BẢN NGHIỆM THU HOÀN THÀNH GIAI ĐOẠN THI CÔNG
@@ -251,11 +257,11 @@ export default function CompletionReportDetailModal({
                 )}
               </h2>
 
-              <div style={{ color: '#dc2626', fontWeight: 'bold', fontSize: '10.5pt' }}>
+              <div style={{ color: '#000000', fontWeight: 'bold', fontSize: '10.5pt' }}>
                 Số: {report.reportNumber}
               </div>
               {report.referenceDocNumber && (
-                <div style={{ color: '#dc2626', fontWeight: 'bold', fontSize: '10.5pt' }}>
+                <div style={{ color: '#000000', fontWeight: 'bold', fontSize: '10.5pt' }}>
                   Số tài liệu căn cứ: {report.referenceDocNumber}
                 </div>
               )}
@@ -265,7 +271,7 @@ export default function CompletionReportDetailModal({
             <div style={{ marginBottom: '14px', fontSize: '11pt' }}>
               <div style={{ marginBottom: '4px' }}>
                 <strong>Dự án : </strong>
-                <span style={{ color: '#dc2626', fontWeight: 'bold' }}>{report.projectName}</span>
+                <span>{report.projectName}</span>
               </div>
               <div style={{ marginBottom: '4px' }}>
                 <strong>Công trình : </strong>
