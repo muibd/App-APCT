@@ -1079,9 +1079,63 @@ html.modal-open {
   animation: slideUp 0.25s ease-out;
   overscroll-behavior: contain;
   touch-action: auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+.inspection-report-modal {
+  width: 96vw;
+  height: 94vh;
+  max-height: 94vh;
+}
+
+.report-modal-tabs {
+  display: flex !important;
+  flex-shrink: 0 !important;
+  min-height: 48px !important;
+  height: 48px !important;
+  align-items: stretch !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  flex-wrap: nowrap !important;
+  -webkit-overflow-scrolling: touch !important;
+  scrollbar-width: none !important;
+  background: #f1f5f9;
+  border-bottom: 1px solid var(--border-color);
+  position: relative;
+  z-index: 10;
+}
+
+.report-modal-tabs::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.report-modal-tabs button {
+  flex-shrink: 0 !important;
+  white-space: nowrap !important;
+  height: 100% !important;
+  min-height: 48px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  box-sizing: border-box !important;
+}
+
+.report-header-desktop-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.report-header-mobile-actions {
+  display: none;
 }
 
 .modal-header {
+  flex-shrink: 0 !important;
   padding: 18px 24px;
   border-bottom: 1px solid var(--border-color);
   display: flex;
@@ -1115,13 +1169,17 @@ html.modal-open {
 .modal-body {
   padding: 24px;
   overflow-y: auto;
+  overflow-x: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  touch-action: pan-y;
-  flex: 1;
+  touch-action: pan-x pan-y;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
 }
 
 .modal-footer {
+  flex-shrink: 0 !important;
   padding: 16px 24px;
   border-top: 1px solid var(--border-color);
   display: flex;
@@ -1580,14 +1638,90 @@ html.modal-open {
   }
 
   .modal-overlay {
-    padding: 10px 8px;
-    align-items: flex-end;
+    padding: 0 !important;
+    align-items: stretch !important;
+    justify-content: stretch !important;
   }
 
   .modal-content {
-    max-height: 94vh;
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    min-height: 0 !important;
+    min-width: 0 !important;
+  }
+
+  .inspection-report-modal {
+    width: 100vw !important;
+    height: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+  }
+
+  .modal-header {
+    padding: 12px 14px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .report-modal-tabs {
+    flex-shrink: 0 !important;
+    min-height: 48px !important;
+    height: 48px !important;
+    padding: 0 8px !important;
+    position: relative !important;
+    z-index: 10 !important;
+  }
+
+  .report-modal-tabs button {
+    padding: 0 14px !important;
+    font-size: 0.84rem !important;
+    height: 100% !important;
+    min-height: 48px !important;
+  }
+
+  .modal-body {
+    padding: 12px 8px !important;
+    overflow-y: auto !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-x pan-y !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+  }
+
+  .modal-footer {
+    flex-shrink: 0 !important;
+    padding: 10px 12px !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+
+  .document-paper {
+    padding: 14px 10px !important;
+    font-size: 0.88rem !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow-x: auto !important;
+  }
+
+  .report-header-desktop-actions {
+    display: none !important;
+  }
+
+  .report-header-mobile-actions {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    width: 100% !important;
+    margin-top: 2px !important;
+    flex-shrink: 0 !important;
   }
 }
 

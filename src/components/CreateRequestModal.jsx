@@ -392,7 +392,7 @@ export default function CreateRequestModal({
     return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
   };
 
-  const inspectionPlace = currentProject?.location || 'Phường Thường Thạnh - Quận Cái Răng - TP. Cần Thơ';
+  const inspectionPlace = 'Dự án Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City';
 
   // Ảnh hiện trường đính kèm
   const [evidencePhotos, setEvidencePhotos] = useState([]);

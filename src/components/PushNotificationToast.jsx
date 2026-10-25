@@ -12,7 +12,7 @@ export default function PushNotificationToast({ notification, onClose, onAction 
     return () => clearTimeout(timer);
   }, [notification, onClose]);
 
-  const isWarning = notification.type === 'REJECTION' || notification.title?.includes('Từ chối');
+  const isWarning = notification.type === 'REJECTION' || notification.type === 'REQUEST_CANCELLED' || notification.title?.includes('Từ chối') || notification.title?.includes('Hủy');
   const isSuccess = notification.type === 'APPROVAL' || notification.title?.includes('Đồng ý');
 
   return (

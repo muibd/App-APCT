@@ -2,7 +2,8 @@ import React, { useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   Bell, BellOff, X, CheckCheck, Trash2, ArrowRight, 
-  AlertTriangle, CheckCircle2, Clock, Send, FileText 
+  AlertTriangle, CheckCircle2, Clock, Send, FileText,
+  ArrowLeftRight, Ban 
 } from 'lucide-react';
 
 export default function NotificationDropdown({
@@ -66,6 +67,27 @@ export default function NotificationDropdown({
           bg: '#dbeafe',
           color: '#2563eb',
           border: '#bfdbfe'
+        };
+      case 'TIME_UPDATED':
+        return {
+          icon: Clock,
+          bg: '#eff6ff',
+          color: '#2563eb',
+          border: '#bfdbfe'
+        };
+      case 'REASSIGN':
+        return {
+          icon: ArrowLeftRight,
+          bg: '#f0fdf4',
+          color: '#16a34a',
+          border: '#bbf7d0'
+        };
+      case 'REQUEST_CANCELLED':
+        return {
+          icon: Ban,
+          bg: '#fef2f2',
+          color: '#dc2626',
+          border: '#fca5a5'
         };
       default:
         return {

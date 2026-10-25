@@ -4,7 +4,7 @@ import {
   AlertTriangle, FileText, ChevronRight, Layers, MapPin, Calendar, 
   Send, Users, ShieldAlert, Award, HardHat, Eye, Briefcase, ShieldCheck,
   BellRing, LogOut, ArrowRight, UserCheck, BookOpen, Settings, Wrench, RotateCcw,
-  ArrowLeftRight, NotebookPen
+  ArrowLeftRight, NotebookPen, Ban
 } from 'lucide-react';
 
 import Navbar from './components/Navbar';
@@ -1827,7 +1827,7 @@ export default function App() {
       time: {
         startTime: newRequest.startTime || `${newRequest.scheduledTime}`,
         endTime: newRequest.endTime || `16h30, ${newRequest.scheduledTime?.includes(' ') ? newRequest.scheduledTime.split(' ')[1] : 'hôm nay'}`,
-        place: newRequest.inspectionPlace
+        place: newRequest.inspectionPlace || 'Dự án Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City'
       },
       attendees: {
         investor: {
@@ -2120,7 +2120,7 @@ export default function App() {
           }
           return `16h00, ${targetReq.scheduledTime?.includes(' ') ? targetReq.scheduledTime.split(' ')[1] : 'hôm nay'}`;
         })(),
-        place: targetReq.inspectionPlace
+        place: targetReq.inspectionPlace || 'Dự án Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City'
       },
       assignedRecipients: targetReq.assignedRecipients || [],
       attendees: (() => {
@@ -2378,8 +2378,11 @@ export default function App() {
 
     // 3. Gửi thông báo đến: người tạo, chủ đầu tư, tư vấn giám sát được đổi
     const notifTitle = `🔄 Điều chuyển cán bộ ${isSupervisor ? 'TVGS' : 'CĐT'}: ${targetReq.taskContent || targetReq.requestNumber}`;
-    const oldName = oldOfficer ? oldOfficer.fullName : 'Cán bộ trước';
-    const notifBody = `${currentUser?.fullName || 'Trưởng bộ phận'} đã điều chuyển cán bộ ${roleLabel} từ "${oldName}" sang "${newOfficer.fullName}". ${reasonNote ? `Lý do: "${reasonNote}"` : ''}`;
+    const isContractorUser = currentUser?.role === 'CONTRACTOR';
+    const actorLabel = isContractorUser 
+      ? `ĐVTC (${currentUser?.fullName || 'Đơn vị thi công'})` 
+      : (currentUser?.fullName || 'Trưởng bộ phận');
+    const notifBody = `${actorLabel} đã đổi cán bộ ${roleLabel} từ "${oldName}" sang "${newOfficer.fullName}". ${reasonNote ? `Lý do: "${reasonNote}"` : ''}`;
 
     const notifPayload = {
       id: `notif_${Date.now()}`,
@@ -2432,6 +2435,298 @@ export default function App() {
       type: 'success',
       title: 'Điều Chuyển Cán Bộ Thành Công',
       message: `Đã chuyển quyền kiểm tra, nghiệm thu và ký số sang cán bộ ${newOfficer.fullName} (${roleLabel}). Thông báo đã được gửi đến các bên liên quan.`
+    });
+  };
+
+  // Cập nhật thời gian nghiệm thu khi TVGS / Ban QLDA chưa xác nhận nghiệm thu
+  const handleUpdateRequestTime = async (requestId, timeData) => {
+    const targetReq = requests.find(r => r.id === requestId);
+    if (!targetReq) return;
+
+    const { scheduledDate, startTime, scheduledTime } = timeData;
+    const oldTime = targetReq.scheduledTime || `${targetReq.startTime} ${targetReq.scheduledDate}`;
+    const newScheduledTime = scheduledTime || `${startTime} ${scheduledDate}`;
+
+    const updatedReq = {
+      ...targetReq,
+      scheduledDate: scheduledDate || targetReq.scheduledDate,
+      startTime: startTime || targetReq.startTime,
+      scheduledTime: newScheduledTime,
+      updatedAt: new Date().toISOString()
+    };
+
+    // 1. Cập nhật state requests & cache (LocalStorage + IndexedDB)
+    setRequests(prev => {
+      const next = prev.map(r => r.id === updatedReq.id ? updatedReq : r);
+      safeSaveLocalStorage(REQUESTS_STORAGE_KEY, next);
+      try {
+        if (typeof saveToIndexedDB === 'function') saveToIndexedDB('requests', next);
+      } catch (err) {
+        console.warn('Lỗi saveToIndexedDB requests:', err);
+      }
+      return next;
+    });
+
+    if (selectedRequest && selectedRequest.id === updatedReq.id) {
+      setSelectedRequest(updatedReq);
+    }
+
+    try {
+      await saveInspectionRequest(updatedReq);
+    } catch (e) {
+      console.warn('Lỗi saveInspectionRequest:', e);
+    }
+
+    // 2. Cập nhật biên bản tương ứng (nếu có)
+    const targetReport = reports.find(r => 
+      (updatedReq.reportId && r.id === updatedReq.reportId) ||
+      (r.requestId && r.requestId === updatedReq.id) ||
+      (r.reportNumber && updatedReq.requestNumber && (
+        r.reportNumber.replace('BBNT-APG', 'PYC').replace('BBNT-VL', 'PYC') === updatedReq.requestNumber ||
+        r.reportNumber.replace('BBNT', 'PYC') === updatedReq.requestNumber
+      ))
+    );
+
+    let updatedReport = null;
+    if (targetReport) {
+      updatedReport = {
+        ...targetReport,
+        time: {
+          ...(targetReport.time || {}),
+          startTime: startTime ? `${startTime}, ${scheduledDate || targetReq.scheduledDate}` : newScheduledTime,
+          endTime: targetReport.time?.endTime || `16h30, ${scheduledDate || 'hôm nay'}`
+        },
+        updatedAt: new Date().toISOString()
+      };
+
+      setReports(prev => {
+        const matchFn = r => r.id === updatedReport.id || (updatedReport.requestId && r.requestId === updatedReport.requestId);
+        const filtered = prev.filter(r => !matchFn(r));
+        const next = [updatedReport, ...filtered];
+        safeSaveLocalStorage(REPORTS_STORAGE_KEY, next);
+        try {
+          if (typeof saveToIndexedDB === 'function') saveToIndexedDB('reports', next);
+        } catch (err) {
+          console.warn('Lỗi saveToIndexedDB reports:', err);
+        }
+        return next;
+      });
+
+      if (selectedReport && (selectedReport.id === updatedReport.id || selectedReport.requestId === updatedReq.id)) {
+        setSelectedReport(updatedReport);
+      }
+
+      try {
+        await saveInspectionReport(updatedReport);
+      } catch (e) {
+        console.warn('Lỗi saveInspectionReport:', e);
+      }
+    }
+
+    // 3. Gửi thông báo đến những người liên quan (TVGS, Ban QLDA, các Trưởng, ĐVTC)
+    const notifTitle = `⏰ Cập nhật thời gian nghiệm thu: ${targetReq.taskContent || targetReq.requestNumber}`;
+    const notifBody = `ĐVTC (${currentUser?.fullName || 'Đơn vị thi công'}) đã đổi thời gian nghiệm thu từ "${oldTime}" sang "${newScheduledTime}". Phiếu: ${targetReq.requestNumber}.`;
+
+    const recipientUids = (targetReq.assignedRecipients || []).map(r => r.uid).filter(Boolean);
+    const extraUids = Array.from(new Set([
+      targetReq.createdByUid,
+      currentUser?.uid,
+      ...recipientUids
+    ])).filter(Boolean);
+
+    const notifPayload = {
+      id: `notif_${Date.now()}`,
+      type: 'TIME_UPDATED',
+      title: notifTitle,
+      body: notifBody,
+      actionText: 'Xem chi tiết phiếu yêu cầu',
+      targetRequestId: targetReq.id,
+      targetReportId: updatedReport?.id || targetReq.reportId,
+      assignedRecipients: targetReq.assignedRecipients || [],
+      createdByUid: targetReq.createdByUid,
+      createdByName: targetReq.createdByName,
+      extraRecipientUids: extraUids,
+      targetRoles: ['CONTRACTOR', 'SUPERVISOR', 'LEAD_SUPERVISOR', 'INVESTOR', 'LEAD_INVESTOR'],
+      createdAt: new Date().toISOString(),
+      time: 'Vừa xong',
+      isRead: false
+    };
+
+    setNotifications(prev => {
+      const nextNotifs = [notifPayload, ...prev.filter(n => n.id !== notifPayload.id)];
+      safeSaveLocalStorage(NOTIF_STORAGE_KEY, nextNotifs);
+      return nextNotifs;
+    });
+
+    if (checkNotificationRecipient(notifPayload, currentUser, [updatedReq, ...requests], [updatedReport, ...reports].filter(Boolean))) {
+      setActivePushToast(notifPayload);
+      showSystemNotification(notifTitle, notifBody);
+    }
+
+    try {
+      await saveSystemNotification(notifPayload);
+    } catch (e) {
+      console.warn('Lỗi lưu notification đổi thời gian:', e);
+    }
+
+    sendOneSignalPush({
+      title: notifTitle,
+      message: notifBody,
+      targetRoles: ['CONTRACTOR', 'SUPERVISOR', 'LEAD_SUPERVISOR', 'INVESTOR', 'LEAD_INVESTOR'],
+      url: 'https://app-apct-nghiemthu.web.app'
+    }).catch(console.warn);
+
+    showAlert({
+      type: 'success',
+      title: 'Đã Cập Nhật Thời Gian Nghiệm Thu',
+      message: `Thời gian nghiệm thu mới: ${newScheduledTime}. Thông báo đã được gửi đến Tư vấn giám sát và Ban QLDA.`
+    });
+  };
+
+  // Hủy phiếu yêu cầu nghiệm thu khi TVGS / Ban QLDA chưa xác nhận nghiệm thu
+  const handleCancelRequest = async (requestId, cancellationReason) => {
+    const targetReq = requests.find(r => r.id === requestId);
+    if (!targetReq) return;
+
+    const reason = (cancellationReason || '').trim() || 'Đơn vị thi công hủy phiếu.';
+    const cancelledAt = new Date().toISOString();
+    const cancelledByName = currentUser?.fullName || 'Đơn vị thi công';
+    const cancelledByUid = currentUser?.uid || '';
+
+    const updatedReq = {
+      ...targetReq,
+      status: 'CANCELLED',
+      cancellationReason: reason,
+      cancelledAt: cancelledAt,
+      cancelledByName: cancelledByName,
+      cancelledByUid: cancelledByUid,
+      updatedAt: cancelledAt
+    };
+
+    // 1. Cập nhật state requests & cache
+    setRequests(prev => {
+      const next = prev.map(r => r.id === updatedReq.id ? updatedReq : r);
+      safeSaveLocalStorage(REQUESTS_STORAGE_KEY, next);
+      try {
+        if (typeof saveToIndexedDB === 'function') saveToIndexedDB('requests', next);
+      } catch (err) {
+        console.warn('Lỗi saveToIndexedDB requests:', err);
+      }
+      return next;
+    });
+
+    if (selectedRequest && selectedRequest.id === updatedReq.id) {
+      setSelectedRequest(updatedReq);
+    }
+
+    try {
+      await saveInspectionRequest(updatedReq);
+    } catch (e) {
+      console.warn('Lỗi saveInspectionRequest:', e);
+    }
+
+    // 2. Cập nhật biên bản tương ứng (nếu có)
+    const targetReport = reports.find(r => 
+      (updatedReq.reportId && r.id === updatedReq.reportId) ||
+      (r.requestId && r.requestId === updatedReq.id) ||
+      (r.reportNumber && updatedReq.requestNumber && (
+        r.reportNumber.replace('BBNT-APG', 'PYC').replace('BBNT-VL', 'PYC') === updatedReq.requestNumber ||
+        r.reportNumber.replace('BBNT', 'PYC') === updatedReq.requestNumber
+      ))
+    );
+
+    let updatedReport = null;
+    if (targetReport) {
+      updatedReport = {
+        ...targetReport,
+        status: 'CANCELLED',
+        cancellationReason: reason,
+        cancelledAt: cancelledAt,
+        cancelledByName: cancelledByName,
+        updatedAt: cancelledAt
+      };
+
+      setReports(prev => {
+        const matchFn = r => r.id === updatedReport.id || (updatedReport.requestId && r.requestId === updatedReport.requestId);
+        const filtered = prev.filter(r => !matchFn(r));
+        const next = [updatedReport, ...filtered];
+        safeSaveLocalStorage(REPORTS_STORAGE_KEY, next);
+        try {
+          if (typeof saveToIndexedDB === 'function') saveToIndexedDB('reports', next);
+        } catch (err) {
+          console.warn('Lỗi saveToIndexedDB reports:', err);
+        }
+        return next;
+      });
+
+      if (selectedReport && (selectedReport.id === updatedReport.id || selectedReport.requestId === updatedReq.id)) {
+        setSelectedReport(updatedReport);
+      }
+
+      try {
+        await saveInspectionReport(updatedReport);
+      } catch (e) {
+        console.warn('Lỗi saveInspectionReport:', e);
+      }
+    }
+
+    // 3. Gửi thông báo đến những người liên quan (TVGS, Ban QLDA, các Trưởng, ĐVTC)
+    const notifTitle = `🚫 Hủy phiếu yêu cầu nghiệm thu: ${targetReq.taskContent || targetReq.requestNumber}`;
+    const notifBody = `ĐVTC (${cancelledByName}) đã hủy phiếu yêu cầu nghiệm thu ${targetReq.requestNumber}. Lý do: "${reason}".`;
+
+    const recipientUids = (targetReq.assignedRecipients || []).map(r => r.uid).filter(Boolean);
+    const extraUids = Array.from(new Set([
+      targetReq.createdByUid,
+      currentUser?.uid,
+      ...recipientUids
+    ])).filter(Boolean);
+
+    const notifPayload = {
+      id: `notif_${Date.now()}`,
+      type: 'REQUEST_CANCELLED',
+      title: notifTitle,
+      body: notifBody,
+      actionText: 'Xem phiếu đã hủy',
+      targetRequestId: targetReq.id,
+      targetReportId: updatedReport?.id || targetReq.reportId,
+      assignedRecipients: targetReq.assignedRecipients || [],
+      createdByUid: targetReq.createdByUid,
+      createdByName: targetReq.createdByName,
+      extraRecipientUids: extraUids,
+      targetRoles: ['CONTRACTOR', 'SUPERVISOR', 'LEAD_SUPERVISOR', 'INVESTOR', 'LEAD_INVESTOR'],
+      createdAt: cancelledAt,
+      time: 'Vừa xong',
+      isRead: false
+    };
+
+    setNotifications(prev => {
+      const nextNotifs = [notifPayload, ...prev.filter(n => n.id !== notifPayload.id)];
+      safeSaveLocalStorage(NOTIF_STORAGE_KEY, nextNotifs);
+      return nextNotifs;
+    });
+
+    if (checkNotificationRecipient(notifPayload, currentUser, [updatedReq, ...requests], [updatedReport, ...reports].filter(Boolean))) {
+      setActivePushToast(notifPayload);
+      showSystemNotification(notifTitle, notifBody);
+    }
+
+    try {
+      await saveSystemNotification(notifPayload);
+    } catch (e) {
+      console.warn('Lỗi lưu notification hủy phiếu:', e);
+    }
+
+    sendOneSignalPush({
+      title: notifTitle,
+      message: notifBody,
+      targetRoles: ['CONTRACTOR', 'SUPERVISOR', 'LEAD_SUPERVISOR', 'INVESTOR', 'LEAD_INVESTOR'],
+      url: 'https://app-apct-nghiemthu.web.app'
+    }).catch(console.warn);
+
+    showAlert({
+      type: 'info',
+      title: 'Đã Hủy Phiếu Yêu Cầu Nghiệm Thu',
+      message: `Phiếu yêu cầu và biên bản liên quan đã chuyển sang trạng thái ĐÃ HỦY. Thông báo đã được gửi đến các bên liên quan.`
     });
   };
 
@@ -2923,6 +3218,12 @@ export default function App() {
     const newReportDocNum = generateDocumentCode(projectCode, reportDocCode, repCreatedAt, nextRevision);
     const newReqDocNum = generateDocumentCode(projectCode, 'IR', repCreatedAt, nextRevision);
 
+    const [ry, rm, rd] = (safeRectificationData.suggestedDate || '').split('-');
+    const formattedDate = (rd && rm && ry) ? `${rd}/${rm}/${ry}` : '';
+    const newScheduledTime = formattedDate
+      ? `${safeRectificationData.suggestedHour || '16:30'} ${formattedDate}`
+      : (safeRectificationData.scheduledTime || safeRectificationData.suggestedTime || targetReport.time?.scheduledTime || '16:30 hôm nay');
+
     const updatedReport = {
       ...targetReport,
       id: targetReport.id || reportId || `rep_${Date.now()}`,
@@ -2931,6 +3232,12 @@ export default function App() {
       projectCategoryCode: newReportDocNum,
       rectification: safeRectificationData,
       status: 'RECTIFIED',
+      time: {
+        ...(targetReport.time || {}),
+        startTime: safeRectificationData.suggestedTime || targetReport.time?.startTime,
+        scheduledTime: newScheduledTime,
+        startTimeText: `${(safeRectificationData.suggestedHour || '16:30').replace(':', 'h')}, ngày ${formattedDate || 'hôm nay'}`
+      },
       updatedAt: new Date().toISOString()
     };
 
@@ -2959,6 +3266,11 @@ export default function App() {
         reportId: updatedReport.id,
         rectificationNotes: safeRectificationData.description,
         rectificationPhotos: safePhotos,
+        // CẬP NHẬT THỜI GIAN MỜI NGHIỆM THU LẠI VÀO PHIẾU YÊU CẦU / MỜI NGHIỆM THU:
+        scheduledTime: newScheduledTime,
+        scheduledDate: safeRectificationData.suggestedDate || targetReq.scheduledDate,
+        startTime: safeRectificationData.suggestedHour || targetReq.startTime,
+        formattedStartTime: `${(safeRectificationData.suggestedHour || '16:30').replace(':', 'h')}, ngày ${formattedDate || targetReq.scheduledDate}`,
         updatedAt: new Date().toISOString()
       };
     }
@@ -2994,12 +3306,17 @@ export default function App() {
         safeSaveLocalStorage(REQUESTS_STORAGE_KEY, nextRequests);
         return nextRequests;
       });
+
+      if (selectedRequest && (selectedRequest.id === updatedReq.id || selectedRequest.reportId === updatedReport.id)) {
+        setSelectedRequest(updatedReq);
+      }
     }
 
     // 4. Bắn thông báo Toast & Notification Bell cho ĐÚNG người nhận theo Sơ đồ hoạt động
     const targetName = targetReviewer === 'INVESTOR' ? 'Chủ Đầu Tư' : 'Tư Vấn Giám Sát';
     const notifTitle = `🔄 [Đã sửa lỗi] Biên bản ${targetReport.reportNumber || ''}`;
-    const notifBody = `${rectificationData.submittedBy?.name} (ĐVTC) đã sửa xong lỗi và gửi ${safePhotos.length} ảnh hiện trường. Mời ${targetName} kiểm tra lại kết quả!`;
+    const newTimeForNotif = safeRectificationData.suggestedTime || updatedReq?.scheduledTime || '16h30';
+    const notifBody = `${rectificationData.submittedBy?.name || 'ĐVTC'} đã sửa xong lỗi và gửi ${safePhotos.length} ảnh hiện trường. Lịch hẹn nghiệm thu lại: ${newTimeForNotif}. Mời ${targetName} kiểm tra lại kết quả!`;
 
     const pushPayload = {
       id: `notif_${Date.now()}`,
@@ -3950,9 +4267,28 @@ export default function App() {
                 ) : (
                   filteredRequests.map(req => {
                     const isCompleted = req.status === 'COMPLETED';
+                    const isCancelled = req.status === 'CANCELLED';
                     const isRejected = req.status === 'HAS_REJECTIONS';
                     const isRectified = req.status === 'RECTIFIED';
                     const matchingRep = reports.find(r => r.id === req.reportId || r.requestId === req.id);
+
+                    const isSupervisorSigned = Boolean(
+                      matchingRep?.signatures?.supervisor?.signed || 
+                      matchingRep?.attendees?.supervisor?.signed
+                    );
+                    const isInvestorSigned = Boolean(
+                      matchingRep?.signatures?.investor?.signed || 
+                      matchingRep?.attendees?.investor?.signed
+                    );
+                    const isConfirmed = isSupervisorSigned || isInvestorSigned || isCompleted || req.status === 'WAITING_INVESTOR';
+
+                    const isCreator = Boolean(
+                      (currentUser?.uid && req.createdByUid === currentUser.uid) ||
+                      currentRole === 'CONTRACTOR' ||
+                      currentRole === 'ADMIN' ||
+                      (currentUser?.company && req.contractorCompany === currentUser.company)
+                    );
+                    const canModify = !isConfirmed && !isCancelled && isCreator;
 
                     const isLeadSupervisor = currentRole !== 'ADMIN' && (currentRole === 'LEAD_SUPERVISOR' || Boolean(currentUser?.isLead && currentRole === 'SUPERVISOR'));
                     const isLeadInvestor = currentRole !== 'ADMIN' && (currentRole === 'LEAD_INVESTOR' || Boolean(currentUser?.isLead && currentRole === 'INVESTOR'));
@@ -3962,14 +4298,16 @@ export default function App() {
                         key={req.id} 
                         className="inspection-card"
                         style={{
-                          border: isRejected 
+                          border: isCancelled
+                            ? '1.5px solid #fca5a5'
+                            : isRejected 
                             ? '1.5px solid #fca5a5' 
                             : isRectified 
                             ? '1.5px solid #d8b4fe' 
                             : isCompleted 
                             ? '1.5px solid #a7f3d0' 
                             : '1px solid #e2e8f0',
-                          background: isRejected ? '#fffafa' : '#ffffff'
+                          background: (isRejected || isCancelled) ? '#fffafa' : '#ffffff'
                         }}
                       >
                         <div className="card-top-bar">
@@ -3978,6 +4316,10 @@ export default function App() {
                             {isCompleted ? (
                               <span className="badge-status badge-approved">
                                 <CheckCircle2 size={13} /> Đã Hoàn Thành
+                              </span>
+                            ) : isCancelled ? (
+                              <span className="badge-status" style={{ background: '#fef2f2', color: '#b91c1c', border: '1px solid #f87171', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <Ban size={13} color="#dc2626" /> Đã Hủy Phiếu
                               </span>
                             ) : isRejected ? (
                               <span className="badge-status" style={{ background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -4011,6 +4353,33 @@ export default function App() {
                           <span>›</span>
                           <span>📑 {req.itemName}</span>
                         </div>
+
+                        {/* THÔNG BÁO KHI PHIẾU BỊ HỦY */}
+                        {isCancelled && (
+                          <div style={{
+                            background: '#fef2f2',
+                            border: '1px solid #fecaca',
+                            borderRadius: '8px',
+                            padding: '10px 14px',
+                            margin: '12px 0 6px 0',
+                            fontSize: '0.84rem',
+                            color: '#991b1b',
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: '8px'
+                          }}>
+                            <Ban size={16} style={{ flexShrink: 0, marginTop: '2px', color: '#dc2626' }} />
+                            <div>
+                              <div style={{ fontWeight: 700 }}>Phiếu yêu cầu nghiệm thu đã được hủy:</div>
+                              <div style={{ color: '#7f1d1d', marginTop: '3px' }}>
+                                "{req.cancellationReason || 'Đã hủy theo yêu cầu của đơn vị thi công.'}"
+                              </div>
+                              <div style={{ fontSize: '0.74rem', color: '#991b1b', marginTop: '2px' }}>
+                                Người hủy: {req.cancelledByName || 'ĐVTC'} • {new Date(req.cancelledAt || Date.now()).toLocaleDateString('vi-VN')}
+                              </div>
+                            </div>
+                          </div>
+                        )}
 
                         {/* THÔNG BÁO LÝ DO KHIẾM KHUYẾT NẾU TỪ CHỐI */}
                         {isRejected && (
@@ -4065,7 +4434,7 @@ export default function App() {
                           <div className="recipients-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
                             <span>Thành phần tiếp nhận yêu cầu ({req.assignedRecipients?.length || 0}):</span>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              {isLeadSupervisor && !isCompleted && (
+                              {((isLeadSupervisor && !isCompleted && !isCancelled) || canModify) && (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -4091,7 +4460,7 @@ export default function App() {
                                   <span>Đổi TVGS</span>
                                 </button>
                               )}
-                              {isLeadInvestor && !isCompleted && (
+                              {((isLeadInvestor && !isCompleted && !isCancelled) || canModify) && (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -4111,7 +4480,7 @@ export default function App() {
                                     alignItems: 'center',
                                     gap: '4px'
                                   }}
-                                  title="Đổi cán bộ Chủ Đầu Tư tiếp nhận phiếu này"
+                                  title="Đổi cán bộ Ban QLDA tiếp nhận phiếu này"
                                 >
                                   <ArrowLeftRight size={12} />
                                   <span>Đổi CĐT</span>
@@ -4122,7 +4491,10 @@ export default function App() {
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
                             {req.assignedRecipients?.map((rec, idx) => {
                               const isSup = rec.role === 'SUPERVISOR' || rec.role === 'LEAD_SUPERVISOR';
-                              const canReassignThis = !isCompleted && ((isSup && isLeadSupervisor) || (!isSup && isLeadInvestor));
+                              const canReassignThis = !isCancelled && (
+                                (!isCompleted && ((isSup && isLeadSupervisor) || (!isSup && isLeadInvestor))) ||
+                                canModify
+                              );
 
                               return (
                                 <div key={idx} style={{
@@ -4184,10 +4556,25 @@ export default function App() {
                             onClick={() => setSelectedRequest(req)}
                           >
                             <FileText size={16} />
-                            <span>Phiếu Yêu Cầu</span>
+                            <span>{isCancelled ? 'Xem Phiếu (Đã Hủy)' : 'Phiếu Yêu Cầu'}</span>
                           </button>
 
-                          {isRejected ? (
+                          {isCancelled ? (
+                            <button 
+                              className="btn-secondary" 
+                              style={{ color: '#64748b' }}
+                              onClick={() => {
+                                if (matchingRep) {
+                                  handleOpenReport(matchingRep);
+                                } else {
+                                  handleOpenOrCreateReport(req.reportId || req.id, false);
+                                }
+                              }}
+                            >
+                              <Eye size={16} />
+                              <span>Xem Biên Bản</span>
+                            </button>
+                          ) : isRejected ? (
                             currentRole === 'CONTRACTOR' ? (
                               <button 
                                 className="btn-primary" 
@@ -4345,6 +4732,8 @@ export default function App() {
         onReassign={(req, type) => {
           handleOpenReassignModal(req, type);
         }}
+        onUpdateTime={handleUpdateRequestTime}
+        onCancelRequest={handleCancelRequest}
       />
 
       <InspectionReportModal 

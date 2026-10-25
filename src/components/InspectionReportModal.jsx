@@ -116,6 +116,34 @@ export default function InspectionReportModal({
   const [isRectifyModalOpen, setIsRectifyModalOpen] = useState(Boolean(initialOpenRectify));
   const [rectifyDesc, setRectifyDesc] = useState(reportState?.rectification?.description || '');
   const [rectifyPhotos, setRectifyPhotos] = useState(reportState?.rectification?.photos || []);
+
+  const getInitialRectifyDate = () => {
+    if (reportState?.rectification?.suggestedDate && /^\d{4}-\d{2}-\d{2}$/.test(reportState.rectification.suggestedDate)) {
+      return reportState.rectification.suggestedDate;
+    }
+    const rawTime = reportState?.rectification?.suggestedTime || '';
+    const match = rawTime.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (match) {
+      return `${match[3]}-${match[2]}-${match[1]}`;
+    }
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  };
+
+  const getInitialRectifyTime = () => {
+    if (reportState?.rectification?.suggestedHour && /^\d{1,2}:\d{2}$/.test(reportState.rectification.suggestedHour)) {
+      return reportState.rectification.suggestedHour.padStart(5, '0');
+    }
+    const rawTime = reportState?.rectification?.suggestedTime || '';
+    const match = rawTime.match(/(\d{1,2})[h:](\d{2})/i);
+    if (match) {
+      return `${match[1].padStart(2, '0')}:${match[2]}`;
+    }
+    return '16:30';
+  };
+
+  const [rectifyDate, setRectifyDate] = useState(getInitialRectifyDate);
+  const [rectifyTime, setRectifyTime] = useState(getInitialRectifyTime);
   const [suggestedTime, setSuggestedTime] = useState(reportState?.rectification?.suggestedTime || '16h30 ngày hôm nay');
 
   // Ngày phê duyệt HSTK BVTC & Số biện pháp thi công cho phép chỉnh sửa
@@ -125,6 +153,44 @@ export default function InspectionReportModal({
   const [constructionMethodCode, setConstructionMethodCode] = useState(
     reportState?.constructionMethodCode || report?.constructionMethodCode || '01/BPTC-APG'
   );
+
+  // Thời gian nghiệm thu chuẩn theo mẫu văn bản:
+  // Bắt đầu: ...h..., ngày ...tháng ... năm 202...
+  // Kết thúc: ...h..., ngày ....tháng ... năm 202...
+  const [startTimeText, setStartTimeText] = useState(
+    reportState?.time?.startTimeText || report?.time?.startTimeText || '...h..., ngày ...tháng ... năm 202...'
+  );
+  const [endTimeText, setEndTimeText] = useState(
+    reportState?.time?.endTimeText || report?.time?.endTimeText || '...h..., ngày ....tháng ... năm 202...'
+  );
+
+  const handleUpdateStartTimeText = (val) => {
+    const trimmed = (val || '').trim() || '...h..., ngày ...tháng ... năm 202...';
+    setStartTimeText(trimmed);
+    const updated = {
+      ...reportState,
+      time: {
+        ...(reportState.time || {}),
+        startTimeText: trimmed
+      }
+    };
+    setReportState(updated);
+    if (onSaveReport) onSaveReport(updated);
+  };
+
+  const handleUpdateEndTimeText = (val) => {
+    const trimmed = (val || '').trim() || '...h..., ngày ....tháng ... năm 202...';
+    setEndTimeText(trimmed);
+    const updated = {
+      ...reportState,
+      time: {
+        ...(reportState.time || {}),
+        endTimeText: trimmed
+      }
+    };
+    setReportState(updated);
+    if (onSaveReport) onSaveReport(updated);
+  };
 
   const handleUpdateDesignApprovalDate = (val) => {
     setDesignApprovalDate(val);
@@ -428,6 +494,17 @@ export default function InspectionReportModal({
       setEvidencePhotos([]);
     }
 
+    if (report.time?.startTimeText) {
+      setStartTimeText(report.time.startTimeText);
+    } else {
+      setStartTimeText('...h..., ngày ...tháng ... năm 202...');
+    }
+    if (report.time?.endTimeText) {
+      setEndTimeText(report.time.endTimeText);
+    } else {
+      setEndTimeText('...h..., ngày ....tháng ... năm 202...');
+    }
+
     if (isDifferentReport) {
       setRejectReason(report.conclusion?.rejectionReason || '');
       setRepairRequired(report.conclusion?.repairRequired || '');
@@ -460,12 +537,24 @@ export default function InspectionReportModal({
         setRectifyDesc(report.rectification.description || '');
         setRectifyPhotos(Array.isArray(report.rectification.photos) ? report.rectification.photos : []);
         setSuggestedTime(report.rectification.suggestedTime || '16h30 ngày hôm nay');
+        if (report.rectification.suggestedDate) {
+          setRectifyDate(report.rectification.suggestedDate);
+        } else {
+          setRectifyDate(getInitialRectifyDate());
+        }
+        if (report.rectification.suggestedHour) {
+          setRectifyTime(report.rectification.suggestedHour);
+        } else {
+          setRectifyTime(getInitialRectifyTime());
+        }
         setActiveTab('DOCUMENT');
         setIsRectifyModalOpen(false);
       } else if (report.status === 'REJECTED' || report.conclusion?.isAccepted === false) {
         const existingPhotos = report.rectification?.photos;
         setRectifyPhotos(Array.isArray(existingPhotos) ? existingPhotos : []);
         setRectifyDesc(report.rectification?.description || '');
+        setRectifyDate(getInitialRectifyDate());
+        setRectifyTime('16:30');
         setActiveTab('DOCUMENT');
         setIsRectifyModalOpen(Boolean(initialOpenRectify));
       } else {
@@ -474,6 +563,8 @@ export default function InspectionReportModal({
         const existingPhotos = report.rectification?.photos;
         setRectifyPhotos(Array.isArray(existingPhotos) ? existingPhotos : []);
         setRectifyDesc(report.rectification?.description || '');
+        setRectifyDate(getInitialRectifyDate());
+        setRectifyTime('16:30');
         setActiveTab('DOCUMENT');
         setIsRectifyModalOpen(false);
       }
@@ -895,6 +986,13 @@ export default function InspectionReportModal({
     const now = new Date();
     const timeStr = `${now.toLocaleTimeString('vi-VN')} ngày ${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
 
+    // Tạo chuỗi ngày giờ nghiệm thu lại chuẩn từ date picker & time picker
+    const [ry, rm, rd] = (rectifyDate || '').split('-');
+    const dateFormatted = (rd && rm && ry) ? `${rd}/${rm}/${ry}` : `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
+    const safeHour = rectifyTime || '16:30';
+    const formattedSuggestedTime = `${safeHour} ngày ${dateFormatted}`;
+    const standardScheduledTime = `${safeHour} ${dateFormatted}`;
+
     // Xác định đúng người nhận theo sơ đồ hoạt động:
     // CĐT từ chối -> gửi trực tiếp cho CĐT
     // TVGS từ chối -> gửi cho TVGS
@@ -907,7 +1005,10 @@ export default function InspectionReportModal({
     const rectificationPayload = {
       description: rectifyDesc.trim(),
       photos: finalPhotos,
-      suggestedTime: suggestedTime || '16h30 ngày hôm nay',
+      suggestedTime: formattedSuggestedTime,
+      suggestedDate: rectifyDate || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
+      suggestedHour: safeHour,
+      scheduledTime: standardScheduledTime,
       target: targetReviewer,
       submittedBy: {
         name: currentUser?.fullName || 'KS. Lê Văn Kỹ Thuật',
@@ -923,16 +1024,24 @@ export default function InspectionReportModal({
     const nextRevision = (reportState.rectificationHistory?.length || 0) + 2;
     const newReportDocNum = generateDocumentCode(projCode, docCode, reportState.createdAt || new Date(), nextRevision);
 
+    const newStartTimeText = `${safeHour.replace(':', 'h')}, ngày ${dateFormatted}`;
     const updated = {
       ...reportState,
       revisionNumber: nextRevision,
       referenceDocNumber: newReportDocNum,
       projectCategoryCode: newReportDocNum,
       status: 'RECTIFIED',
-      rectification: rectificationPayload
+      rectification: rectificationPayload,
+      time: {
+        ...(reportState.time || {}),
+        startTime: formattedSuggestedTime,
+        startTimeText: newStartTimeText
+      }
     };
 
     setReportState(updated);
+    setStartTimeText(newStartTimeText);
+    setSuggestedTime(formattedSuggestedTime);
     setRectifyPhotos(finalPhotos);
     setIsRectifyModalOpen(false);
     setActiveTab('RECTIFIED'); // Chuyển sang tab xem ảnh sửa chữa
@@ -1100,7 +1209,7 @@ export default function InspectionReportModal({
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content" style={{ maxWidth: '1280px', width: '96vw', height: '94vh' }}>
+      <div className="modal-content inspection-report-modal" style={{ maxWidth: '1280px' }}>
         {/* Persistent Hidden File Inputs for Cameras and File Uploads */}
         <input type="file" accept="image/*" capture="environment" ref={cameraInputRef} style={{ display: 'none' }} onChange={handleFileCapture} />
         <input type="file" accept="image/*" multiple ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileCapture} />
@@ -1110,126 +1219,202 @@ export default function InspectionReportModal({
         <input type="file" accept="image/*" multiple ref={fileEvidenceRef} style={{ display: 'none' }} onChange={handleCaptureEvidencePhoto} />
 
         {/* MODAL HEADER */}
-        <div className="modal-header no-print" style={{ background: '#f8fafc' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ 
-              background: isCompleted ? '#ecfdf5' : isRectified ? '#f3e8ff' : isRejected ? '#fee2e2' : '#ecfdf5', 
-              padding: '8px', 
-              borderRadius: '10px', 
-              color: isCompleted ? '#059669' : isRectified ? '#7c3aed' : isRejected ? '#dc2626' : '#10b981' 
-            }}>
-              {isCompleted ? <ShieldCheck size={20} /> : isRectified ? <RotateCcw size={20} /> : isRejected ? <AlertTriangle size={20} /> : <ShieldCheck size={20} />}
-            </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <h3 style={{ margin: 0, fontSize: '1.2rem' }}>
-                  Biên Bản Nghiệm Thu Công Việc Xây Dựng
-                </h3>
-                {isCompleted ? (
-                  <span style={{ 
-                    background: '#059669', 
-                    color: '#ffffff', 
-                    fontSize: '0.72rem', 
-                    fontWeight: 700, 
-                    padding: '2px 8px', 
-                    borderRadius: '4px' 
-                  }}>
-                    ✓ ĐÃ HOÀN TẤT NGHIỆM THU
-                  </span>
-                ) : isWaitingInvestor ? (
-                  <span style={{ 
-                    background: '#2563eb', 
-                    color: '#ffffff', 
-                    fontSize: '0.72rem', 
-                    fontWeight: 700, 
-                    padding: '2px 8px', 
-                    borderRadius: '4px',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}>
-                    ⏳ CHỜ CHỦ ĐẦU TƯ PHÊ DUYỆT
-                  </span>
-                ) : isRectified ? (
-                  <span style={{ 
-                    background: '#7c3aed', 
-                    color: '#ffffff', 
-                    fontSize: '0.72rem', 
-                    fontWeight: 700, 
-                    padding: '2px 8px', 
-                    borderRadius: '4px' 
-                  }}>
-                    🔄 ĐÃ SỬA - CHỜ NGHIỆM THU LẠI
-                  </span>
-                ) : isRejected && (
-                  <span style={{ 
-                    background: '#ef4444', 
-                    color: '#ffffff', 
-                    fontSize: '0.72rem', 
-                    fontWeight: 700, 
-                    padding: '2px 8px', 
-                    borderRadius: '4px' 
-                  }}>
-                    KHÔNG ĐẠT NGHIỆM THU
-                  </span>
-                )}
+        <div className="modal-header no-print" style={{ background: '#f8fafc', padding: '12px 18px', display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', width: '100%', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', minWidth: 0, flex: 1 }}>
+              <div style={{ 
+                background: isCompleted ? '#ecfdf5' : isRectified ? '#f3e8ff' : isRejected ? '#fee2e2' : '#ecfdf5', 
+                padding: '8px', 
+                borderRadius: '10px', 
+                color: isCompleted ? '#059669' : isRectified ? '#7c3aed' : isRejected ? '#dc2626' : '#10b981',
+                flexShrink: 0,
+                marginTop: '2px'
+              }}>
+                {isCompleted ? <ShieldCheck size={20} /> : isRectified ? <RotateCcw size={20} /> : isRejected ? <AlertTriangle size={20} /> : <ShieldCheck size={20} />}
               </div>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>
-                Mã biên bản: <strong>{cleanReportNum}</strong> • Căn cứ: Nghị định 06/2021/NĐ-CP
-              </p>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.12rem', color: '#0f172a', lineHeight: 1.35 }}>
+                    {isMaterialReport 
+                      ? 'Biên Bản Nghiệm Thu Vật Liệu (Mẫu 12)' 
+                      : 'Biên Bản Nghiệm Thu Công Việc Xây Dựng'}
+                  </h3>
+                  {isCompleted ? (
+                    <span style={{ 
+                      background: '#059669', 
+                      color: '#ffffff', 
+                      fontSize: '0.72rem', 
+                      fontWeight: 700, 
+                      padding: '2px 8px', 
+                      borderRadius: '4px',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      ✓ ĐÃ HOÀN TẤT
+                    </span>
+                  ) : isWaitingInvestor ? (
+                    <span style={{ 
+                      background: '#2563eb', 
+                      color: '#ffffff', 
+                      fontSize: '0.72rem', 
+                      fontWeight: 700, 
+                      padding: '2px 8px', 
+                      borderRadius: '4px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      ⏳ CHỜ CĐT DUYỆT
+                    </span>
+                  ) : isRectified ? (
+                    <span style={{ 
+                      background: '#7c3aed', 
+                      color: '#ffffff', 
+                      fontSize: '0.72rem', 
+                      fontWeight: 700, 
+                      padding: '2px 8px', 
+                      borderRadius: '4px',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      🔄 ĐÃ SỬA - CHỜ DUYỆT LẠI
+                    </span>
+                  ) : isRejected && (
+                    <span style={{ 
+                      background: '#ef4444', 
+                      color: '#ffffff', 
+                      fontSize: '0.72rem', 
+                      fontWeight: 700, 
+                      padding: '2px 8px', 
+                      borderRadius: '4px',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      KHÔNG ĐẠT
+                    </span>
+                  )}
+                </div>
+                <p style={{ margin: '3px 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
+                  Mã biên bản: <strong style={{ color: '#0f172a' }}>{cleanReportNum}</strong> • Căn cứ: Nghị định 06/2021/NĐ-CP
+                </p>
+              </div>
+            </div>
+
+            {/* Close Button ALWAYS visible and reachable on top right */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+              <div className="report-header-desktop-actions">
+                {totalPhotos > 0 && (
+                  <label 
+                    className="no-print" 
+                    style={{ 
+                      display: 'inline-flex', 
+                      alignItems: 'center', 
+                      gap: '5px', 
+                      fontSize: '0.76rem', 
+                      color: includePhotosInPrint ? '#1d4ed8' : '#64748b', 
+                      cursor: 'pointer',
+                      background: includePhotosInPrint ? '#eff6ff' : '#ffffff',
+                      padding: '4px 8px',
+                      borderRadius: '6px',
+                      border: includePhotosInPrint ? '1.5px solid #3b82f6' : '1px solid #cbd5e1',
+                      fontWeight: includePhotosInPrint ? 700 : 500,
+                      userSelect: 'none',
+                      whiteSpace: 'nowrap'
+                    }}
+                    title="Tích chọn để in kèm phụ lục ảnh hiện trường"
+                  >
+                    <input 
+                      type="checkbox" 
+                      checked={includePhotosInPrint} 
+                      onChange={(e) => setIncludePhotosInPrint(e.target.checked)}
+                      style={{ width: '13px', height: '13px', cursor: 'pointer', accentColor: '#2563eb' }}
+                    />
+                    <span>In kèm ảnh ({totalPhotos})</span>
+                  </label>
+                )}
+                <button className="btn-secondary" onClick={handlePrint} style={{ padding: '5px 10px', fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
+                  <Printer size={14} />
+                  <span>{includePhotosInPrint ? 'In A4 + Ảnh' : 'In A4'}</span>
+                </button>
+              </div>
+              <button className="modal-close-btn" onClick={onClose} style={{ marginLeft: '4px', padding: '6px', background: '#f1f5f9', borderRadius: '50%' }} title="Đóng biên bản">
+                <X size={20} />
+              </button>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap', flexShrink: 0 }}>
+          {/* Sub-row for Print buttons on mobile screens */}
+          <div className="report-header-mobile-actions no-print">
             {totalPhotos > 0 && (
               <label 
-                className="no-print" 
                 style={{ 
                   display: 'inline-flex', 
                   alignItems: 'center', 
-                  gap: '6px', 
-                  fontSize: '0.78rem', 
+                  gap: '5px', 
+                  fontSize: '0.74rem', 
                   color: includePhotosInPrint ? '#1d4ed8' : '#64748b', 
                   cursor: 'pointer',
                   background: includePhotosInPrint ? '#eff6ff' : '#ffffff',
-                  padding: '5px 10px',
+                  padding: '4px 8px',
                   borderRadius: '6px',
                   border: includePhotosInPrint ? '1.5px solid #3b82f6' : '1px solid #cbd5e1',
                   fontWeight: includePhotosInPrint ? 700 : 500,
-                  userSelect: 'none',
                   whiteSpace: 'nowrap'
                 }}
-                title="Tích chọn để in kèm phụ lục ảnh hiện trường / Bỏ tích để in nhanh đúng 1 trang Biên bản A4"
               >
                 <input 
                   type="checkbox" 
                   checked={includePhotosInPrint} 
                   onChange={(e) => setIncludePhotosInPrint(e.target.checked)}
-                  style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: '#2563eb' }}
+                  style={{ width: '13px', height: '13px', cursor: 'pointer', accentColor: '#2563eb' }}
                 />
                 <span>In kèm ảnh ({totalPhotos})</span>
               </label>
             )}
-            <button className="btn-secondary" onClick={handlePrint} style={{ padding: '6px 12px', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
-              <Printer size={15} />
-              <span>{includePhotosInPrint ? 'In A4 + Ảnh' : 'In A4 Biên Bản'}</span>
+            <button className="btn-secondary" onClick={handlePrint} style={{ padding: '4px 10px', fontSize: '0.76rem', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+              <Printer size={14} />
+              <span>{includePhotosInPrint ? 'In A4 + Phụ Lục Ảnh' : 'In A4 Biên Bản'}</span>
             </button>
-            <button className="modal-close-btn" onClick={onClose} style={{ marginLeft: '4px' }}><X size={20} /></button>
           </div>
         </div>
 
         {/* Tab switchers */}
-        <div className="report-modal-tabs no-print" style={{ display: 'flex', background: '#f1f5f9', borderBottom: '1px solid #e2e8f0', padding: '0 24px', flexWrap: 'wrap' }}>
+        <div className="report-modal-tabs no-print" style={{ 
+          display: 'flex', 
+          flexShrink: 0, 
+          minHeight: '48px', 
+          height: '48px', 
+          background: '#f1f5f9', 
+          borderBottom: '1px solid #cbd5e1', 
+          padding: '0 8px', 
+          overflowX: 'auto', 
+          overflowY: 'hidden', 
+          flexWrap: 'nowrap', 
+          WebkitOverflowScrolling: 'touch',
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
+          alignItems: 'stretch',
+          position: 'relative',
+          zIndex: 10
+        }}>
           <button 
             style={{
-              padding: '10px 18px',
+              padding: '0 16px',
+              height: '100%',
+              minHeight: '48px',
               border: 'none',
               background: activeTab === 'DOCUMENT' ? '#ffffff' : 'transparent',
               fontWeight: 700,
-              fontSize: '0.88rem',
+              fontSize: '0.86rem',
               color: activeTab === 'DOCUMENT' ? '#2563eb' : '#64748b',
-              borderBottom: activeTab === 'DOCUMENT' ? '2px solid #2563eb' : 'none',
-              cursor: 'pointer'
+              borderBottom: activeTab === 'DOCUMENT' ? '3px solid #2563eb' : '3px solid transparent',
+              borderRadius: 0,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              boxSizing: 'border-box'
             }}
             onClick={() => setActiveTab('DOCUMENT')}
           >
@@ -1237,14 +1422,24 @@ export default function InspectionReportModal({
           </button>
           <button 
             style={{
-              padding: '10px 18px',
+              padding: '0 16px',
+              height: '100%',
+              minHeight: '48px',
               border: 'none',
               background: activeTab === 'EVIDENCE' ? '#ffffff' : 'transparent',
               fontWeight: 700,
-              fontSize: '0.88rem',
+              fontSize: '0.86rem',
               color: activeTab === 'EVIDENCE' ? '#2563eb' : '#64748b',
-              borderBottom: activeTab === 'EVIDENCE' ? '2px solid #2563eb' : 'none',
-              cursor: 'pointer'
+              borderBottom: activeTab === 'EVIDENCE' ? '3px solid #2563eb' : '3px solid transparent',
+              borderRadius: 0,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              boxSizing: 'border-box'
             }}
             onClick={() => setActiveTab('EVIDENCE')}
           >
@@ -1255,17 +1450,24 @@ export default function InspectionReportModal({
           {(isRejected || defectPhotos.length > 0) && (
             <button 
               style={{
-                padding: '10px 18px',
+                padding: '0 16px',
+                height: '100%',
+                minHeight: '48px',
                 border: 'none',
                 background: activeTab === 'DEFECTS' ? '#ffffff' : 'transparent',
                 fontWeight: 700,
-                fontSize: '0.88rem',
+                fontSize: '0.86rem',
                 color: activeTab === 'DEFECTS' ? '#dc2626' : '#b91c1c',
-                borderBottom: activeTab === 'DEFECTS' ? '2px solid #dc2626' : 'none',
+                borderBottom: activeTab === 'DEFECTS' ? '3px solid #dc2626' : '3px solid transparent',
+                borderRadius: 0,
                 cursor: 'pointer',
-                display: 'flex',
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
+                display: 'inline-flex',
                 alignItems: 'center',
-                gap: '6px'
+                justifyContent: 'center',
+                gap: '6px',
+                boxSizing: 'border-box'
               }}
               onClick={() => setActiveTab('DEFECTS')}
             >
@@ -1278,17 +1480,24 @@ export default function InspectionReportModal({
           {(isRectified || reportState?.status === 'RECTIFIED' || (isCompleted && Boolean(reportState?.rectification?.description))) && (
             <button 
               style={{
-                padding: '10px 18px',
+                padding: '0 16px',
+                height: '100%',
+                minHeight: '48px',
                 border: 'none',
                 background: activeTab === 'RECTIFIED' ? '#ffffff' : 'transparent',
                 fontWeight: 700,
-                fontSize: '0.88rem',
+                fontSize: '0.86rem',
                 color: activeTab === 'RECTIFIED' ? '#7c3aed' : '#6d28d9',
-                borderBottom: activeTab === 'RECTIFIED' ? '2px solid #7c3aed' : 'none',
+                borderBottom: activeTab === 'RECTIFIED' ? '3px solid #7c3aed' : '3px solid transparent',
+                borderRadius: 0,
                 cursor: 'pointer',
-                display: 'flex',
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
+                display: 'inline-flex',
                 alignItems: 'center',
-                gap: '6px'
+                justifyContent: 'center',
+                gap: '6px',
+                boxSizing: 'border-box'
               }}
               onClick={() => setActiveTab('RECTIFIED')}
             >
@@ -1299,28 +1508,29 @@ export default function InspectionReportModal({
         </div>
 
         {/* MODAL BODY */}
-        <div className="modal-body" style={{ background: '#f8fafc', padding: '24px' }}>
+        <div className="modal-body" style={{ background: '#f8fafc' }}>
           {activeTab === 'DOCUMENT' ? (
             /* TRÌNH BÀY CHUẨN BIÊN BẢN KHỔ A4 */
-            <div className="document-paper" style={{ maxWidth: '800px', margin: '0 auto', fontSize: '0.92rem' }}>
+            <div className="document-paper" style={{ maxWidth: '820px', width: '100%', margin: '0 auto', fontSize: '0.92rem', boxSizing: 'border-box' }}>
               {/* THÔNG BÁO HOÀN TẤT NẾU ĐÃ NGHIỆM THU ĐẠT SAU SỬA CHỮA */}
               {isCompleted && Boolean(reportState?.rectification?.description || report?.rectification?.description) ? (
                 <div className="no-print" style={{
                   background: '#ecfdf5',
                   border: '1.5px solid #a7f3d0',
                   borderRadius: '10px',
-                  padding: '14px 18px',
-                  marginBottom: '18px',
+                  padding: '12px 16px',
+                  marginBottom: '16px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  gap: '12px'
+                  flexWrap: 'wrap',
+                  gap: '10px'
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ background: '#d1fae5', padding: '6px', borderRadius: '50%', color: '#059669' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                    <div style={{ background: '#d1fae5', padding: '6px', borderRadius: '50%', color: '#059669', flexShrink: 0 }}>
                       <CheckCircle2 size={20} />
                     </div>
-                    <div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ fontWeight: 800, color: '#065f46', fontSize: '0.95rem' }}>
                         BIÊN BẢN ĐÃ ĐƯỢC NGHIỆM THU ĐẠT & PHÊ DUYỆT HOÀN TẤT
                       </div>
@@ -1353,45 +1563,49 @@ export default function InspectionReportModal({
                   background: '#f3e8ff',
                   border: '1.5px solid #d8b4fe',
                   borderRadius: '10px',
-                  padding: '14px 18px',
-                  marginBottom: '18px',
+                  padding: '12px 16px',
+                  marginBottom: '16px',
                   display: 'flex',
                   alignItems: 'flex-start',
                   justifyContent: 'space-between',
-                  gap: '12px'
+                  flexWrap: 'wrap',
+                  gap: '10px'
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                    <div style={{ background: '#e9d5ff', padding: '6px', borderRadius: '50%', color: '#7c3aed', marginTop: '2px' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', minWidth: 0, flex: 1 }}>
+                    <div style={{ background: '#e9d5ff', padding: '6px', borderRadius: '50%', color: '#7c3aed', marginTop: '2px', flexShrink: 0 }}>
                       <RotateCcw size={20} />
                     </div>
-                    <div>
-                      <div style={{ fontWeight: 800, color: '#6b21a8', fontSize: '0.98rem' }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontWeight: 800, color: '#6b21a8', fontSize: '0.95rem', wordBreak: 'break-word' }}>
                         ĐƠN VỊ THI CÔNG ĐÃ BÁO CÁO KHẮC PHỤC XONG - MỜI NGHIỆM THU LẠI
                       </div>
-                      <div style={{ fontSize: '0.84rem', color: '#7e22ce', marginTop: '3px' }}>
+                      <div style={{ fontSize: '0.82rem', color: '#7e22ce', marginTop: '3px' }}>
                         Người gửi: <strong>{reportState.rectification?.submittedBy?.name || 'KS. Lê Văn Kỹ Thuật'}</strong> (ĐVTC) • {reportState.rectification?.submittedBy?.timestamp || 'Hôm nay'}
                       </div>
-                      <div style={{ fontSize: '0.84rem', color: '#581c87', marginTop: '4px' }}>
+                      <div style={{ fontSize: '0.82rem', color: '#581c87', marginTop: '4px', wordBreak: 'break-word' }}>
                         Biện pháp đã làm: <em>"{reportState.rectification?.description || rectifyDesc}"</em>
                       </div>
                     </div>
                   </div>
-                  <button 
-                    style={{ 
-                      background: '#7c3aed', 
-                      color: '#ffffff', 
-                      border: 'none', 
-                      borderRadius: '6px', 
-                      padding: '6px 12px', 
-                      fontSize: '0.8rem', 
-                      fontWeight: 700, 
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap'
-                    }}
-                    onClick={() => setActiveTab('RECTIFIED')}
-                  >
-                    Xem {rectifyPhotos.length} ảnh đã sửa ›
-                  </button>
+                  {rectifyPhotos.length > 0 && (
+                    <button 
+                      style={{ 
+                        background: '#7c3aed', 
+                        color: '#ffffff', 
+                        border: 'none', 
+                        borderRadius: '6px', 
+                        padding: '6px 12px', 
+                        fontSize: '0.8rem', 
+                        fontWeight: 700, 
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        alignSelf: 'center'
+                      }}
+                      onClick={() => setActiveTab('RECTIFIED')}
+                    >
+                      Xem {rectifyPhotos.length} ảnh đã sửa ›
+                    </button>
+                  )}
                 </div>
               ) : isRejected && (
                 /* CẢNH BÁO NẾU BIÊN BẢN BỊ TỪ CHỐI */
@@ -1399,25 +1613,26 @@ export default function InspectionReportModal({
                   background: '#fef2f2',
                   border: '1.5px solid #f87171',
                   borderRadius: '10px',
-                  padding: '14px 18px',
-                  marginBottom: '18px',
+                  padding: '12px 16px',
+                  marginBottom: '16px',
                   display: 'flex',
                   alignItems: 'flex-start',
                   justifyContent: 'space-between',
-                  gap: '12px'
+                  flexWrap: 'wrap',
+                  gap: '10px'
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                    <div style={{ background: '#fee2e2', padding: '6px', borderRadius: '50%', color: '#dc2626', marginTop: '2px' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', minWidth: 0, flex: 1 }}>
+                    <div style={{ background: '#fee2e2', padding: '6px', borderRadius: '50%', color: '#dc2626', marginTop: '2px', flexShrink: 0 }}>
                       <AlertTriangle size={20} />
                     </div>
-                    <div>
-                      <div style={{ fontWeight: 800, color: '#991b1b', fontSize: '0.98rem' }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontWeight: 800, color: '#991b1b', fontSize: '0.95rem', wordBreak: 'break-word' }}>
                         CẢNH BÁO: BIÊN BẢN CHƯA ĐẠT NGHIỆM THU - YÊU CẦU SỬA CHỮA KHẮC PHỤC
                       </div>
-                      <div style={{ fontSize: '0.84rem', color: '#b91c1c', marginTop: '3px' }}>
+                      <div style={{ fontSize: '0.82rem', color: '#b91c1c', marginTop: '3px' }}>
                         Người lập: <strong>{rejectionInfo?.name || 'Cán bộ giám sát'}</strong> ({rejectionInfo?.roleTitle || rejectionInfo?.role || 'TVGS'}) • {rejectionInfo?.timestamp || 'Hôm nay'}
                       </div>
-                      <div style={{ fontSize: '0.84rem', color: '#7f1d1d', marginTop: '4px' }}>
+                      <div style={{ fontSize: '0.82rem', color: '#7f1d1d', marginTop: '4px', wordBreak: 'break-word' }}>
                         Lý do: <em>"{reportState.conclusion?.rejectionReason}"</em>
                       </div>
                     </div>
@@ -1433,7 +1648,8 @@ export default function InspectionReportModal({
                         fontSize: '0.8rem', 
                         fontWeight: 700, 
                         cursor: 'pointer',
-                        whiteSpace: 'nowrap'
+                        whiteSpace: 'nowrap',
+                        alignSelf: 'center'
                       }}
                       onClick={() => setActiveTab('DEFECTS')}
                     >
@@ -1707,28 +1923,51 @@ export default function InspectionReportModal({
                 </div>
               </div>
 
-              {/* 3. Thời gian nghiệm thu: Bắt đầu & Kết thúc (tự động = Bắt đầu + 30p) */}
-              <div style={{ marginBottom: '14px' }}>
-                <strong>3. Thời gian nghiệm thu:</strong>
-                <div style={{ paddingLeft: '20px' }}>
-                  - Bắt đầu: {reportState.time?.startTime || '15h30, ngày 05/10/2026'}<br />
-                  - Kết thúc: {(() => {
-                    if (reportState.time?.endTime) return reportState.time.endTime;
-                    const start = reportState.time?.startTime;
-                    if (!start) return '16h00, ngày 05/10/2026';
-                    const match = start.match(/^(\d{1,2})[h:](\d{2})(.*)$/);
-                    if (match) {
-                      let h = parseInt(match[1], 10);
-                      let m = parseInt(match[2], 10) + 30;
-                      if (m >= 60) {
-                        h = (h + Math.floor(m / 60)) % 24;
-                        m = m % 60;
-                      }
-                      return `${String(h).padStart(2, '0')}h${String(m).padStart(2, '0')}${match[3]}`;
-                    }
-                    return '16h00, ngày 05/10/2026';
-                  })()}<br />
-                  - Tại: {reportState.time?.place || reportState.projectInfo?.projectName}
+              {/* 3. Thời gian nghiệm thu chuẩn theo mẫu */}
+              <div style={{ marginBottom: '14px', lineHeight: 1.65 }}>
+                <div><strong>3.  Thời gian nghiệm thu:</strong></div>
+                <div style={{ paddingLeft: '28px', margin: '2px 0' }}>
+                  <div>
+                    Bắt đầu:{' '}
+                    <span
+                      contentEditable
+                      suppressContentEditableWarning
+                      onBlur={(e) => handleUpdateStartTimeText(e.currentTarget.textContent)}
+                      style={{
+                        outline: 'none',
+                        cursor: 'text',
+                        borderBottom: '1px dashed transparent',
+                        transition: 'border-color 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.borderBottom = '1px dashed #3b82f6'}
+                      onMouseLeave={(e) => e.currentTarget.style.borderBottom = '1px dashed transparent'}
+                      title="Bấm vào để chỉnh sửa nếu cần"
+                    >
+                      {startTimeText}
+                    </span>
+                  </div>
+                  <div>
+                    Kết thúc:{' '}
+                    <span
+                      contentEditable
+                      suppressContentEditableWarning
+                      onBlur={(e) => handleUpdateEndTimeText(e.currentTarget.textContent)}
+                      style={{
+                        outline: 'none',
+                        cursor: 'text',
+                        borderBottom: '1px dashed transparent',
+                        transition: 'border-color 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.borderBottom = '1px dashed #3b82f6'}
+                      onMouseLeave={(e) => e.currentTarget.style.borderBottom = '1px dashed transparent'}
+                      title="Bấm vào để chỉnh sửa nếu cần"
+                    >
+                      {endTimeText}
+                    </span>
+                  </div>
+                </div>
+                <div>
+                  Tại: Dự án Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City
                 </div>
               </div>
 
@@ -2823,14 +3062,14 @@ export default function InspectionReportModal({
         </div>
 
         {/* MODAL FOOTER */}
-        <div className="modal-footer no-print" style={{ justifyContent: 'space-between' }}>
+        <div className="modal-footer no-print" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
           <div>
-            <button className="btn-secondary" onClick={onClose}>
+            <button className="btn-secondary" onClick={onClose} style={{ padding: '8px 16px' }}>
               Đóng
             </button>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'nowrap', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {/* 1. NẾU ĐÃ HOÀN TẤT TOÀN DIỆN */}
             {isCompleted ? (
               <div style={{
@@ -2847,7 +3086,7 @@ export default function InspectionReportModal({
                 whiteSpace: 'nowrap'
               }}>
                 <CheckCircle2 size={18} color="#059669" />
-                <span>Biên bản đã hoàn tất nghiệm thu đủ 3 bên (Đã hoàn tất ký số độc lập)</span>
+                <span>Biên bản đã hoàn tất nghiệm thu đủ 3 bên</span>
               </div>
             ) : isWaitingInvestor ? (
               /* GIAI ĐOẠN 2: TVGS ĐÃ ĐẠT -> CĐT PHÊ DUYỆT & KÝ SỐ */
@@ -2878,18 +3117,20 @@ export default function InspectionReportModal({
                         setIsRejectModalOpen(true);
                       }}
                       title="CĐT: Không đồng ý nghiệm thu, gửi yêu cầu trực tiếp cho ĐVTC sửa chữa"
-                      style={{ whiteSpace: 'nowrap' }}
+                      style={{ padding: '8px 14px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                     >
-                      <span>✕ CĐT: Không Đồng Ý (Yêu Cầu Sửa)</span>
+                      <XCircle size={16} />
+                      <span>Không đồng ý</span>
                     </button>
 
                     <button 
                       className="btn-primary" 
-                      style={{ background: '#d97706', whiteSpace: 'nowrap' }} 
+                      style={{ background: '#d97706', padding: '8px 16px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px' }} 
                       onClick={() => handleSign('investor')}
                       title="CĐT: Phê duyệt nghiệm thu đạt và ký số hoàn tất biên bản"
                     >
-                      <span>✓ CĐT: Nghiệm Thu Đạt & Ký Phê Duyệt</span>
+                      <CheckCircle2 size={16} />
+                      <span>Đồng ý</span>
                     </button>
                   </>
                 ) : (
@@ -2907,7 +3148,7 @@ export default function InspectionReportModal({
                     whiteSpace: 'nowrap'
                   }}>
                     <CheckCircle2 size={16} color="#059669" />
-                    <span>TVGS đã ký duyệt đạt. Đang chờ Chủ Đầu Tư phê duyệt & ký số.</span>
+                    <span>TVGS đã duyệt đạt. Chờ CĐT phê duyệt & ký số.</span>
                   </div>
                 )}
               </>
@@ -2926,11 +3167,11 @@ export default function InspectionReportModal({
                     {currentRole === 'CONTRACTOR' && (
                       <button 
                         className="btn-primary" 
-                        style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)', padding: '8px 14px', fontSize: '0.84rem', whiteSpace: 'nowrap' }}
+                        style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)', padding: '8px 14px', fontSize: '0.84rem' }}
                         onClick={() => setIsRectifyModalOpen(true)}
                       >
                         <Camera size={15} />
-                        <span>Cập Nhật Thêm Ảnh Sửa</span>
+                        <span>Cập nhật ảnh sửa</span>
                       </button>
                     )}
 
@@ -2940,7 +3181,7 @@ export default function InspectionReportModal({
                         <>
                           <button 
                             className="btn-danger" 
-                            style={{ padding: '8px 14px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
+                            style={{ padding: '8px 14px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                             onClick={() => {
                               setRejectReason('');
                               setIsRejectModalOpen(true);
@@ -2948,22 +3189,23 @@ export default function InspectionReportModal({
                             title="Sau sửa chữa vẫn chưa đạt chuẩn, TVGS yêu cầu ĐVTC sửa tiếp"
                           >
                             <XCircle size={16} />
-                            <span>TVGS: Không Đạt / Sửa Tiếp</span>
+                            <span>Không đồng ý</span>
                           </button>
 
                           <button 
                             className="btn-success" 
-                            style={{ padding: '8px 16px', fontSize: '0.86rem', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px' }}
+                            style={{ padding: '8px 16px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                             onClick={handleReinspectSupervisor}
+                            title="TVGS nghiệm thu đạt sau sửa chữa và chuyển CĐT phê duyệt"
                           >
                             <CheckCircle2 size={16} />
-                            <span>TVGS: Nghiệm Thu Đạt & Chuyển CĐT</span>
+                            <span>Đồng ý</span>
                           </button>
                         </>
                       ) : isSupervisorRole ? (
                         <div style={{ color: '#15803d', fontSize: '0.82rem', fontWeight: 600, padding: '7px 12px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
                           <Eye size={15} color="#16a34a" />
-                          <span>Phiếu do <strong>{supAttendee?.person || 'Cán bộ TVGS'}</strong> kiểm tra lại • TVGS Trưởng giám sát tiến độ</span>
+                          <span>Phiếu do <strong>{supAttendee?.person || 'Cán bộ TVGS'}</strong> kiểm tra lại</span>
                         </div>
                       ) : null
                     )}
@@ -2982,22 +3224,23 @@ export default function InspectionReportModal({
                             title="Chủ đầu tư kiểm tra lại chưa đạt, yêu cầu ĐVTC sửa tiếp"
                           >
                             <XCircle size={16} />
-                            <span>CĐT: Không Đạt / Sửa Tiếp</span>
+                            <span>Không đồng ý</span>
                           </button>
 
                           <button 
                             className="btn-success" 
-                            style={{ padding: '8px 16px', fontSize: '0.86rem' }}
+                            style={{ padding: '8px 16px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                             onClick={handleReinspectInvestor}
+                            title="Chủ đầu tư nghiệm thu đạt và ký phê duyệt hoàn tất"
                           >
                             <CheckCircle2 size={16} />
-                            <span>CĐT: Nghiệm Thu Đạt & Ký Phê Duyệt</span>
+                            <span>Đồng ý</span>
                           </button>
                         </>
                       ) : isInvestorRole ? (
                         <div style={{ color: '#b45309', fontSize: '0.82rem', fontWeight: 600, padding: '7px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <Eye size={15} color="#d97706" />
-                          <span>Phiếu do <strong>{invAttendee?.person || 'Cán bộ CĐT'}</strong> kiểm tra lại • Trưởng Ban QLDA giám sát</span>
+                          <span>Phiếu do <strong>{invAttendee?.person || 'Cán bộ CĐT'}</strong> kiểm tra lại</span>
                         </div>
                       ) : null
                     )}
@@ -3005,7 +3248,7 @@ export default function InspectionReportModal({
                     {/* Thông báo tiến độ cho các bên khác */}
                     {targetReviewer === 'SUPERVISOR' && isInvestorRole && (
                       <div style={{ color: '#64748b', fontSize: '0.82rem', fontStyle: 'italic', padding: '6px 10px', background: '#f8fafc', borderRadius: '6px' }}>
-                        ⏳ Chờ TVGS kiểm tra lại ảnh sửa trước. CĐT sẽ duyệt sau khi TVGS đạt.
+                        ⏳ Chờ TVGS kiểm tra ảnh sửa trước. CĐT sẽ duyệt sau khi TVGS đạt.
                       </div>
                     )}
                     {targetReviewer === 'INVESTOR' && isSupervisorRole && (
@@ -3043,15 +3286,11 @@ export default function InspectionReportModal({
                 {currentRole === 'CONTRACTOR' && (
                   <button 
                     className="btn-primary" 
-                    style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)', padding: '8px 16px', fontSize: '0.86rem' }}
+                    style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)', padding: '8px 16px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                     onClick={() => setIsRectifyModalOpen(true)}
                   >
                     <Wrench size={16} />
-                    <span>
-                      {rejectionInfo?.role === 'INVESTOR' || rejectionInfo?.role === 'LEAD_INVESTOR'
-                        ? 'Sửa Chữa & Gửi Duyệt Trực Tiếp CĐT'
-                        : 'Sửa Chữa & Gửi Duyệt Lại TVGS'}
-                    </span>
+                    <span>Sửa chữa & Gửi lại</span>
                   </button>
                 )}
 
@@ -3059,11 +3298,12 @@ export default function InspectionReportModal({
                 {isSupervisorReviewer && !isInvestorRole && (
                   <button 
                     className="btn-success" 
-                    style={{ padding: '8px 16px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
+                    style={{ padding: '8px 16px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                     onClick={handleReinspectSupervisor}
+                    title="TVGS xác nhận nghiệm thu đạt và chuyển Chủ đầu tư phê duyệt"
                   >
                     <CheckCircle2 size={16} />
-                    <span>TVGS: Nghiệm Thu Đạt & Chuyển CĐT</span>
+                    <span>Đồng ý</span>
                   </button>
                 )}
 
@@ -3071,11 +3311,12 @@ export default function InspectionReportModal({
                 {isInvestorReviewer && (
                   <button 
                     className="btn-success" 
-                    style={{ padding: '8px 16px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
+                    style={{ padding: '8px 16px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                     onClick={handleReinspectInvestor}
+                    title="CĐT phê duyệt nghiệm thu đạt và ký số hoàn tất"
                   >
                     <CheckCircle2 size={16} />
-                    <span>CĐT: Nghiệm Thu Đạt & Ký Phê Duyệt</span>
+                    <span>Đồng ý</span>
                   </button>
                 )}
 
@@ -3103,17 +3344,20 @@ export default function InspectionReportModal({
                           className="btn-danger" 
                           onClick={() => setIsRejectModalOpen(true)}
                           title="TVGS: Từ chối nghiệm thu, chụp ảnh lỗi hiện trường và yêu cầu ĐVTC sửa chữa"
+                          style={{ padding: '8px 14px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                         >
-                          <span>✕ TVGS: Không Đồng Ý Nghiệm Thu</span>
+                          <XCircle size={16} />
+                          <span>Không đồng ý</span>
                         </button>
 
                         <button 
                           className="btn-primary" 
-                          style={{ background: '#059669' }} 
+                          style={{ background: '#059669', padding: '8px 16px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px' }} 
                           onClick={() => handleSign('supervisor')}
                           title="TVGS: Xác nhận nghiệm thu đạt và ký số chuyển Chủ Đầu Tư"
                         >
-                          <span>✓ TVGS: Xác Nhận Nghiệm Thu Đạt & Ký Số</span>
+                          <CheckCircle2 size={16} />
+                          <span>Đồng ý</span>
                         </button>
                       </>
                     ) : isSupervisorRole ? (
@@ -3194,17 +3438,20 @@ export default function InspectionReportModal({
                               className="btn-danger" 
                               onClick={() => setIsRejectModalOpen(true)}
                               title="CĐT: Không đồng ý nghiệm thu, gửi yêu cầu trực tiếp cho ĐVTC sửa chữa"
+                              style={{ padding: '8px 14px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                             >
-                              <span>✕ CĐT: Không Đồng Ý (Yêu Cầu Sửa)</span>
+                              <XCircle size={16} />
+                              <span>Không đồng ý</span>
                             </button>
 
                             <button 
                               className="btn-primary" 
-                              style={{ background: '#d97706' }} 
+                              style={{ background: '#d97706', padding: '8px 16px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px' }} 
                               onClick={() => handleSign('investor')}
                               title="CĐT: Phê duyệt nghiệm thu đạt và ký số hoàn tất biên bản"
                             >
-                              <span>✓ CĐT: Nghiệm Thu Đạt & Ký Phê Duyệt</span>
+                              <CheckCircle2 size={16} />
+                              <span>Đồng ý</span>
                             </button>
                           </>
                         ) : isInvestorRole ? (
@@ -3501,15 +3748,54 @@ export default function InspectionReportModal({
               </div>
 
               {/* 3. THỜI GIAN ĐỀ NGHỊ NGHIỆM THU LẠI */}
-              <div className="form-group">
-                <label className="form-label">
-                  3. Thời gian đề nghị {(reportState.conclusion?.rejectedBy?.role === 'INVESTOR' || reportState.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR') ? 'Ban QLDA' : 'TVGS'} kiểm tra lại:
+              <div style={{
+                background: '#faf5ff',
+                border: '1.5px solid #d8b4fe',
+                borderRadius: '10px',
+                padding: '14px',
+                marginTop: '14px'
+              }}>
+                <label className="form-label" style={{ fontWeight: 700, color: '#6b21a8', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                  <Clock size={16} color="#7c3aed" />
+                  <span>3. Thời gian đề nghị {(reportState.conclusion?.rejectedBy?.role === 'INVESTOR' || reportState.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR') ? 'Ban QLDA' : 'TVGS'} kiểm tra lại:</span>
                 </label>
-                <input type="text" className="form-input" value={suggestedTime} onChange={(e) => setSuggestedTime(e.target.value)} placeholder="Ví dụ: 16h30 ngày hôm nay / 09h00 sáng mai" />
+                
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '0.8rem', color: '#475569', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+                      Ngày nghiệm thu lại:
+                    </label>
+                    <input 
+                      type="date" 
+                      className="form-input" 
+                      value={rectifyDate} 
+                      onChange={(e) => setRectifyDate(e.target.value)} 
+                      style={{ background: '#ffffff', width: '100%' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.8rem', color: '#475569', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+                      Giờ hẹn kiểm tra:
+                    </label>
+                    <input 
+                      type="time" 
+                      className="form-input" 
+                      value={rectifyTime} 
+                      onChange={(e) => setRectifyTime(e.target.value)} 
+                      style={{ background: '#ffffff', width: '100%' }}
+                    />
+                  </div>
+                </div>
+
+                {rectifyDate && rectifyTime && (
+                  <div style={{ marginTop: '10px', fontSize: '0.82rem', color: '#7c3aed', background: '#f3e8ff', padding: '6px 10px', borderRadius: '6px', fontWeight: 600 }}>
+                    📅 Lịch hẹn nghiệm thu lại: {rectifyTime} ngày {rectifyDate.split('-').reverse().join('/')}
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="modal-footer" style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+            <div className="modal-footer" style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0', flexWrap: 'wrap', gap: '10px' }}>
               <button type="button" className="btn-secondary" onClick={() => setIsRectifyModalOpen(false)}>Hủy bỏ</button>
               <button 
                 type="button" 
@@ -3517,11 +3803,7 @@ export default function InspectionReportModal({
                 style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)' }}
                 onClick={handleConfirmRectification}
               >
-                <Send size={16} /> <span>
-                  {(reportState.conclusion?.rejectedBy?.role === 'INVESTOR' || reportState.conclusion?.rejectedBy?.role === 'LEAD_INVESTOR')
-                    ? 'Xác Nhận Đã Sửa & Gửi Trực Tiếp Cho Ban QLDA Duyệt'
-                    : 'Xác Nhận Đã Sửa & Gửi Cho TVGS Duyệt Lại'}
-                </span>
+                <Send size={16} /> <span>Gửi Nghiệm Thu Lại</span>
               </button>
             </div>
           </div>

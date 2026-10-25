@@ -20,6 +20,9 @@ export default function ReportsListView({
 
   // Helper tính trạng thái từng biên bản
   const getReportStatus = (report) => {
+    if (report.status === 'CANCELLED') {
+      return 'CANCELLED';
+    }
     const inv = report.attendees?.investor?.signed;
     const sup = report.attendees?.supervisor?.signed;
     const con = report.attendees?.contractor?.signed;
@@ -201,6 +204,7 @@ export default function ReportsListView({
         }}>
           {filteredReports.map((report) => {
             const status = getReportStatus(report);
+            const isCancelled = status === 'CANCELLED';
             const isRectified = status === 'RECTIFIED';
             const isRejected = status === 'REJECTED';
             const isCompleted = status === 'COMPLETED';
@@ -217,7 +221,9 @@ export default function ReportsListView({
                 key={report.id}
                 style={{
                   background: '#ffffff',
-                  border: isWaitingInvestor
+                  border: isCancelled
+                    ? '1.5px solid #fca5a5'
+                    : isWaitingInvestor
                     ? '1.5px solid #93c5fd'
                     : isRectified 
                     ? '1.5px solid #d8b4fe' 
@@ -332,6 +338,24 @@ export default function ReportsListView({
 
                   {/* STATUS BADGE */}
                   <div>
+                    {isCancelled && (
+                      <span style={{ 
+                        background: '#fee2e2', 
+                        color: '#b91c1c', 
+                        border: '1px solid #fca5a5',
+                        padding: '4px 10px', 
+                        borderRadius: '20px',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px'
+                      }}>
+                        <XCircle size={14} color="#dc2626" />
+                        <span>Đã Hủy</span>
+                      </span>
+                    )}
+
                     {isRectified && (
                       <span style={{ 
                         background: '#f3e8ff', 

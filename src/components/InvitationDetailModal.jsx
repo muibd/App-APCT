@@ -1,5 +1,9 @@
-import React from 'react';
-import { X, MapPin, FileText, Calendar, Award, Building, UserCheck, Camera, Clock, AlertTriangle, RotateCcw, CheckCircle2, ArrowLeftRight } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { 
+  X, MapPin, FileText, Calendar, Award, Building, UserCheck, 
+  Camera, Clock, AlertTriangle, RotateCcw, CheckCircle2, 
+  ArrowLeftRight, Edit3, Ban, AlertCircle, Save 
+} from 'lucide-react';
 import { getDocumentRevisionNumber } from '../data/projectCatalog';
 
 export default function InvitationDetailModal({
@@ -10,7 +14,9 @@ export default function InvitationDetailModal({
   currentRole,
   currentUser,
   onOpenReport,
-  onReassign
+  onReassign,
+  onUpdateTime,
+  onCancelRequest
 }) {
   if (!isOpen || !request) return null;
 
@@ -46,6 +52,121 @@ export default function InvitationDetailModal({
     (request.requestNumber && r.requestNumber === request.requestNumber)
   );
 
+  const isSupervisorSigned = Boolean(
+    relatedReport?.signatures?.supervisor?.signed || 
+    relatedReport?.attendees?.supervisor?.signed
+  );
+  const isInvestorSigned = Boolean(
+    relatedReport?.signatures?.investor?.signed || 
+    relatedReport?.attendees?.investor?.signed
+  );
+  const hasConfirmed = isSupervisorSigned || isInvestorSigned || request.status === 'COMPLETED' || request.status === 'WAITING_INVESTOR';
+  const isCancelled = request.status === 'CANCELLED';
+
+  const isCreator = Boolean(
+    (currentUser?.uid && request.createdByUid === currentUser.uid) ||
+    currentRole === 'CONTRACTOR' ||
+    currentRole === 'ADMIN' ||
+    (currentUser?.company && request.contractorCompany === currentUser.company)
+  );
+
+  // Người tạo phiếu được quyền sửa thời gian, đổi người xác nhận, hủy phiếu khi TVGS hoặc Ban QLDA chưa xác nhận nghiệm thu
+  const canModify = !hasConfirmed && !isCancelled && isCreator;
+
+  const parseInitialDate = () => {
+    if (request.scheduledDate && /^\d{4}-\d{2}-\d{2}$/.test(request.scheduledDate)) {
+      return request.scheduledDate;
+    }
+    if (request.scheduledDate && /^\d{2}\/\d{2}\/\d{4}$/.test(request.scheduledDate)) {
+      const [d, m, y] = request.scheduledDate.split('/');
+      return `${y}-${m}-${d}`;
+    }
+    if (request.scheduledTime) {
+      const match = request.scheduledTime.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+      if (match) {
+        return `${match[3]}-${match[2]}-${match[1]}`;
+      }
+    }
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  };
+
+  const parseInitialTime = () => {
+    if (request.startTime && /^\d{1,2}:\d{2}$/.test(request.startTime.trim())) {
+      return request.startTime.trim().padStart(5, '0');
+    }
+    if (request.scheduledTime) {
+      const match = request.scheduledTime.match(/(\d{1,2}:\d{2})/);
+      if (match) {
+        return match[1].padStart(5, '0');
+      }
+    }
+    return '08:30';
+  };
+
+  const [isEditingTime, setIsEditingTime] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(parseInitialDate);
+  const [selectedTime, setSelectedTime] = useState(parseInitialTime);
+
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    setSelectedDate(parseInitialDate());
+    setSelectedTime(parseInitialTime());
+    setCancelReason('');
+    setIsEditingTime(false);
+    setIsCancelModalOpen(false);
+  }, [request?.id]);
+
+  const handleSaveTime = async (e) => {
+    e?.preventDefault();
+    if (!selectedDate || !selectedTime) {
+      alert('Vui lòng chọn đầy đủ ngày và giờ nghiệm thu!');
+      return;
+    }
+    const [y, m, d] = selectedDate.split('-');
+    const formattedDate = `${d}/${m}/${y}`;
+    const newScheduledTime = `${selectedTime} ${formattedDate}`;
+
+    setIsSubmitting(true);
+    try {
+      if (onUpdateTime) {
+        await onUpdateTime(request.id, {
+          scheduledDate: selectedDate,
+          startTime: selectedTime,
+          scheduledTime: newScheduledTime
+        });
+      }
+      setIsEditingTime(false);
+    } catch (err) {
+      console.error('Lỗi cập nhật thời gian:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleConfirmCancel = async (e) => {
+    e?.preventDefault();
+    if (!cancelReason.trim()) {
+      alert('Vui lòng nhập lý do hủy phiếu yêu cầu nghiệm thu!');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      if (onCancelRequest) {
+        await onCancelRequest(request.id, cancelReason.trim());
+      }
+      setIsCancelModalOpen(false);
+    } catch (err) {
+      console.error('Lỗi hủy phiếu:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const rev = getDocumentRevisionNumber(request, relatedReport);
   const revStr = String(rev).padStart(2, '0');
 
@@ -80,6 +201,36 @@ export default function InvitationDetailModal({
         </div>
 
         <div className="modal-body" style={{ padding: '20px 24px' }}>
+          {/* BANNER KHI PHIẾU BỊ HỦY */}
+          {isCancelled && (
+            <div style={{
+              background: '#fef2f2',
+              border: '1.5px solid #f87171',
+              borderRadius: '10px',
+              padding: '14px 18px',
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '12px',
+              color: '#991b1b'
+            }}>
+              <div style={{ background: '#fee2e2', borderRadius: '50%', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Ban size={22} color="#dc2626" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <strong style={{ fontSize: '0.98rem', display: 'block', color: '#991b1b' }}>
+                  🚫 PHIẾU YÊU CẦU NGHIỆM THU ĐÃ BỊ HỦY
+                </strong>
+                <div style={{ fontSize: '0.88rem', marginTop: '4px', color: '#7f1d1d' }}>
+                  <strong>Lý do hủy:</strong> "{request.cancellationReason || 'Đã hủy theo yêu cầu của đơn vị thi công.'}"
+                </div>
+                <div style={{ fontSize: '0.78rem', marginTop: '6px', color: '#991b1b' }}>
+                  Người hủy: <strong>{request.cancelledByName || 'Đơn vị thi công'}</strong> • Thời gian: {new Date(request.cancelledAt || Date.now()).toLocaleString('vi-VN')}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* BANNER CẢNH BÁO TRẠNG THÁI NGHIỆM THU */}
           {request.status === 'HAS_REJECTIONS' && (
             <div style={{
@@ -121,6 +272,11 @@ export default function InvitationDetailModal({
                 <div style={{ fontSize: '0.84rem', marginTop: '3px', color: '#581c87' }}>
                   Biện pháp xử lý: "{request.rectificationNotes || 'ĐVTC đã nắn chỉnh và hoàn thiện theo yêu cầu.'}"
                 </div>
+                {request.scheduledTime && (
+                  <div style={{ fontSize: '0.84rem', marginTop: '4px', color: '#6b21a8', fontWeight: 700 }}>
+                    ⏰ Lịch hẹn nghiệm thu lại: {request.scheduledTime}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -270,9 +426,34 @@ export default function InvitationDetailModal({
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '10px 16px', marginTop: '6px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Calendar size={16} color="#2563eb" style={{ flexShrink: 0 }} />
-                  <strong>Thời gian nghiệm thu: {request.scheduledTime}</strong>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Calendar size={16} color="#2563eb" style={{ flexShrink: 0 }} />
+                    <strong>Thời gian nghiệm thu: {request.scheduledTime}</strong>
+                  </div>
+                  {canModify && (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingTime(true)}
+                      style={{
+                        background: '#eff6ff',
+                        border: '1px solid #bfdbfe',
+                        color: '#1d4ed8',
+                        borderRadius: '6px',
+                        padding: '2px 8px',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                      title="Sửa ngày giờ nghiệm thu"
+                    >
+                      <Edit3 size={12} />
+                      <span>Sửa thời gian</span>
+                    </button>
+                  )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Clock size={16} color="#64748b" style={{ flexShrink: 0 }} />
@@ -413,7 +594,9 @@ export default function InvitationDetailModal({
                       const isSup = rec.role === 'SUPERVISOR' || rec.role === 'LEAD_SUPERVISOR';
                       const isLeadSup = currentRole === 'LEAD_SUPERVISOR' || Boolean(currentUser?.isLead && currentRole === 'SUPERVISOR');
                       const isLeadInv = currentRole === 'LEAD_INVESTOR' || Boolean(currentUser?.isLead && currentRole === 'INVESTOR');
-                      const canReassign = request.status !== 'COMPLETED' && currentRole !== 'ADMIN' && ((isSup && isLeadSup) || (!isSup && isLeadInv));
+                      const canReassignByCreator = canModify;
+                      const canReassignByLead = !isCancelled && request.status !== 'COMPLETED' && currentRole !== 'ADMIN' && ((isSup && isLeadSup) || (!isSup && isLeadInv));
+                      const canReassign = canReassignByCreator || canReassignByLead;
 
                       if (!canReassign) return null;
 
@@ -446,50 +629,278 @@ export default function InvitationDetailModal({
               ))}
             </div>
           </div>
-
-          {/* HƯỚNG DẪN ĐỒNG BỘ VỚI BIÊN BẢN */}
-          {/* <div style={{ 
-            background: '#f0fdf4', 
-            border: '1px solid #bbf7d0', 
-            borderRadius: '10px', 
-            padding: '12px 16px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            color: '#166534',
-            fontSize: '0.85rem'
-          }}>
-            <Award size={20} color="#16a34a" style={{ flexShrink: 0 }} />
-            <div>
-              <strong>Biên bản nghiệm thu công việc xây dựng tương ứng đã được khởi tạo sẵn.</strong>
-              <div style={{ fontSize: '0.8rem', color: '#15803d', marginTop: '2px' }}>
-                TVGS và CĐT trực tiếp kiểm tra tại hiện trường và tiến hành nghiệm thu (Đồng ý hoặc Không đồng ý) trên biên bản.
-              </div>
-            </div>
-          </div> */}
         </div>
 
         {/* FOOTER ACTIONS */}
-        <div className="modal-footer">
-          <button className="btn-secondary" onClick={onClose}>
-            Đóng
-          </button>
+        <div className="modal-footer" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+          <div>
+            {canModify && (
+              <button
+                type="button"
+                onClick={() => setIsCancelModalOpen(true)}
+                style={{
+                  background: '#fef2f2',
+                  border: '1.5px solid #fca5a5',
+                  color: '#dc2626',
+                  borderRadius: '8px',
+                  padding: '8px 14px',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+                title="Hủy phiếu yêu cầu nghiệm thu này"
+              >
+                <Ban size={15} />
+                <span>Hủy Phiếu</span>
+              </button>
+            )}
+          </div>
 
-          <button
-            className="btn-primary"
-            style={{ background: '#059669' }}
-            onClick={() => {
-              onClose();
-              if (onOpenReport) {
-                onOpenReport(request.reportId || request.id, false);
-              }
-            }}
-          >
-            <Award size={16} />
-            <span>{currentRole === 'ADMIN' ? 'Mở Xem Biên Bản Nghiệm Thu (Chỉ Xem)' : 'Mở Biên Bản Nghiệm Thu Để Đánh Giá'}</span>
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button className="btn-secondary" onClick={onClose}>
+              Đóng
+            </button>
+
+            {!isCancelled ? (
+              <button
+                className="btn-primary"
+                style={{ background: '#059669' }}
+                onClick={() => {
+                  onClose();
+                  if (onOpenReport) {
+                    onOpenReport(request.reportId || request.id, false);
+                  }
+                }}
+              >
+                <Award size={16} />
+                <span>{currentRole === 'ADMIN' ? 'Mở Xem Biên Bản Nghiệm Thu (Chỉ Xem)' : 'Mở Biên Bản Nghiệm Thu Để Đánh Giá'}</span>
+              </button>
+            ) : (
+              <button
+                className="btn-secondary"
+                style={{ color: '#64748b' }}
+                onClick={() => {
+                  onClose();
+                  if (onOpenReport) {
+                    onOpenReport(request.reportId || request.id, false);
+                  }
+                }}
+              >
+                <FileText size={16} />
+                <span>Xem Biên Bản (Đã Hủy)</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* POPUP SỬA THỜI GIAN NGHIỆM THU */}
+      {isEditingTime && (
+        <div className="modal-overlay" style={{ zIndex: 1300 }}>
+          <div className="modal-content" style={{ maxWidth: '520px', width: '92%', borderRadius: '16px' }}>
+            <div className="modal-header" style={{ background: '#eff6ff', borderBottom: '1px solid #bfdbfe' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ background: '#2563eb', color: '#fff', padding: '8px', borderRadius: '10px', display: 'flex' }}>
+                  <Clock size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#1e3a8a' }}>Thay Đổi Thời Gian Nghiệm Thu</h3>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+                    Phiếu số: <strong>{cleanReqNumber}</strong>
+                  </p>
+                </div>
+              </div>
+              <button className="modal-close-btn" onClick={() => setIsEditingTime(false)}><X size={20} /></button>
+            </div>
+
+            <form onSubmit={handleSaveTime}>
+              <div className="modal-body" style={{ padding: '20px' }}>
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 12px', marginBottom: '16px', fontSize: '0.84rem' }}>
+                  <div style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 600 }}>CÔNG TÁC NGHIỆM THU:</div>
+                  <div style={{ fontWeight: 700, color: '#0f172a', marginTop: '2px' }}>{request.taskContent}</div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                  <div>
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.85rem' }}>
+                      Ngày nghiệm thu <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <input 
+                      type="date"
+                      className="form-input"
+                      value={selectedDate}
+                      onChange={e => setSelectedDate(e.target.value)}
+                      required
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.85rem' }}>
+                      Giờ bắt đầu <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <input 
+                      type="time"
+                      className="form-input"
+                      value={selectedTime}
+                      onChange={e => setSelectedTime(e.target.value)}
+                      required
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                </div>
+
+                {selectedDate && selectedTime && (
+                  <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px', padding: '10px 14px', color: '#065f46', fontSize: '0.85rem' }}>
+                    <strong>Thời gian nghiệm thu mới:</strong> {selectedTime} {selectedDate.split('-')[2]}/{selectedDate.split('-')[1]}/{selectedDate.split('-')[0]}
+                  </div>
+                )}
+
+                <p style={{ margin: '12px 0 0 0', fontSize: '0.78rem', color: '#64748b', fontStyle: 'italic' }}>
+                  * Lưu ý: Thay đổi sẽ được cập nhật đồng bộ sang biên bản nghiệm thu và hệ thống sẽ gửi thông báo đến các cán bộ TVGS, Ban QLDA được phân công.
+                </p>
+              </div>
+
+              <div className="modal-footer" style={{ justifyContent: 'flex-end', gap: '10px' }}>
+                <button type="button" className="btn-secondary" onClick={() => setIsEditingTime(false)}>
+                  Hủy bỏ
+                </button>
+                <button type="submit" className="btn-primary" disabled={isSubmitting}>
+                  <Save size={16} />
+                  <span>{isSubmitting ? 'Đang lưu...' : 'Lưu & Gửi Thông Báo'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP HỦY PHIẾU YÊU CẦU NGHIỆM THU */}
+      {isCancelModalOpen && (
+        <div className="modal-overlay" style={{ zIndex: 1300 }}>
+          <div className="modal-content" style={{ maxWidth: '560px', width: '92%', borderRadius: '16px' }}>
+            <div className="modal-header" style={{ background: '#fef2f2', borderBottom: '1px solid #fca5a5' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ background: '#dc2626', color: '#fff', padding: '8px', borderRadius: '10px', display: 'flex' }}>
+                  <Ban size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#991b1b' }}>Hủy Phiếu Yêu Cầu Nghiệm Thu</h3>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#7f1d1d' }}>
+                    Phiếu số: <strong>{cleanReqNumber}</strong>
+                  </p>
+                </div>
+              </div>
+              <button className="modal-close-btn" onClick={() => setIsCancelModalOpen(false)}><X size={20} /></button>
+            </div>
+
+            <form onSubmit={handleConfirmCancel}>
+              <div className="modal-body" style={{ padding: '20px' }}>
+                <div style={{
+                  background: '#fff1f2',
+                  border: '1.5px solid #fecaca',
+                  borderRadius: '10px',
+                  padding: '12px 14px',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '10px',
+                  color: '#991b1b',
+                  fontSize: '0.84rem'
+                }}>
+                  <AlertCircle size={18} color="#dc2626" style={{ flexShrink: 0, marginTop: '2px' }} />
+                  <div>
+                    <strong>Lưu ý:</strong> Khi hủy phiếu, phiếu yêu cầu và biên bản liên quan sẽ chuyển sang trạng thái <strong>ĐÃ HỦY</strong>. Toàn bộ cán bộ TVGS và Ban QLDA liên quan sẽ nhận được thông báo hủy ngay lập tức.
+                  </div>
+                </div>
+
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 12px', marginBottom: '14px', fontSize: '0.84rem' }}>
+                  <div style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 600 }}>CÔNG TÁC YÊU CẦU:</div>
+                  <div style={{ fontWeight: 700, color: '#0f172a', marginTop: '2px' }}>{request.taskContent}</div>
+                  <div style={{ color: '#475569', fontSize: '0.78rem', marginTop: '4px' }}>
+                    Lịch hẹn hiện tại: {request.scheduledTime}
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '10px' }}>
+                  <label className="form-label" style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a' }}>
+                    Lý do hủy phiếu: <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+
+                  {/* Gợi ý lý do nhanh */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+                    {[
+                      'Thời tiết không thuận lợi',
+                      'Thay đổi kế hoạch thi công',
+                      'Chưa đủ điều kiện hiện trường',
+                      'Điều chỉnh thiết kế / bản vẽ',
+                      'Lập lại phiếu nghiệm thu mới'
+                    ].map((reasonChip, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setCancelReason(reasonChip)}
+                        style={{
+                          background: cancelReason === reasonChip ? '#fee2e2' : '#f1f5f9',
+                          border: cancelReason === reasonChip ? '1px solid #f87171' : '1px solid #e2e8f0',
+                          color: cancelReason === reasonChip ? '#991b1b' : '#334155',
+                          borderRadius: '16px',
+                          padding: '3px 10px',
+                          fontSize: '0.74rem',
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        + {reasonChip}
+                      </button>
+                    ))}
+                  </div>
+
+                  <textarea
+                    className="form-textarea"
+                    rows={4}
+                    value={cancelReason}
+                    onChange={e => setCancelReason(e.target.value)}
+                    placeholder="Vui lòng nhập lý do hủy chi tiết để thông báo cho TVGS và Ban QLDA..."
+                    required
+                    style={{ width: '100%', resize: 'vertical' }}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer" style={{ justifyContent: 'flex-end', gap: '10px' }}>
+                <button type="button" className="btn-secondary" onClick={() => setIsCancelModalOpen(false)}>
+                  Quay lại
+                </button>
+                <button
+                  type="submit"
+                  disabled={!cancelReason.trim() || isSubmitting}
+                  style={{
+                    background: '#dc2626',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '9px 18px',
+                    fontSize: '0.88rem',
+                    fontWeight: 700,
+                    cursor: !cancelReason.trim() || isSubmitting ? 'not-allowed' : 'pointer',
+                    opacity: !cancelReason.trim() || isSubmitting ? 0.6 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <Ban size={16} />
+                  <span>{isSubmitting ? 'Đang xử lý...' : 'Xác Nhận Hủy Phiếu'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
