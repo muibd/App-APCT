@@ -2012,6 +2012,7 @@ export default function App() {
         const assignedSup = targetReq.assignedRecipients.find(r => r.role === 'SUPERVISOR' || r.role === 'LEAD_SUPERVISOR');
         const assignedInv = targetReq.assignedRecipients.find(r => r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR');
         const leadInv = users.find(u => u.role === 'LEAD_INVESTOR') || { fullName: 'Ngô Quý Linh', position: 'Trưởng Ban QLDA', company: 'Công ty TNHH An Phú Cần Thơ' };
+        const leadSup = users.find(u => u.role === 'LEAD_SUPERVISOR') || { fullName: 'Đinh Xuân Thám', position: 'Tư vấn giám sát trưởng', company: 'Công ty CP TVXD và TM GELICON' };
         const leadContractor = users.find(u => u.role === 'CONTRACTOR' && (((u.position || '').toLowerCase().includes('chỉ huy')) || (u.fullName || '').includes('Chỉ Huy'))) 
           || { fullName: 'Trần Hữu Chỉ Huy', position: 'Chỉ huy trưởng', company: 'Công ty CP Xây dựng An Phú Gia' };
 
@@ -2166,6 +2167,7 @@ export default function App() {
         const assignedSup = targetReq.assignedRecipients?.find(r => r.role === 'SUPERVISOR' || r.role === 'LEAD_SUPERVISOR');
         const assignedInv = targetReq.assignedRecipients?.find(r => r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR');
         const leadInv = users.find(u => u.role === 'LEAD_INVESTOR') || { fullName: 'Ngô Quý Linh', position: 'Trưởng Ban QLDA', company: 'Công ty TNHH An Phú Cần Thơ' };
+        const leadSup = users.find(u => u.role === 'LEAD_SUPERVISOR') || { fullName: 'Đinh Xuân Thám', position: 'Tư vấn giám sát trưởng', company: 'Công ty CP TVXD và TM GELICON' };
         const leadContractor = users.find(u => u.role === 'CONTRACTOR' && (((u.position || '').toLowerCase().includes('chỉ huy')) || (u.fullName || '').includes('Chỉ Huy'))) 
           || { fullName: 'Trần Hữu Chỉ Huy', position: 'Chỉ huy trưởng', company: 'Công ty CP Xây dựng An Phú Gia' };
 
