@@ -158,24 +158,159 @@ export default function InspectionReportModal({
     reportState?.constructionMethodCode || report?.constructionMethodCode || '01/BPTC-APG'
   );
 
-  // Thời gian nghiệm thu chuẩn theo mẫu văn bản:
-  // Bắt đầu: ...h..., ngày ...tháng ... năm 202...
-  // Kết thúc: ...h..., ngày ....tháng ... năm 202...
-  const [startTimeText, setStartTimeText] = useState(
-    reportState?.time?.startTimeText || report?.time?.startTimeText || '...h..., ngày ...tháng ... năm 202...'
-  );
-  const [endTimeText, setEndTimeText] = useState(
-    reportState?.time?.endTimeText || report?.time?.endTimeText || '...h..., ngày ....tháng ... năm 202...'
+  // Helper tính toán ngày giờ nghiệm thu chuẩn theo thông tin người dùng chọn lúc tạo
+  // Bắt đầu: {HH}h{mm}, ngày {D} tháng {M} năm {YYYY}
+  // Kết thúc tự động: {HH}h{mm} + 30 phút, ngày {D} tháng {M} năm {YYYY}
+  const getAutoInspectionTimes = (req, rep) => {
+    let hour = 13;
+    let min = 30;
+    let day = 26;
+    let month = 10;
+    let year = 2026;
+
+    const dateCandidates = [
+      req?.scheduledDate,
+      req?.startTime,
+      req?.scheduledTime,
+      rep?.time?.startTime,
+      rep?.date,
+      rep?.cityDate,
+      req?.createdAt,
+      rep?.createdAt
+    ];
+
+    let dateFound = false;
+    for (const cand of dateCandidates) {
+      if (!cand || typeof cand !== 'string') continue;
+      const isoMatch = cand.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (isoMatch) {
+        year = parseInt(isoMatch[1], 10);
+        month = parseInt(isoMatch[2], 10);
+        day = parseInt(isoMatch[3], 10);
+        dateFound = true;
+        break;
+      }
+      const dmyMatch = cand.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (dmyMatch) {
+        day = parseInt(dmyMatch[1], 10);
+        month = parseInt(dmyMatch[2], 10);
+        year = parseInt(dmyMatch[3], 10);
+        dateFound = true;
+        break;
+      }
+      const textMatch = cand.match(/ngày\s*(\d{1,2})\s*tháng\s*(\d{1,2})\s*năm\s*(\d{4})/i);
+      if (textMatch) {
+        day = parseInt(textMatch[1], 10);
+        month = parseInt(textMatch[2], 10);
+        year = parseInt(textMatch[3], 10);
+        dateFound = true;
+        break;
+      }
+    }
+
+    if (!dateFound) {
+      const d = new Date(req?.createdAt || rep?.createdAt || Date.now());
+      day = d.getDate();
+      month = d.getMonth() + 1;
+      year = d.getFullYear();
+    }
+
+    const timeCandidates = [
+      req?.startTime,
+      req?.scheduledTime,
+      rep?.time?.startTime,
+      req?.createdAt,
+      rep?.createdAt
+    ];
+
+    let timeFound = false;
+    for (const cand of timeCandidates) {
+      if (!cand || typeof cand !== 'string') continue;
+      const timeMatch = cand.match(/(\d{1,2})[h:](\d{2})/i);
+      if (timeMatch) {
+        hour = parseInt(timeMatch[1], 10);
+        min = parseInt(timeMatch[2], 10);
+        timeFound = true;
+        break;
+      }
+    }
+
+    if (!timeFound) {
+      const d = new Date(req?.createdAt || rep?.createdAt || Date.now());
+      hour = d.getHours();
+      min = d.getMinutes();
+    }
+
+    // Giờ kết thúc tự động = giờ bắt đầu + 30 phút
+    const startTotalMin = hour * 60 + min;
+    const endTotalMin = startTotalMin + 30;
+    const endHour = Math.floor(endTotalMin / 60) % 24;
+    const endMin = endTotalMin % 60;
+
+    const pad = (n) => String(n).padStart(2, '0');
+    const startStr = `${pad(hour)}h${pad(min)}, ngày ${day} tháng ${month} năm ${year}`;
+    const endStr = `${pad(endHour)}h${pad(endMin)}, ngày ${day} tháng ${month} năm ${year}`;
+
+    return { startStr, endStr };
+  };
+
+  const isPlaceholderTime = (txt) => {
+    if (!txt || typeof txt !== 'string') return true;
+    return txt.includes('...h...') || txt.includes('....tháng') || txt.includes('...tháng') || txt.includes('202...') || txt.trim() === '';
+  };
+
+  const matchedInitialReq = (requests || []).find(r => 
+    (reportState?.requestId && r.id === reportState.requestId) || 
+    (reportState?.id && (r.reportId === reportState.id || r.id === reportState.id)) ||
+    (reportState?.requestNumber && r.requestNumber === reportState.requestNumber)
   );
 
+  const initialTimes = getAutoInspectionTimes(matchedInitialReq, reportState || report);
+
+  // Thời gian nghiệm thu chuẩn theo thông tin người dùng chọn lúc tạo:
+  // Bắt đầu: {HH}h{mm}, ngày {D} tháng {M} năm {YYYY} (Ví dụ: 13h30, ngày 26 tháng 10 năm 2026)
+  // Kết thúc auto = Giờ bắt đầu + 30 phút (Ví dụ: 14h00, ngày 26 tháng 10 năm 2026)
+  const [startTimeText, setStartTimeText] = useState(() => {
+    const saved = reportState?.time?.startTimeText || report?.time?.startTimeText;
+    if (saved && !isPlaceholderTime(saved)) return saved;
+    return initialTimes.startStr;
+  });
+  const [endTimeText, setEndTimeText] = useState(() => {
+    const saved = reportState?.time?.endTimeText || report?.time?.endTimeText;
+    if (saved && !isPlaceholderTime(saved)) return saved;
+    return initialTimes.endStr;
+  });
+
   const handleUpdateStartTimeText = (val) => {
-    const trimmed = (val || '').trim() || '...h..., ngày ...tháng ... năm 202...';
+    const trimmed = (val || '').trim();
+    if (!trimmed) return;
     setStartTimeText(trimmed);
+
+    // Tự động tính lại giờ kết thúc = giờ bắt đầu mới + 30 phút
+    let updatedEnd = endTimeText;
+    const timeMatch = trimmed.match(/(\d{1,2})[h:](\d{2})/i);
+    const dateMatch = trimmed.match(/ngày\s*(\d{1,2})\s*tháng\s*(\d{1,2})\s*năm\s*(\d{4})/i);
+    if (timeMatch) {
+      const h = parseInt(timeMatch[1], 10);
+      const m = parseInt(timeMatch[2], 10);
+      const total = h * 60 + m + 30;
+      const endH = Math.floor(total / 60) % 24;
+      const endM = total % 60;
+      const pad = (n) => String(n).padStart(2, '0');
+      if (dateMatch) {
+        updatedEnd = `${pad(endH)}h${pad(endM)}, ngày ${dateMatch[1]} tháng ${dateMatch[2]} năm ${dateMatch[3]}`;
+      } else {
+        updatedEnd = `${pad(endH)}h${pad(endM)}${trimmed.includes(',') ? trimmed.substring(trimmed.indexOf(',')) : ''}`;
+      }
+      setEndTimeText(updatedEnd);
+    }
+
     const updated = {
       ...reportState,
       time: {
         ...(reportState.time || {}),
-        startTimeText: trimmed
+        startTimeText: trimmed,
+        endTimeText: updatedEnd
       }
     };
     setReportState(updated);
@@ -183,7 +318,8 @@ export default function InspectionReportModal({
   };
 
   const handleUpdateEndTimeText = (val) => {
-    const trimmed = (val || '').trim() || '...h..., ngày ....tháng ... năm 202...';
+    const trimmed = (val || '').trim();
+    if (!trimmed) return;
     setEndTimeText(trimmed);
     const updated = {
       ...reportState,
@@ -336,6 +472,29 @@ export default function InspectionReportModal({
       rev
     );
   })();
+
+  // Số biên bản nghiệm thu: Lấy mã số đầy đủ (nhấc số ở dưới lên: ví dụ 2203/WA/261026-01.01 hoặc 2203/MI/261026-01.01)
+  const reportDisplayNumber = (() => {
+    let raw = (reportState.reportNumber || '').trim();
+    raw = raw.replace(/^\.\.\.\.\.\.\s*/, '').replace(/^\.\.\.\s*/, '').trim();
+    if (raw && raw.includes('/') && raw !== docCode && raw !== 'IR' && !raw.startsWith('......')) {
+      return raw;
+    }
+    return cleanRefCode;
+  })();
+
+  // Tự động đồng bộ giờ nghiệm thu khi nạp phiếu liên quan
+  useEffect(() => {
+    const autoTimes = getAutoInspectionTimes(relatedRequest, reportState);
+    if (isPlaceholderTime(startTimeText)) {
+      setStartTimeText(autoTimes.startStr);
+      handleUpdateStartTimeText(autoTimes.startStr);
+    }
+    if (isPlaceholderTime(endTimeText)) {
+      setEndTimeText(autoTimes.endStr);
+      handleUpdateEndTimeText(autoTimes.endStr);
+    }
+  }, [relatedRequest?.id, reportState?.id, reportState?.time?.startTime, relatedRequest?.scheduledTime]);
 
   const effectiveAssignedRecipients = (reportState.assignedRecipients && reportState.assignedRecipients.length > 0)
     ? reportState.assignedRecipients
@@ -2120,10 +2279,10 @@ export default function InspectionReportModal({
                 </h2>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', fontSize: '0.92rem' }}>
                   <div>
-                    <strong>Số:</strong> <strong style={{ color: '#0f172a', fontSize: '1rem' }}>{cleanReportNum}</strong>
+                    <strong>Số:</strong> <strong style={{ color: '#0f172a', fontSize: '1rem' }}>{reportDisplayNumber}</strong>
                   </div>
                   <div>
-                    <strong>Số tài liệu căn cứ:</strong> <strong style={{ color: '#0f172a', fontSize: '0.98rem' }}>{cleanRefCode}</strong>
+                    <strong>Số tài liệu căn cứ:</strong> <strong style={{ color: '#0f172a', fontSize: '0.98rem' }}>{cleanReqCode}</strong>
                   </div>
                 </div>
               </div>

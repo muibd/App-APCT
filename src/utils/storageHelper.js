@@ -7,9 +7,10 @@
 // ============================================================================
 
 const DB_NAME = 'APCT_Storage_v1';
-const DB_VERSION = 1;
-const STORE_REPORTS = 'reports';
-const STORE_REQUESTS = 'requests';
+const DB_VERSION = 2;
+export const STORE_REPORTS = 'reports';
+export const STORE_REQUESTS = 'requests';
+export const STORE_SHOP_DOCUMENTS = 'shop_documents';
 
 /**
  * Mở kết nối IndexedDB (hoạt động offline và không bị giới hạn 5MB như LocalStorage)
@@ -28,6 +29,9 @@ function openDB() {
       }
       if (!db.objectStoreNames.contains(STORE_REQUESTS)) {
         db.createObjectStore(STORE_REQUESTS, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORE_SHOP_DOCUMENTS)) {
+        db.createObjectStore(STORE_SHOP_DOCUMENTS, { keyPath: 'id' });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -262,6 +266,16 @@ function createLightweightDataForLocalStorage(key, data) {
     });
   }
 
+  if (key.includes('shop')) {
+    return data.map((doc, idx) => {
+      if (idx < 5) return doc;
+      return {
+        ...doc,
+        photos: Array.isArray(doc.photos) ? doc.photos.slice(0, 2) : []
+      };
+    });
+  }
+
   return data;
 }
 
@@ -278,6 +292,8 @@ export function safeSaveLocalStorage(key, data) {
     saveToIndexedDB(STORE_REPORTS, data);
   } else if (key.includes('request') && Array.isArray(data)) {
     saveToIndexedDB(STORE_REQUESTS, data);
+  } else if (key.includes('shop') && Array.isArray(data)) {
+    saveToIndexedDB(STORE_SHOP_DOCUMENTS, data);
   }
 
   // 2. Thử lưu vào LocalStorage

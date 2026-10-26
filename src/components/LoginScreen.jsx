@@ -32,7 +32,21 @@ export default function LoginScreen({ onLogin, users = MOCK_USERS }) {
 
     // Tìm tài khoản trong danh sách users
     setTimeout(() => {
-      const foundUser = users.find(u => (u.email || '').toLowerCase() === trimmedEmail);
+      const foundUser = users.find(u => {
+        const uEmail = (u.email || '').toLowerCase();
+        const uUid = (u.uid || '').toLowerCase();
+        const uPhone = (u.phone || '').replace(/\D/g, '');
+        const cleanInput = trimmedEmail.replace(/\D/g, '');
+        const prefix = uEmail.includes('@') ? uEmail.split('@')[0] : uEmail;
+        return uEmail === trimmedEmail || 
+               uUid === trimmedEmail || 
+               prefix === trimmedEmail ||
+               (trimmedEmail.startsWith('muitvgs') && prefix.startsWith('muitvgs')) ||
+               (trimmedEmail.startsWith('muicdt') && prefix.startsWith('muicdt')) ||
+               (uPhone && cleanInput && uPhone === cleanInput) ||
+               (trimmedEmail.includes('@') && uEmail === trimmedEmail.split('@')[0]) ||
+               (uEmail.includes('@') && uEmail.split('@')[0] === trimmedEmail);
+      });
 
       if (!foundUser) {
         setIsLoading(false);

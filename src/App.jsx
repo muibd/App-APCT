@@ -29,6 +29,9 @@ import PushGuideModal from './components/PushGuideModal';
 import ConfirmDialogModal from './components/ConfirmDialogModal';
 import StandardsManagementView from './components/StandardsManagementView';
 import ProjectManagementView from './components/ProjectManagementView';
+import ShopDocumentsView from './components/ShopDocumentsView';
+import CreateShopDocumentModal from './components/CreateShopDocumentModal';
+import ShopDocumentDetailModal from './components/ShopDocumentDetailModal';
 import { 
   MOCK_USERS, 
   MOCK_PROJECT, 
@@ -48,6 +51,22 @@ import {
   generateDocumentCode,
   getDocumentRevisionNumber 
 } from './data/projectCatalog';
+import {
+  loadStoredShopDocuments,
+  saveStoredShopDocuments,
+  loadStoredShopSlaConfigs,
+  saveStoredShopSlaConfigs,
+  DEFAULT_SHOP_SLA_CONFIGS,
+  SHOP_STATUS,
+  getEffectiveShopStatus,
+  calculateDueDate,
+  isShopAssignmentOverdue,
+  isShopReviewOverdue,
+  getShopLeadSupervisor,
+  getShopLeadInvestor,
+  SHOP_DOCUMENTS_STORAGE_KEY,
+  SHOP_SLA_STORAGE_KEY
+} from './data/shopDocumentConstants';
 
 import { 
   saveInspectionRequest, 
@@ -76,7 +95,13 @@ import {
   updateCompletionReport,
   deleteCompletionReport,
   subscribeToStandards,
-  saveInspectionStandards
+  saveInspectionStandards,
+  subscribeToShopDocuments,
+  saveShopDocument,
+  deleteShopDocument,
+  subscribeToShopSlaConfigs,
+  saveShopSlaConfigs,
+  cleanupOldRequestsAndReports
 } from './services/firestoreService';
 import { 
   requestPushPermission, 
@@ -179,13 +204,13 @@ export default function App() {
         if (Array.isArray(parsed) && parsed.length > 0) {
           const merged = [...parsed];
           MOCK_USERS.forEach(m => {
-            const existingIdx = merged.findIndex(u => u.uid === m.uid);
+            const existingIdx = merged.findIndex(u => u.uid === m.uid || ((u.email || '').toLowerCase() === (m.email || '').toLowerCase()));
             if (existingIdx === -1) {
               merged.push(m);
             }
           });
           return merged.map(u => {
-            const mock = MOCK_USERS.find(m => m.uid === u.uid);
+            const mock = MOCK_USERS.find(m => m.uid === u.uid || ((u.email || '').toLowerCase() === (m.email || '').toLowerCase()));
             return {
               ...u,
               role: u.role || mock?.role || 'CONTRACTOR',
@@ -203,12 +228,22 @@ export default function App() {
     return MOCK_USERS;
   });
 
+  // Mốc thời gian bắt đầu ngày 26/10/2026 giờ VN (Xóa toàn bộ dữ liệu kiểm thử cũ từ hôm qua trở về trước)
+  const OLD_DATA_CUTOFF = '2026-10-25T17:00:00.000Z';
+
   const [requests, setRequests] = useState(() => {
     try {
       const saved = localStorage.getItem(REQUESTS_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          const filtered = parsed.filter(item => {
+            const c = item.createdAt || '';
+            return !c || c >= OLD_DATA_CUTOFF;
+          });
+          safeSaveLocalStorage(REQUESTS_STORAGE_KEY, filtered);
+          return filtered;
+        }
       }
     } catch (e) {
       console.warn('Lỗi đọc requests từ localStorage:', e);
@@ -222,7 +257,12 @@ export default function App() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          const sanitized = parsed.map(sanitizeReportData);
+          const sanitized = parsed
+            .map(sanitizeReportData)
+            .filter(item => {
+              const c = item.createdAt || '';
+              return !c || c >= OLD_DATA_CUTOFF;
+            });
           safeSaveLocalStorage(REPORTS_STORAGE_KEY, sanitized);
           return sanitized;
         }
@@ -258,6 +298,10 @@ export default function App() {
     }
     return INITIAL_COMPLETION_REPORTS || [];
   });
+
+  // Quản lý Hồ sơ bộ phận Shop & Cấu hình thời hạn phản hồi (SLA)
+  const [shopDocuments, setShopDocuments] = useState(loadStoredShopDocuments);
+  const [shopSlaConfigs, setShopSlaConfigs] = useState(loadStoredShopSlaConfigs);
 
   const [standards, setStandards] = useState(STANDARD_CRITERIA_LIST);
   const [standardsData, setStandardsData] = useState(loadStoredStandards);
@@ -365,12 +409,18 @@ export default function App() {
     // 0. Quản trị viên luôn nhận được thông báo
     if (role === 'ADMIN') return true;
 
-    // 1. CĐT TRƯỞNG: Nhận toàn bộ thông báo
-    const isLeadInvestor = role === 'LEAD_INVESTOR' || Boolean(user.isLead && role === 'INVESTOR');
+    // 1. CĐT TRƯỞNG: Nhận toàn bộ thông báo (bao gồm tài khoản test muicdt)
+    const isLeadInvestor = role === 'LEAD_INVESTOR' || 
+      Boolean(user.isLead && role === 'INVESTOR') || 
+      (user.email || '').toLowerCase().includes('muicdt') || 
+      user.uid === 'uid_custom_1792576233247';
     if (isLeadInvestor) return true;
 
-    // 2. TVGS TRƯỞNG: Nhận toàn bộ thông báo
-    const isLeadSupervisor = role === 'LEAD_SUPERVISOR' || Boolean(user.isLead && role === 'SUPERVISOR');
+    // 2. TVGS TRƯỞNG: Nhận toàn bộ thông báo (bao gồm tài khoản test muitvgs)
+    const isLeadSupervisor = role === 'LEAD_SUPERVISOR' || 
+      Boolean(user.isLead && role === 'SUPERVISOR') || 
+      (user.email || '').toLowerCase().includes('muitvgs') || 
+      user.uid === 'uid_custom_1792576174520';
     if (isLeadSupervisor) return true;
 
     // Tìm phiếu yêu cầu và biên bản liên quan
@@ -599,6 +649,29 @@ export default function App() {
         });
       }
     });
+
+    getAllFromIndexedDB('shop_documents').then(idbShopDocs => {
+      if (idbShopDocs && idbShopDocs.length > 0) {
+        setShopDocuments(prev => {
+          const map = new Map();
+          (prev || []).forEach(d => { if (d?.id) map.set(d.id, d); });
+          idbShopDocs.forEach(d => {
+            if (d?.id && !map.has(d.id)) {
+              map.set(d.id, d);
+            }
+          });
+          const merged = Array.from(map.values());
+          merged.sort((a, b) => new Date(b.submittedAt || b.createdAt || 0) - new Date(a.submittedAt || a.createdAt || 0));
+          saveStoredShopDocuments(merged);
+          return merged;
+        });
+      }
+    });
+  }, []);
+
+  // 0. Tự động dọn dẹp các phiếu và biên bản cũ trước ngày 26/10/2026 trên Firestore
+  useEffect(() => {
+    cleanupOldRequestsAndReports(OLD_DATA_CUTOFF).catch(console.warn);
   }, []);
 
   // 1. Đồng bộ Real-Time Phiếu yêu cầu từ Firestore (Lấy Firestore làm chuẩn)
@@ -608,16 +681,20 @@ export default function App() {
         if (!Array.isArray(cloudRequests)) return prev;
         const map = new Map();
 
-        // Nạp danh sách từ Firestore bằng ID duy nhất
+        // Nạp danh sách từ Firestore bằng ID duy nhất (loại bỏ dữ liệu cũ trước 26/10/2026)
         cloudRequests.forEach(item => {
           const key = item.id;
-          if (key) map.set(key, item);
+          const created = item.createdAt || '';
+          if (key && (!created || created >= OLD_DATA_CUTOFF)) {
+            map.set(key, item);
+          }
         });
 
         // Chỉ giữ lại bản ghi nháp cục bộ đang chờ đồng bộ offline
         (prev || []).forEach(localItem => {
           const key = localItem?.id;
-          if (!key) return;
+          const created = localItem?.createdAt || '';
+          if (!key || (created && created < OLD_DATA_CUTOFF)) return;
           const cloudItem = map.get(key);
           if (!cloudItem) {
             if (localItem._isOfflineDraft) {
@@ -655,16 +732,20 @@ export default function App() {
         if (!Array.isArray(cloudReports)) return prev;
         const map = new Map();
 
-        // Nạp danh sách từ Firestore bằng ID duy nhất
+        // Nạp danh sách từ Firestore bằng ID duy nhất (loại bỏ dữ liệu cũ trước 26/10/2026)
         cloudReports.forEach(item => {
           const key = item.id;
-          if (key) map.set(key, sanitizeReportData(item));
+          const created = item.createdAt || '';
+          if (key && (!created || created >= OLD_DATA_CUTOFF)) {
+            map.set(key, sanitizeReportData(item));
+          }
         });
 
         // Chỉ giữ lại bản ghi nháp cục bộ đang chờ đồng bộ offline
         (prev || []).forEach(localItem => {
           const key = localItem?.id;
-          if (!key) return;
+          const created = localItem?.createdAt || '';
+          if (!key || (created && created < OLD_DATA_CUTOFF)) return;
           const cloudItem = map.get(key);
           if (!cloudItem) {
             if (localItem._isOfflineDraft) {
@@ -851,6 +932,867 @@ export default function App() {
       return false;
     }
   };
+
+  // 4e. Đồng bộ Real-Time Hồ Sơ Bộ Phận Shop từ Firestore (Bảo toàn dữ liệu cục bộ)
+  useEffect(() => {
+    const unsubscribe = subscribeToShopDocuments((cloudDocs) => {
+      // Nếu Cloud chưa có dữ liệu hoặc lỗi kết nối, giữ nguyên toàn bộ hồ sơ đã tạo trên máy
+      if (!Array.isArray(cloudDocs) || cloudDocs.length === 0) {
+        return;
+      }
+
+      setShopDocuments(prev => {
+        const localStored = loadStoredShopDocuments();
+        const baseItems = Array.isArray(prev) && prev.length > 0 ? prev : localStored;
+        const map = new Map();
+
+        // 1. Nạp tất cả hồ sơ hiện có ở local
+        baseItems.forEach(item => {
+          if (item?.id) map.set(item.id, item);
+        });
+
+        // 2. Hợp nhất các hồ sơ từ Cloud Firestore
+        cloudDocs.forEach(cloudItem => {
+          if (!cloudItem?.id) return;
+          const existing = map.get(cloudItem.id);
+          if (!existing) {
+            map.set(cloudItem.id, cloudItem);
+          } else {
+            const cloudTime = new Date(cloudItem.updatedAt || cloudItem.createdAt || 0).getTime();
+            const localTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+            if (cloudTime >= localTime) {
+              const finalPdf = existing.pdfFile?.dataUrl ? existing.pdfFile : (cloudItem.pdfFile || existing.pdfFile);
+              map.set(cloudItem.id, { ...existing, ...cloudItem, pdfFile: finalPdf });
+            }
+          }
+        });
+
+        const merged = Array.from(map.values());
+        merged.sort((a, b) => new Date(b.submittedAt || b.createdAt || 0) - new Date(a.submittedAt || a.createdAt || 0));
+        saveStoredShopDocuments(merged);
+        return merged;
+      });
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // 4f. Đồng bộ Real-Time Cấu hình SLA Thời hạn phản hồi Hồ sơ Shop từ Firestore
+  useEffect(() => {
+    const unsubscribe = subscribeToShopSlaConfigs((cloudSla) => {
+      if (Array.isArray(cloudSla) && cloudSla.length > 0) {
+        setShopSlaConfigs(cloudSla);
+        saveStoredShopSlaConfigs(cloudSla);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Quản lý SLA Thời hạn phản hồi
+  const handleSaveShopSlaConfigs = async (newConfigs) => {
+    setShopSlaConfigs(newConfigs);
+    saveStoredShopSlaConfigs(newConfigs);
+    try {
+      await saveShopSlaConfigs(newConfigs);
+    } catch (e) {
+      console.warn('Lỗi lưu cấu hình SLA lên Firestore:', e);
+    }
+  };
+
+  const handleSyncShopSlaToCloud = async (configsToSync) => {
+    try {
+      await saveShopSlaConfigs(configsToSync || shopSlaConfigs);
+      showAlert({
+        type: 'success',
+        title: 'Đồng Bộ Thành Công',
+        message: 'Đã lưu và đồng bộ toàn bộ quy định SLA hồ sơ shop lên Cloud Firestore!'
+      });
+    } catch (err) {
+      showAlert({
+        type: 'error',
+        title: 'Lỗi Đồng Bộ',
+        message: 'Không thể đồng bộ SLA lên Cloud: ' + (err.message || err)
+      });
+    }
+  };
+
+  // 1. Tạo mới hồ sơ shop (Mặc định gửi TVGS Trưởng & Trưởng Ban QLDA, hạn phân công 1 ngày)
+  const handleCreateShopDocument = async (newDoc) => {
+    try {
+      // 1. Lưu ngay lập tức vào state & LocalStorage & IndexedDB
+      setShopDocuments(prev => {
+        const next = [newDoc, ...prev.filter(d => d.id !== newDoc.id)];
+        saveStoredShopDocuments(next);
+        return next;
+      });
+
+      // 2. Đồng bộ lên Firestore
+      const saved = (await saveShopDocument(newDoc)) || newDoc;
+      setShopDocuments(prev => {
+        const next = [saved, ...prev.filter(d => d.id !== saved.id)];
+        saveStoredShopDocuments(next);
+        return next;
+      });
+
+      // Tìm UID của TVGS Trưởng và Trưởng Ban QLDA (Ưu tiên tài khoản test muitvgsv & muicdt)
+      const leadSup = getShopLeadSupervisor(users);
+      const leadInv = getShopLeadInvestor(users);
+
+      // Tạo thông báo đến 2 anh Trưởng và Chủ Đầu Tư
+      const notifTitle = `📑 [Cần phân công] Hồ sơ Shop mới: ${saved.title}`;
+      const notifBody = `${saved.createdByName} (${saved.contractorCompany || 'ĐVTC'}) vừa trình duyệt "${saved.typeName}": ${saved.title}. Mời TVGS Trưởng (${leadSup.fullName}) & Trưởng Ban QLDA (${leadInv.fullName}) phân công cán bộ phụ trách trong vòng 1 ngày (24 giờ).`;
+
+      const notif = {
+        id: `notif_${Date.now()}`,
+        type: 'SHOP_DOCUMENT_WAITING_ASSIGNMENT',
+        title: notifTitle,
+        body: notifBody,
+        targetShopDocId: saved.id,
+        actionText: 'Xem hồ sơ & Phân công cán bộ',
+        assignedRecipients: saved.assignedRecipients || [],
+        createdByUid: saved.createdByUid,
+        createdByName: saved.createdByName,
+        extraRecipientUids: [
+          saved.createdByUid,
+          leadSup.uid,
+          leadInv.uid
+        ].filter(Boolean),
+        targetRoles: ['LEAD_SUPERVISOR', 'LEAD_INVESTOR', 'ADMIN', 'CONTRACTOR'],
+        createdAt: new Date().toISOString(),
+        time: 'Vừa xong',
+        isRead: false
+      };
+
+      setNotifications(prev => {
+        const nextNotifs = [notif, ...prev.filter(n => n.id !== notif.id)];
+        safeSaveLocalStorage(NOTIF_STORAGE_KEY, nextNotifs);
+        return nextNotifs;
+      });
+
+      if (checkNotificationRecipient(notif, currentUser)) {
+        setActivePushToast(notif);
+        showSystemNotification(notifTitle, notifBody);
+      }
+
+      saveSystemNotification(notif).catch(console.warn);
+      sendOneSignalPush({
+        title: notifTitle,
+        message: notifBody,
+        targetRoles: ['LEAD_SUPERVISOR', 'LEAD_INVESTOR', 'ADMIN']
+      }).catch(console.warn);
+
+      showAlert({
+        type: 'success',
+        title: 'Tạo Hồ Sơ Thành Công!',
+        message: `Đã phát hành hồ sơ "${saved.title}" (Mã: ${saved.docCode}).\nHồ sơ đã được gửi mặc định đến TVGS Trưởng (${leadSup.fullName}) và Trưởng Ban QLDA (${leadInv.fullName}) để phân công cán bộ chuyên môn trong vòng 1 ngày.`,
+        confirmText: 'Xem Hồ Sơ',
+        cancelText: 'Đóng',
+        onConfirm: () => setSelectedShopDoc(saved)
+      });
+    } catch (err) {
+      console.error('Lỗi tạo hồ sơ shop:', err);
+      showAlert({
+        type: 'error',
+        title: 'Lỗi Tạo Hồ Sơ',
+        message: 'Có lỗi xảy ra: ' + (err.message || err)
+      });
+    }
+  };
+
+  // 2. Phân công cán bộ thụ lý (Dành cho TVGS Trưởng và Trưởng Ban QLDA)
+  const handleAssignShopDocument = async ({ docId, roleType, assignee, slaDays, leader }) => {
+    try {
+      const doc = (shopDocuments || []).find(d => d.id === docId) || selectedShopDoc;
+      if (!doc) return;
+
+      const nowIso = new Date().toISOString();
+      const targetDueDateIso = calculateDueDate(nowIso, slaDays).toISOString();
+      const isTvgs = roleType === 'SUPERVISOR';
+
+      const updatedTvgs = isTvgs ? {
+        ...doc.assignedTvgs,
+        assignee,
+        uid: assignee.uid,
+        fullName: assignee.fullName,
+        email: assignee.email || '',
+        position: assignee.position || 'Kỹ sư TVGS',
+        company: assignee.company || 'Tư Vấn Giám Sát Gelicon',
+        assignedBy: {
+          uid: leader?.uid || currentUser?.uid,
+          fullName: leader?.fullName || currentUser?.fullName,
+          role: leader?.role || currentUser?.role
+        },
+        assignedAt: nowIso,
+        slaDays: Number(slaDays || 3),
+        dueDate: targetDueDateIso,
+        status: 'PENDING'
+      } : doc.assignedTvgs;
+
+      const updatedInvestor = !isTvgs ? {
+        ...doc.assignedInvestor,
+        assignee,
+        uid: assignee.uid,
+        fullName: assignee.fullName,
+        email: assignee.email || '',
+        position: assignee.position || 'Kỹ sư QLDA',
+        company: assignee.company || 'Ban Quản Lý Dự Án An Phú Eco City',
+        assignedBy: {
+          uid: leader?.uid || currentUser?.uid,
+          fullName: leader?.fullName || currentUser?.fullName,
+          role: leader?.role || currentUser?.role
+        },
+        assignedAt: nowIso,
+        slaDays: Number(slaDays || 3),
+        dueDate: targetDueDateIso,
+        status: 'PENDING'
+      } : doc.assignedInvestor;
+
+      // Cả 2 bên đều đã được phân công cán bộ -> Chuyển sang trạng thái SENT (Đang thẩm định)
+      const bothAssigned = Boolean(updatedTvgs?.assignee || updatedTvgs?.uid) && Boolean(updatedInvestor?.assignee || updatedInvestor?.uid);
+
+      const updatedDoc = {
+        ...doc,
+        assignedTvgs: updatedTvgs,
+        assignedInvestor: updatedInvestor,
+        status: bothAssigned ? SHOP_STATUS.SENT : doc.status,
+        dueDate: targetDueDateIso,
+        assignedRecipients: [
+          ...(doc.assignedRecipients || []).filter(r => r.role !== roleType),
+          { uid: assignee.uid, role: roleType, name: assignee.fullName, position: assignee.position }
+        ],
+        history: [
+          ...(doc.history || []),
+          {
+            action: 'ASSIGNED',
+            by: leader?.fullName || currentUser?.fullName,
+            role: leader?.role || currentUser?.role,
+            time: nowIso,
+            note: `${leader?.position || 'Trưởng ban'} đã phân công cho cán bộ ${assignee.fullName} (${isTvgs ? 'TVGS' : 'Ban QLDA'}) thẩm định. Hạn hoàn thành: ${slaDays} ngày.`
+          }
+        ],
+        updatedAt: nowIso
+      };
+
+      await saveShopDocument(updatedDoc);
+      setShopDocuments(prev => {
+        const next = prev.map(d => d.id === docId ? updatedDoc : d);
+        saveStoredShopDocuments(next);
+        return next;
+      });
+      setSelectedShopDoc(updatedDoc);
+
+      // Bắn thông báo ĐÍCH DANH đến người được phân công
+      const notifTitle = `📋 [Được giao nhiệm vụ] Thẩm định hồ sơ Shop: ${updatedDoc.title}`;
+      const notifBody = `${leader?.fullName || 'Trưởng ban'} đã phân công bạn (${assignee.fullName}) thẩm định hồ sơ "${updatedDoc.title}". Hạn hoàn thành: ${slaDays} ngày.`;
+
+      const notif = {
+        id: `notif_${Date.now()}`,
+        type: 'SHOP_DOCUMENT_ASSIGNED',
+        title: notifTitle,
+        body: notifBody,
+        targetShopDocId: updatedDoc.id,
+        actionText: 'Xem hồ sơ & Thẩm định',
+        assignedRecipients: updatedDoc.assignedRecipients || [],
+        recipientUid: assignee.uid, // Gửi trực tiếp cán bộ được giao
+        createdByUid: updatedDoc.createdByUid,
+        createdByName: updatedDoc.createdByName,
+        extraRecipientUids: [
+          assignee.uid,
+          leader?.uid,
+          updatedDoc.createdByUid
+        ].filter(Boolean),
+        targetRoles: [roleType, 'LEAD_SUPERVISOR', 'LEAD_INVESTOR', 'ADMIN'],
+        createdAt: nowIso,
+        time: 'Vừa xong',
+        isRead: false
+      };
+
+      setNotifications(prev => {
+        const nextNotifs = [notif, ...prev.filter(n => n.id !== notif.id)];
+        safeSaveLocalStorage(NOTIF_STORAGE_KEY, nextNotifs);
+        return nextNotifs;
+      });
+
+      if (checkNotificationRecipient(notif, currentUser)) {
+        setActivePushToast(notif);
+        showSystemNotification(notifTitle, notifBody);
+      }
+
+      saveSystemNotification(notif).catch(console.warn);
+      sendOneSignalPush({ title: notifTitle, message: notifBody, targetRoles: [roleType, 'LEAD_SUPERVISOR', 'LEAD_INVESTOR', 'ADMIN'] }).catch(console.warn);
+
+      showAlert({
+        type: 'success',
+        title: 'Phân Công Thành Công! 📋',
+        message: `Đã giao hồ sơ "${updatedDoc.title}" cho cán bộ ${assignee.fullName}.\nThời hạn phản hồi: ${slaDays} ngày.`
+      });
+    } catch (err) {
+      console.error('Lỗi phân công hồ sơ shop:', err);
+      showAlert({ type: 'error', title: 'Lỗi', message: err.message || err });
+    }
+  };
+
+  // 3. Xác nhận đạt hồ sơ shop (Quy trình tuần tự: TVGS duyệt trước -> Ban QLDA phê duyệt sau)
+  const handleApproveShopDocument = async (docId, { roleType, note, reviewer }) => {
+    try {
+      const doc = (shopDocuments || []).find(d => d.id === docId) || selectedShopDoc;
+      if (!doc) return;
+
+      // Bảo vệ chặt chẽ: Ban QLDA chỉ được duyệt khi TVGS đã duyệt đạt
+      if (roleType === 'INVESTOR' && doc.assignedTvgs?.status !== 'ACCEPTED') {
+        showAlert({
+          type: 'warning',
+          title: 'Chưa đủ điều kiện phê duyệt',
+          message: 'Tư Vấn Giám Sát chưa thẩm định đạt hồ sơ này. Ban QLDA chỉ được phê duyệt sau khi TVGS đã duyệt đạt!'
+        });
+        return;
+      }
+
+      const nowIso = new Date().toISOString();
+      const updatedAssignedTvgs = roleType === 'SUPERVISOR' ? {
+        ...doc.assignedTvgs,
+        status: 'ACCEPTED',
+        reviewedAt: nowIso,
+        note: note || 'Xác nhận đạt yêu cầu kỹ thuật'
+      } : doc.assignedTvgs;
+
+      const updatedAssignedInvestor = roleType === 'INVESTOR' ? {
+        ...doc.assignedInvestor,
+        status: 'ACCEPTED',
+        reviewedAt: nowIso,
+        note: note || 'Xác nhận đạt yêu cầu kỹ thuật'
+      } : doc.assignedInvestor;
+
+      // Cả 2 bên đều xác nhận đạt -> Trạng thái hoàn tất APPROVED
+      const isBothAccepted = (updatedAssignedTvgs?.status === 'ACCEPTED') && (updatedAssignedInvestor?.status === 'ACCEPTED');
+
+      const updatedDoc = {
+        ...doc,
+        assignedTvgs: updatedAssignedTvgs,
+        assignedInvestor: updatedAssignedInvestor,
+        status: isBothAccepted ? SHOP_STATUS.APPROVED : SHOP_STATUS.SENT,
+        history: [
+          ...(doc.history || []),
+          {
+            action: 'APPROVED',
+            by: reviewer?.fullName || (roleType === 'SUPERVISOR' ? 'Tư Vấn Giám Sát' : 'Ban QLDA'),
+            role: roleType === 'SUPERVISOR' ? 'Tư Vấn Giám Sát' : 'Ban QLDA',
+            time: nowIso,
+            note: note ? `Xác nhận đạt: ${note}` : 'Đã xác nhận phê duyệt đạt'
+          }
+        ],
+        updatedAt: nowIso
+      };
+
+      await saveShopDocument(updatedDoc);
+      setShopDocuments(prev => {
+        const next = prev.map(d => d.id === docId ? updatedDoc : d);
+        saveStoredShopDocuments(next);
+        return next;
+      });
+      setSelectedShopDoc(updatedDoc);
+
+      // Phân định thông báo theo bước thẩm định tuần tự
+      let notifTitle = '';
+      let notifBody = '';
+      let targetRoles = [];
+      let extraRecipientUids = [];
+
+      if (roleType === 'SUPERVISOR') {
+        // Bước 1: TVGS duyệt đạt -> Gửi thông báo mời Ban QLDA vào phê duyệt
+        notifTitle = `📋 TVGS đã duyệt đạt - Mời Ban QLDA phê duyệt: ${updatedDoc.title}`;
+        notifBody = `Tư Vấn Giám Sát (${reviewer?.fullName || 'TVGS'}) đã thẩm định và xác nhận ĐẠT hồ sơ "${updatedDoc.title}". Kính mời Ban QLDA (${updatedDoc.assignedInvestor?.fullName || updatedDoc.assignedInvestor?.assignee?.fullName || 'QLDA'}) vào kiểm tra và phê duyệt cuối cùng.`;
+        targetRoles = ['INVESTOR', 'LEAD_INVESTOR', 'ADMIN', 'CONTRACTOR'];
+        extraRecipientUids = [
+          updatedDoc.assignedInvestor?.uid || updatedDoc.assignedInvestor?.assignee?.uid,
+          updatedDoc.createdByUid,
+          updatedDoc.assignedTvgs?.uid || updatedDoc.assignedTvgs?.assignee?.uid
+        ].filter(Boolean);
+      } else {
+        // Bước 2: Ban QLDA duyệt đạt -> Cả 2 bên đã duyệt hoàn tất
+        notifTitle = `✅ Hồ sơ Shop đã được Ban QLDA phê duyệt hoàn tất: ${updatedDoc.title}`;
+        notifBody = `Ban QLDA (${reviewer?.fullName || 'Ban QLDA'}) đã phê duyệt hoàn tất hồ sơ "${updatedDoc.title}". Cả TVGS và Ban QLDA đều đã xác nhận đạt, hồ sơ đủ điều kiện triển khai thi công!`;
+        targetRoles = ['CONTRACTOR', 'SUPERVISOR', 'LEAD_SUPERVISOR', 'INVESTOR', 'LEAD_INVESTOR', 'ADMIN'];
+        extraRecipientUids = [
+          updatedDoc.createdByUid,
+          updatedDoc.assignedTvgs?.uid || updatedDoc.assignedTvgs?.assignee?.uid,
+          updatedDoc.assignedInvestor?.uid || updatedDoc.assignedInvestor?.assignee?.uid
+        ].filter(Boolean);
+      }
+
+      const notif = {
+        id: `notif_${Date.now()}`,
+        type: roleType === 'SUPERVISOR' ? 'SHOP_DOCUMENT_TVGS_APPROVED' : 'SHOP_DOCUMENT_APPROVED',
+        title: notifTitle,
+        body: notifBody,
+        targetShopDocId: updatedDoc.id,
+        actionText: 'Xem chi tiết hồ sơ shop',
+        assignedRecipients: updatedDoc.assignedRecipients || [],
+        createdByUid: updatedDoc.createdByUid,
+        createdByName: updatedDoc.createdByName,
+        extraRecipientUids,
+        targetRoles,
+        createdAt: nowIso,
+        time: 'Vừa xong',
+        isRead: false
+      };
+
+      setNotifications(prev => {
+        const nextNotifs = [notif, ...prev.filter(n => n.id !== notif.id)];
+        safeSaveLocalStorage(NOTIF_STORAGE_KEY, nextNotifs);
+        return nextNotifs;
+      });
+
+      if (checkNotificationRecipient(notif, currentUser)) {
+        setActivePushToast(notif);
+        showSystemNotification(notifTitle, notifBody);
+      }
+
+      saveSystemNotification(notif).catch(console.warn);
+      sendOneSignalPush({ title: notifTitle, message: notifBody, targetRoles }).catch(console.warn);
+
+      showAlert({
+        type: 'success',
+        title: roleType === 'SUPERVISOR' ? 'TVGS Đã Thẩm Định Đạt!' : 'Phê Duyệt Hoàn Tất!',
+        message: roleType === 'SUPERVISOR'
+          ? `Hồ sơ "${updatedDoc.title}" đã được TVGS duyệt đạt.\nHệ thống đã gửi thông báo đến Ban QLDA để tiến hành phê duyệt bước tiếp theo.`
+          : `Hồ sơ "${updatedDoc.title}" đã được Ban QLDA phê duyệt hoàn tất. Cả 2 bên TVGS và Ban QLDA đều đã xác nhận đạt!`
+      });
+    } catch (err) {
+      console.error('Lỗi duyệt hồ sơ shop:', err);
+      showAlert({ type: 'error', title: 'Lỗi', message: err.message || err });
+    }
+  };
+
+  // 4. Yêu cầu sửa / Từ chối hồ sơ shop
+  const handleRejectShopDocument = async (docId, { roleType, reason, reviewer }) => {
+    try {
+      const doc = (shopDocuments || []).find(d => d.id === docId) || selectedShopDoc;
+      if (!doc) return;
+
+      // Bảo vệ: Ban QLDA không thể thao tác sửa/hủy khi TVGS chưa duyệt đạt
+      if (roleType === 'INVESTOR' && doc.assignedTvgs?.status !== 'ACCEPTED') {
+        showAlert({
+          type: 'warning',
+          title: 'Chưa đủ điều kiện thao tác',
+          message: 'Tư Vấn Giám Sát chưa duyệt đạt hồ sơ này nên Ban QLDA chưa thể thực hiện yêu cầu sửa hay hủy!'
+        });
+        return;
+      }
+
+      const nowIso = new Date().toISOString();
+      const updatedAssignedTvgs = roleType === 'SUPERVISOR' ? {
+        ...doc.assignedTvgs,
+        status: 'REJECTED',
+        reviewedAt: nowIso,
+        note: reason
+      } : doc.assignedTvgs;
+
+      const updatedAssignedInvestor = roleType === 'INVESTOR' ? {
+        ...doc.assignedInvestor,
+        status: 'REJECTED',
+        reviewedAt: nowIso,
+        note: reason
+      } : doc.assignedInvestor;
+
+      const updatedDoc = {
+        ...doc,
+        assignedTvgs: updatedAssignedTvgs,
+        assignedInvestor: updatedAssignedInvestor,
+        status: SHOP_STATUS.REJECTED,
+        rejectionReason: reason,
+        rejectedBy: {
+          uid: reviewer?.uid || currentUser?.uid,
+          fullName: reviewer?.fullName || currentUser?.fullName,
+          role: roleType,
+          position: reviewer?.position || (roleType === 'SUPERVISOR' ? 'Kỹ sư TVGS' : 'Cán bộ Ban QLDA'),
+          time: nowIso,
+          reason
+        },
+        history: [
+          ...(doc.history || []),
+          {
+            action: 'REJECTED',
+            by: reviewer?.fullName || (roleType === 'SUPERVISOR' ? 'Tư Vấn Giám Sát' : 'Ban QLDA'),
+            role: roleType === 'SUPERVISOR' ? 'Tư Vấn Giám Sát' : 'Ban QLDA',
+            time: nowIso,
+            note: `Yêu cầu chỉnh sửa: ${reason}`
+          }
+        ],
+        updatedAt: nowIso
+      };
+
+      await saveShopDocument(updatedDoc);
+      setShopDocuments(prev => {
+        const next = prev.map(d => d.id === docId ? updatedDoc : d);
+        saveStoredShopDocuments(next);
+        return next;
+      });
+      setSelectedShopDoc(updatedDoc);
+
+      // Phân định thông báo yêu cầu sửa (Gửi trực tiếp đến ĐVTC lập phiếu)
+      const isTvgsReject = roleType === 'SUPERVISOR';
+      const notifTitle = isTvgsReject 
+        ? `⚠️ TVGS yêu cầu chỉnh sửa hồ sơ: ${updatedDoc.title}`
+        : `⚠️ Ban QLDA yêu cầu chỉnh sửa hồ sơ: ${updatedDoc.title}`;
+      const notifBody = `${reviewer?.fullName || 'Cán bộ'} (${isTvgsReject ? 'TVGS' : 'Ban QLDA'}) yêu cầu chỉnh sửa hồ sơ "${updatedDoc.title}". Lý do: ${reason}`;
+
+      const notif = {
+        id: `notif_${Date.now()}`,
+        type: 'SHOP_DOCUMENT_REJECTED',
+        title: notifTitle,
+        body: notifBody,
+        targetShopDocId: updatedDoc.id,
+        actionText: 'Xem lý do & chỉnh sửa',
+        assignedRecipients: updatedDoc.assignedRecipients || [],
+        recipientUid: updatedDoc.createdByUid, // ĐÍCH DANH ĐVTC TẠO HỒ SƠ
+        createdByUid: updatedDoc.createdByUid,
+        createdByName: updatedDoc.createdByName,
+        extraRecipientUids: [
+          updatedDoc.createdByUid,
+          updatedDoc.assignedTvgs?.uid || updatedDoc.assignedTvgs?.assignee?.uid,
+          updatedDoc.assignedInvestor?.uid || updatedDoc.assignedInvestor?.assignee?.uid
+        ].filter(Boolean),
+        targetRoles: ['CONTRACTOR', 'SUPERVISOR', 'LEAD_SUPERVISOR', 'INVESTOR', 'LEAD_INVESTOR', 'ADMIN'],
+        createdAt: nowIso,
+        time: 'Vừa xong',
+        isRead: false
+      };
+
+      setNotifications(prev => {
+        const nextNotifs = [notif, ...prev.filter(n => n.id !== notif.id)];
+        safeSaveLocalStorage(NOTIF_STORAGE_KEY, nextNotifs);
+        return nextNotifs;
+      });
+
+      if (checkNotificationRecipient(notif, currentUser)) {
+        setActivePushToast(notif);
+        showSystemNotification(notifTitle, notifBody);
+      }
+
+      saveSystemNotification(notif).catch(console.warn);
+      sendOneSignalPush({ title: notifTitle, message: notifBody, targetRoles: ['CONTRACTOR', 'SUPERVISOR', 'INVESTOR', 'ADMIN'] }).catch(console.warn);
+
+      showAlert({
+        type: 'info',
+        title: 'Đã Gửi Yêu Cầu Chỉnh Sửa',
+        message: `Đã gửi yêu cầu chỉnh sửa hồ sơ "${updatedDoc.title}" đến Nhà thầu.\nLý do: ${reason}`
+      });
+    } catch (err) {
+      console.error('Lỗi từ chối hồ sơ shop:', err);
+      showAlert({ type: 'error', title: 'Lỗi', message: err.message || err });
+    }
+  };
+
+  // 5. Khắc phục & Nộp lại trực tiếp cho người từ chối (Bypasses 2 leaders)
+  const handleResubmitShopDocument = async (docId, { notes, pdfFile, pdfFiles, photos, resubmittedBy }) => {
+    try {
+      const doc = (shopDocuments || []).find(d => d.id === docId) || selectedShopDoc;
+      if (!doc) return;
+
+      const nowIso = new Date().toISOString();
+      const rejectingOfficer = doc.rejectedBy;
+      const isTvgsReject = rejectingOfficer?.role === 'SUPERVISOR';
+
+      // Đặt lại trạng thái của bên từ chối về PENDING
+      const updatedTvgs = isTvgsReject ? {
+        ...doc.assignedTvgs,
+        status: 'PENDING',
+        note: ''
+      } : doc.assignedTvgs;
+
+      const updatedInvestor = !isTvgsReject ? {
+        ...doc.assignedInvestor,
+        status: 'PENDING',
+        note: ''
+      } : doc.assignedInvestor;
+
+      const updatedDoc = {
+        ...doc,
+        notes: notes !== undefined ? notes : doc.notes,
+        pdfFile: pdfFile !== undefined ? pdfFile : doc.pdfFile,
+        pdfFiles: Array.isArray(pdfFiles) ? pdfFiles : (doc.pdfFiles || (doc.pdfFile ? [doc.pdfFile] : [])),
+        photos: Array.isArray(photos) ? photos : doc.photos,
+        assignedTvgs: updatedTvgs,
+        assignedInvestor: updatedInvestor,
+        status: SHOP_STATUS.SENT, // Quay lại trạng thái ĐANG THẨM ĐỊNH
+        rejectionReason: '',
+        history: [
+          ...(doc.history || []),
+          {
+            action: 'RESUBMITTED',
+            by: resubmittedBy?.fullName || currentUser?.fullName,
+            role: 'CONTRACTOR',
+            time: nowIso,
+            note: `Đã khắc phục chỉnh sửa và nộp lại trực tiếp cho ${rejectingOfficer?.fullName || 'cán bộ thẩm định'}. Nội dung: ${notes}`
+          }
+        ],
+        updatedAt: nowIso
+      };
+
+      await saveShopDocument(updatedDoc);
+      setShopDocuments(prev => {
+        const next = prev.map(d => d.id === docId ? updatedDoc : d);
+        saveStoredShopDocuments(next);
+        return next;
+      });
+      setSelectedShopDoc(updatedDoc);
+
+      // Bắn thông báo TRỰC TIẾP ĐẾN NGƯỜI ĐÃ TỪ CHỐI (Không qua 2 anh Trưởng)
+      const targetOfficerName = rejectingOfficer?.fullName || 'Cán bộ thẩm định';
+      const notifTitle = `🔄 [Đã sửa & Gửi lại] Hồ sơ Shop: ${updatedDoc.title}`;
+      const notifBody = `Nhà thầu (${resubmittedBy?.fullName || 'ĐVTC'}) đã chỉnh sửa và gửi lại hồ sơ "${updatedDoc.title}" trực tiếp cho bạn (${targetOfficerName}) kiểm tra lại. Nội dung: ${notes}`;
+
+      const notif = {
+        id: `notif_${Date.now()}`,
+        type: 'SHOP_DOCUMENT_RESUBMITTED',
+        title: notifTitle,
+        body: notifBody,
+        targetShopDocId: updatedDoc.id,
+        actionText: 'Xem hồ sơ & Đánh giá lại',
+        assignedRecipients: updatedDoc.assignedRecipients || [],
+        recipientUid: rejectingOfficer?.uid, // GỬI TRỰC TIẾP CHO NGƯỜI TỪ CHỐI!
+        createdByUid: updatedDoc.createdByUid,
+        createdByName: updatedDoc.createdByName,
+        extraRecipientUids: [
+          rejectingOfficer?.uid,
+          updatedDoc.createdByUid
+        ].filter(Boolean),
+        targetRoles: [rejectingOfficer?.role || 'SUPERVISOR', 'CONTRACTOR', 'ADMIN'],
+        createdAt: nowIso,
+        time: 'Vừa xong',
+        isRead: false
+      };
+
+      setNotifications(prev => {
+        const nextNotifs = [notif, ...prev.filter(n => n.id !== notif.id)];
+        safeSaveLocalStorage(NOTIF_STORAGE_KEY, nextNotifs);
+        return nextNotifs;
+      });
+
+      if (checkNotificationRecipient(notif, currentUser)) {
+        setActivePushToast(notif);
+        showSystemNotification(notifTitle, notifBody);
+      }
+
+      saveSystemNotification(notif).catch(console.warn);
+      sendOneSignalPush({ title: notifTitle, message: notifBody, targetRoles: [rejectingOfficer?.role || 'SUPERVISOR', 'ADMIN'] }).catch(console.warn);
+
+      showAlert({
+        type: 'success',
+        title: 'Đã Gửi Lại Hồ Sơ! 🔄',
+        message: `Hồ sơ "${updatedDoc.title}" đã được nộp lại trực tiếp cho cán bộ ${targetOfficerName} để kiểm tra lại.`
+      });
+    } catch (err) {
+      console.error('Lỗi nộp lại hồ sơ shop:', err);
+      showAlert({ type: 'error', title: 'Lỗi', message: err.message || err });
+    }
+  };
+
+  // 6. Xóa hồ sơ shop
+  const handleDeleteShopDocument = async (docId) => {
+    try {
+      await deleteShopDocument(docId);
+      setShopDocuments(prev => {
+        const next = prev.filter(d => d.id !== docId);
+        saveStoredShopDocuments(next);
+        return next;
+      });
+      setSelectedShopDoc(null);
+      showAlert({
+        type: 'success',
+        title: 'Đã Xóa',
+        message: 'Đã xóa hồ sơ shop khỏi hệ thống.'
+      });
+    } catch (err) {
+      console.error('Lỗi xóa hồ sơ shop:', err);
+      showAlert({ type: 'error', title: 'Lỗi', message: err.message || err });
+    }
+  };
+
+  // 7. KIỂM TRA ĐỊNH KỲ THÔNG BÁO QUÁ HẠN (SLA BACKGROUND MONITOR)
+  // Quy tắc:
+  // - Quá 1 ngày (24h) chưa chọn cán bộ -> Báo CĐT và chính người chậm
+  // - Quá thời hạn phản hồi (dueDate) mà cán bộ chưa duyệt -> Báo Trưởng ban, cán bộ chậm & CĐT
+  const lastOverdueCheckRef = useRef(0);
+  useEffect(() => {
+    if (!shopDocuments || shopDocuments.length === 0) return;
+
+    const checkOverdueShopDocs = () => {
+      const now = Date.now();
+      if (now - lastOverdueCheckRef.current < 45000) return; // Kiểm tra tối đa 45s/lần
+      lastOverdueCheckRef.current = now;
+
+      let hasUpdates = false;
+      const updatedDocs = shopDocuments.map(doc => {
+        let changed = false;
+        let d = { ...doc };
+
+        // 1. Kiểm tra chậm phân công (> 24h từ lúc tạo)
+        if (isShopAssignmentOverdue(d)) {
+          const isTvgsAssigned = Boolean(d.assignedTvgs?.assignee || d.assignedTvgs?.uid);
+          const isInvestorAssigned = Boolean(d.assignedInvestor?.assignee || d.assignedInvestor?.uid);
+
+          const leadSup = getShopLeadSupervisor(users);
+          const leadInv = getShopLeadInvestor(users);
+
+          // Nếu TVGS chưa phân công
+          if (!isTvgsAssigned && !d.assignmentTvgsOverdueNotified) {
+            d.assignmentTvgsOverdueNotified = true;
+            changed = true;
+
+            const notifTitle = `🚨 [Chậm phân công] TVGS Trưởng chưa giao việc: ${d.title}`;
+            const notifBody = `Hồ sơ "${d.title}" đã quá hạn 1 ngày (24h) mà Tư vấn giám sát trưởng (${leadSup.fullName}) chưa phân công cán bộ phụ trách.`;
+            const notif = {
+              id: `notif_overdue_assign_tvgs_${d.id}_${Date.now()}`,
+              type: 'SHOP_DOCUMENT_ASSIGNMENT_OVERDUE',
+              title: notifTitle,
+              body: notifBody,
+              targetShopDocId: d.id,
+              actionText: 'Phân công ngay',
+              recipientUid: leadSup.uid,
+              extraRecipientUids: [leadSup.uid],
+              targetRoles: ['LEAD_SUPERVISOR', 'ADMIN', 'LEAD_INVESTOR'],
+              createdAt: new Date().toISOString(),
+              time: 'Vừa xong',
+              isRead: false
+            };
+
+            setNotifications(prev => [notif, ...prev]);
+            saveSystemNotification(notif).catch(console.warn);
+            if (checkNotificationRecipient(notif, currentUser)) {
+              setActivePushToast(notif);
+              showSystemNotification(notifTitle, notifBody);
+            }
+          }
+
+          // Nếu Ban QLDA chưa phân công
+          if (!isInvestorAssigned && !d.assignmentInvestorOverdueNotified) {
+            d.assignmentInvestorOverdueNotified = true;
+            changed = true;
+
+            const notifTitle = `🚨 [Chậm phân công] Trưởng Ban QLDA chưa giao việc: ${d.title}`;
+            const notifBody = `Hồ sơ "${d.title}" đã quá hạn 1 ngày (24h) mà Trưởng Ban QLDA (${leadInv.fullName}) chưa phân công cán bộ phụ trách.`;
+            const notif = {
+              id: `notif_overdue_assign_inv_${d.id}_${Date.now()}`,
+              type: 'SHOP_DOCUMENT_ASSIGNMENT_OVERDUE',
+              title: notifTitle,
+              body: notifBody,
+              targetShopDocId: d.id,
+              actionText: 'Phân công ngay',
+              recipientUid: leadInv.uid,
+              extraRecipientUids: [leadInv.uid],
+              targetRoles: ['LEAD_INVESTOR', 'ADMIN'],
+              createdAt: new Date().toISOString(),
+              time: 'Vừa xong',
+              isRead: false
+            };
+
+            setNotifications(prev => [notif, ...prev]);
+            saveSystemNotification(notif).catch(console.warn);
+            if (checkNotificationRecipient(notif, currentUser)) {
+              setActivePushToast(notif);
+              showSystemNotification(notifTitle, notifBody);
+            }
+          }
+        }
+
+        // 2. Kiểm tra chậm phản hồi thẩm định (> dueDate)
+        if (d.status === SHOP_STATUS.SENT) {
+          const leadSup = getShopLeadSupervisor(users);
+          const leadInv = getShopLeadInvestor(users);
+
+          // Kiểm tra TVGS quá hạn
+          const tvgsAssigned = d.assignedTvgs?.assignee || d.assignedTvgs?.uid;
+          if (tvgsAssigned && d.assignedTvgs?.status === 'PENDING') {
+            const tvgsDue = d.assignedTvgs?.dueDate ? new Date(d.assignedTvgs.dueDate).getTime() : (d.dueDate ? new Date(d.dueDate).getTime() : 0);
+            if (tvgsDue && now > tvgsDue && !d.tvgsReviewOverdueNotified) {
+              d.tvgsReviewOverdueNotified = true;
+              changed = true;
+
+              const tvgsName = d.assignedTvgs?.assignee?.fullName || d.assignedTvgs?.fullName || 'Cán bộ TVGS';
+              const tvgsUid = d.assignedTvgs?.assignee?.uid || d.assignedTvgs?.uid;
+              const notifTitle = `⏰ [Chậm phản hồi] TVGS quá hạn thẩm định: ${d.title}`;
+              const notifBody = `Cán bộ TVGS (${tvgsName}) đã quá hạn thẩm định hồ sơ "${d.title}". Thông báo cảnh báo được gửi đến TVGS Trưởng (${leadSup.fullName}), CĐT và cán bộ chậm.`;
+
+              const notif = {
+                id: `notif_overdue_review_tvgs_${d.id}_${Date.now()}`,
+                type: 'SHOP_DOCUMENT_REVIEW_OVERDUE',
+                title: notifTitle,
+                body: notifBody,
+                targetShopDocId: d.id,
+                actionText: 'Xem hồ sơ & Xử lý gấp',
+                recipientUid: tvgsUid,
+                extraRecipientUids: [tvgsUid, leadSup.uid].filter(Boolean),
+                targetRoles: ['SUPERVISOR', 'LEAD_SUPERVISOR', 'LEAD_INVESTOR', 'ADMIN'],
+                createdAt: new Date().toISOString(),
+                time: 'Vừa xong',
+                isRead: false
+              };
+
+              setNotifications(prev => [notif, ...prev]);
+              saveSystemNotification(notif).catch(console.warn);
+              if (checkNotificationRecipient(notif, currentUser)) {
+                setActivePushToast(notif);
+                showSystemNotification(notifTitle, notifBody);
+              }
+            }
+          }
+
+          // Kiểm tra Ban QLDA quá hạn
+          const invAssigned = d.assignedInvestor?.assignee || d.assignedInvestor?.uid;
+          if (invAssigned && d.assignedInvestor?.status === 'PENDING') {
+            const invDue = d.assignedInvestor?.dueDate ? new Date(d.assignedInvestor.dueDate).getTime() : (d.dueDate ? new Date(d.dueDate).getTime() : 0);
+            if (invDue && now > invDue && !d.investorReviewOverdueNotified) {
+              d.investorReviewOverdueNotified = true;
+              changed = true;
+
+              const invName = d.assignedInvestor?.assignee?.fullName || d.assignedInvestor?.fullName || 'Cán bộ QLDA';
+              const invUid = d.assignedInvestor?.assignee?.uid || d.assignedInvestor?.uid;
+              const notifTitle = `⏰ [Chậm phản hồi] Ban QLDA quá hạn phê duyệt: ${d.title}`;
+              const notifBody = `Cán bộ Ban QLDA (${invName}) đã quá hạn phê duyệt hồ sơ "${d.title}". Thông báo cảnh báo được gửi đến Trưởng Ban QLDA (${leadInv.fullName}), CĐT và cán bộ chậm.`;
+
+              const notif = {
+                id: `notif_overdue_review_inv_${d.id}_${Date.now()}`,
+                type: 'SHOP_DOCUMENT_REVIEW_OVERDUE',
+                title: notifTitle,
+                body: notifBody,
+                targetShopDocId: d.id,
+                actionText: 'Xem hồ sơ & Xử lý gấp',
+                recipientUid: invUid,
+                extraRecipientUids: [invUid, leadInv.uid].filter(Boolean),
+                targetRoles: ['INVESTOR', 'LEAD_INVESTOR', 'ADMIN'],
+                createdAt: new Date().toISOString(),
+                time: 'Vừa xong',
+                isRead: false
+              };
+
+              setNotifications(prev => [notif, ...prev]);
+              saveSystemNotification(notif).catch(console.warn);
+              if (checkNotificationRecipient(notif, currentUser)) {
+                setActivePushToast(notif);
+                showSystemNotification(notifTitle, notifBody);
+              }
+            }
+          }
+        }
+
+        if (changed) {
+          hasUpdates = true;
+          saveShopDocument(d).catch(console.warn);
+        }
+        return d;
+      });
+
+      if (hasUpdates) {
+        setShopDocuments(updatedDocs);
+        saveStoredShopDocuments(updatedDocs);
+      }
+    };
+
+    checkOverdueShopDocs();
+    const interval = setInterval(checkOverdueShopDocs, 60000); // Mỗi 60 giây kiểm tra 1 lần
+    return () => clearInterval(interval);
+  }, [shopDocuments, users]);
 
   // ============================================================================
   // 4d. TỰ ĐỘNG ĐỒNG BỘ CẶP ĐÔI 1-1 (AUTO-HEAL PAIRS) - TỐI ƯU CHỐNG LOOP & LAG
@@ -1105,6 +2047,10 @@ export default function App() {
   const [isCreateCompletionModalOpen, setIsCreateCompletionModalOpen] = useState(false);
   const [selectedCompletionReport, setSelectedCompletionReport] = useState(null);
   const [isCompletionDetailModalOpen, setIsCompletionDetailModalOpen] = useState(false);
+  
+  // Modal Hồ Sơ Bộ Phận Shop
+  const [isCreateShopModalOpen, setIsCreateShopModalOpen] = useState(false);
+  const [selectedShopDoc, setSelectedShopDoc] = useState(null);
   const [reassignModalState, setReassignModalState] = useState({
     isOpen: false,
     request: null,
@@ -1133,7 +2079,9 @@ export default function App() {
     isDailyLogDetailModalOpen ||
     isCreateCompletionModalOpen ||
     isCompletionDetailModalOpen ||
-    Boolean(selectedCompletionReport)
+    Boolean(selectedCompletionReport) ||
+    isCreateShopModalOpen ||
+    Boolean(selectedShopDoc)
   );
 
   useEffect(() => {
@@ -1816,19 +2764,35 @@ export default function App() {
       newRequest.revisionNumber || 1
     );
 
-    // Số trong form: "WA" (hoặc "MI")
-    let reportNum = reportDocCode;
-    const reqNum = (newRequest.requestNumber || '').trim();
-    const cleanPrefix = reqNum.replace(/^\.\.\.\.\.\.\s*/, '').replace(/^\.\.\.\s*/, '').trim();
-    if (cleanPrefix && cleanPrefix !== 'IR' && cleanPrefix !== 'MI' && cleanPrefix !== 'WA') {
-      const prefix = cleanPrefix.split('/')[0].split(' ')[0];
-      if (prefix && prefix !== 'IR' && prefix !== 'MI' && prefix !== 'WA') {
-        reportNum = `${prefix}/${reportDocCode}`;
-      }
-    }
+    // Số trong form: Số ở dưới nhấc lên, ví dụ: 2203/WA/261026-01.01 hoặc 2203/MI/261026-01.01
+    const reportNum = docNum;
 
     const today = new Date();
     const cityDate = `Cần Thơ, ngày ${String(today.getDate()).padStart(2, '0')} tháng ${String(today.getMonth() + 1).padStart(2, '0')} năm ${today.getFullYear()}`;
+
+    // Format ngày giờ bắt đầu và kết thúc tự động: "13h30, ngày 26 tháng 10 năm 2026"
+    let autoStartText = '';
+    let autoEndText = '';
+    try {
+      const sDate = newRequest.scheduledDate || (new Date()).toISOString().slice(0, 10);
+      const sTimeMatch = (newRequest.startTime || newRequest.scheduledTime || '13:30').match(/(\d{1,2})[h:](\d{2})/);
+      const parts = sDate.split('-');
+      const year = parts[0] || '2026';
+      const month = parseInt(parts[1] || '10', 10);
+      const day = parseInt(parts[2] || '26', 10);
+      const hour = sTimeMatch ? parseInt(sTimeMatch[1], 10) : 13;
+      const min = sTimeMatch ? parseInt(sTimeMatch[2], 10) : 30;
+      const totalMin = hour * 60 + min;
+      const endTotal = totalMin + 30;
+      const endH = Math.floor(endTotal / 60) % 24;
+      const endM = endTotal % 60;
+      const pad = (n) => String(n).padStart(2, '0');
+      autoStartText = `${pad(hour)}h${pad(min)}, ngày ${day} tháng ${month} năm ${year}`;
+      autoEndText = `${pad(endH)}h${pad(endM)}, ngày ${day} tháng ${month} năm ${year}`;
+    } catch {
+      autoStartText = '13h30, ngày 26 tháng 10 năm 2026';
+      autoEndText = '14h00, ngày 26 tháng 10 năm 2026';
+    }
 
     // Lấy thông tin cán bộ TVGS và CĐT từ danh sách tiếp nhận
     const tvgsRecipient = newRequest.assignedRecipients?.find(r => r.role === 'SUPERVISOR' || r.role === 'LEAD_SUPERVISOR');
@@ -1865,7 +2829,9 @@ export default function App() {
         : newRequest.taskContent,
       time: {
         startTime: newRequest.startTime || `${newRequest.scheduledTime}`,
-        endTime: newRequest.endTime || `16h30, ${newRequest.scheduledTime?.includes(' ') ? newRequest.scheduledTime.split(' ')[1] : 'hôm nay'}`,
+        endTime: newRequest.endTime || autoEndText,
+        startTimeText: autoStartText,
+        endTimeText: autoEndText,
         place: newRequest.inspectionPlace || 'Dự án Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City'
       },
       attendees: {
@@ -3786,6 +4752,13 @@ export default function App() {
               return;
             }
           }
+          if (notif.targetShopDocId) {
+            const sDoc = shopDocuments.find(d => d.id === notif.targetShopDocId);
+            if (sDoc) {
+              setSelectedShopDoc(sDoc);
+              return;
+            }
+          }
           if (notif.targetRequestId) {
             const target = requests.find(r => r.id === notif.targetRequestId);
             if (target) setSelectedRequest(target);
@@ -3830,6 +4803,13 @@ export default function App() {
             if (cr) {
               setSelectedCompletionReport(cr);
               setIsCompletionDetailModalOpen(true);
+              return;
+            }
+          }
+          if (notif.targetShopDocId) {
+            const sDoc = shopDocuments.find(d => d.id === notif.targetShopDocId);
+            if (sDoc) {
+              setSelectedShopDoc(sDoc);
               return;
             }
           }
@@ -3898,6 +4878,13 @@ export default function App() {
                   <span>Nghiệm Thu Hoàn Thành ({completionReports.length})</span>
                 </li>
                 <li 
+                  className={`sidebar-nav-item ${activeTab === 'SHOP_DOCUMENTS' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('SHOP_DOCUMENTS')}
+                >
+                  <Layers size={18} />
+                  <span>Hồ Sơ Bộ Phận Shop ({shopDocuments.length})</span>
+                </li>
+                <li 
                   className={`sidebar-nav-item ${activeTab === 'PROFILE' ? 'active' : ''}`}
                   onClick={() => setActiveTab('PROFILE')}
                 >
@@ -3944,6 +4931,14 @@ export default function App() {
                 </li>
 
                 <li 
+                  className={`sidebar-nav-item ${activeTab === 'SHOP_DOCUMENTS' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('SHOP_DOCUMENTS')}
+                >
+                  <Layers size={18} />
+                  <span>Hồ Sơ Bộ Phận Shop ({shopDocuments.length})</span>
+                </li>
+
+                <li 
                   className={`sidebar-nav-item ${activeTab === 'PROFILE' ? 'active' : ''}`}
                   onClick={() => setActiveTab('PROFILE')}
                 >
@@ -3963,6 +4958,14 @@ export default function App() {
               currentUser={currentUser}
               users={users}
               onUpdateProfile={handleUpdateUserProfile}
+            />
+          ) : activeTab === 'SHOP_DOCUMENTS' ? (
+            <ShopDocumentsView 
+              shopDocuments={shopDocuments}
+              currentUser={currentUser}
+              currentRole={currentRole}
+              onOpenCreateModal={() => setIsCreateShopModalOpen(true)}
+              onOpenDetailModal={(doc) => setSelectedShopDoc(doc)}
             />
           ) : activeTab === 'REPORTS' ? (
             <ReportsListView 
@@ -4816,16 +5819,46 @@ export default function App() {
         standardsData={standardsData}
         projects={projectsList}
         docTypes={docTypesList}
+        slaConfigs={shopSlaConfigs}
         onSaveProjects={handleSaveProjects}
         onSaveDocTypes={handleSaveDocTypes}
         onSaveStandards={handleSaveStandards}
         onSyncStandardsToCloud={handleSyncStandardsToCloud}
+        onSaveSlaConfigs={handleSaveShopSlaConfigs}
+        onSyncSlaToCloud={handleSyncShopSlaToCloud}
         onAddUser={handleAddUser}
         onUpdateUser={handleUpdateUser}
         onDeleteUser={handleDeleteUser}
         onUpdateUserRole={handleUpdateUserRole}
         onToggleUserStatus={handleToggleUserStatus}
         onSyncAllUsersToCloud={handleSyncAllUsersToCloud}
+        showAlert={showAlert}
+      />
+
+      {/* MODAL TẠO HỒ SƠ BỘ PHẬN SHOP */}
+      <CreateShopDocumentModal 
+        isOpen={isCreateShopModalOpen}
+        onClose={() => setIsCreateShopModalOpen(false)}
+        users={users}
+        currentUser={currentUser}
+        slaConfigs={shopSlaConfigs}
+        onSubmitShopDocument={handleCreateShopDocument}
+        showAlert={showAlert}
+      />
+
+      {/* MODAL XEM CHI TIẾT & THẨM ĐỊNH HỒ SƠ BỘ PHẬN SHOP */}
+      <ShopDocumentDetailModal 
+        isOpen={Boolean(selectedShopDoc)}
+        onClose={() => setSelectedShopDoc(null)}
+        document={selectedShopDoc}
+        currentUser={currentUser}
+        currentRole={currentRole}
+        users={users}
+        onApprove={handleApproveShopDocument}
+        onReject={handleRejectShopDocument}
+        onAssign={handleAssignShopDocument}
+        onResubmit={handleResubmitShopDocument}
+        onDelete={handleDeleteShopDocument}
         showAlert={showAlert}
       />
 

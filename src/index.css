@@ -1418,6 +1418,16 @@ html.modal-open {
   100% { transform: scale(1); }
 }
 
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes spinReverse {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
 /* --------------------------------------------------------------------------
    MOBILE PROFILE BOTTOM SHEET
    -------------------------------------------------------------------------- */

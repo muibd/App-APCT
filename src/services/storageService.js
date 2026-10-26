@@ -4,7 +4,7 @@
 // ============================================================================
 
 import { storage, isFirebaseConfigured } from './firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, getBytes } from 'firebase/storage';
 
 /**
  * Tải ảnh nghiệm thu hiện trường lên Google Firebase Storage
@@ -58,5 +58,65 @@ export const uploadEvidenceImage = async (file, metadata = {}) => {
   } catch (error) {
     console.error('[Firebase Storage Upload Error]', error);
     throw error;
+  }
+};
+
+/**
+ * Tải tệp PDF Hồ sơ Shop lên Google Cloud Firebase Storage
+ * @param {File|Blob} file - File PDF từ thẻ input
+ * @param {string} docCode - Mã hồ sơ (VD: HSS-123456)
+ * @returns {Promise<string|null>} - Download URL trực tiếp trên Firebase Cloud Storage
+ */
+export const uploadPdfDocument = async (file, docCode = 'shop_doc') => {
+  if (!isFirebaseConfigured || !storage) {
+    console.log('[Firebase Storage Demo] Chưa bật Firebase Storage, lưu fallback dataUrl');
+    return null;
+  }
+
+  try {
+    const timestamp = Date.now();
+    const cleanFileName = file.name ? file.name.replace(/[^a-zA-Z0-9._-]/g, '_') : `doc_${timestamp}.pdf`;
+    const folderPath = `shop_documents/${docCode}/${timestamp}_${cleanFileName}`;
+    const storageRef = ref(storage, folderPath);
+
+    const customMetadata = {
+      contentType: 'application/pdf',
+      customMetadata: {
+        originalName: file.name || 'document.pdf',
+        docCode,
+        uploadedAt: new Date().toISOString()
+      }
+    };
+
+    // Thêm timeout 1.2 giây để tránh làm chậm trải nghiệm người dùng nếu Cloud Storage chưa mở quyền
+    const uploadPromise = uploadBytes(storageRef, file, customMetadata);
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Firebase Storage timeout (1.2s) - Lưu trữ nội bộ an toàn')), 1200)
+    );
+    const snapshot = await Promise.race([uploadPromise, timeoutPromise]);
+    const downloadUrl = await getDownloadURL(snapshot.ref);
+    console.log('[Firebase Storage] Đã tải tài liệu PDF lên Cloud Storage:', downloadUrl);
+    return downloadUrl;
+  } catch (error) {
+    console.warn('[Firebase Storage PDF] Sử dụng lưu trữ PDF nội bộ (offline resilient):', error.message || error);
+    return null;
+  }
+};
+
+/**
+ * Tải trực tiếp dữ liệu nhị phân (Blob) của tệp PDF từ Firebase Storage
+ * Hoạt động 100% qua Firebase SDK, không bị lỗi CORS của trình duyệt
+ * @param {string} urlOrPath - Download URL hoặc đường dẫn file
+ * @returns {Promise<Blob|null>}
+ */
+export const fetchPdfBlobFromStorage = async (urlOrPath) => {
+  if (!isFirebaseConfigured || !storage || !urlOrPath) return null;
+  try {
+    const storageRef = ref(storage, urlOrPath);
+    const buffer = await getBytes(storageRef);
+    return new Blob([buffer], { type: 'application/pdf' });
+  } catch (err) {
+    console.warn('[Firebase Storage] Lỗi lấy blob qua getBytes:', err);
+    return null;
   }
 };

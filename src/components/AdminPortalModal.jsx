@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { X, ShieldCheck, Users, BookOpen, Settings, Cloud, Building2 } from 'lucide-react';
+import { X, ShieldCheck, Users, BookOpen, Settings, Cloud, Building2, Clock } from 'lucide-react';
 import UserManagementView from './UserManagementView';
 import StandardsManagementView from './StandardsManagementView';
 import ProjectManagementView from './ProjectManagementView';
+import ShopSlaManagementView from './ShopSlaManagementView';
 
 export default function AdminPortalModal({ 
   isOpen, 
@@ -12,10 +13,13 @@ export default function AdminPortalModal({
   standardsData,
   projects = [],
   docTypes = [],
+  slaConfigs = [],
   onSaveProjects,
   onSaveDocTypes,
   onSaveStandards,
   onSyncStandardsToCloud,
+  onSaveSlaConfigs,
+  onSyncSlaToCloud,
   onAddUser,
   onUpdateUser,
   onDeleteUser,
@@ -26,7 +30,7 @@ export default function AdminPortalModal({
 }) {
   if (!isOpen) return null;
 
-  const [activeTab, setActiveTab] = useState('PROJECTS'); // 'PROJECTS' | 'USERS' | 'STANDARDS' | 'CONFIG'
+  const [activeTab, setActiveTab] = useState('PROJECTS'); // 'PROJECTS' | 'USERS' | 'STANDARDS' | 'SHOP_SLA' | 'CONFIG'
   return (
     <div className="modal-overlay">
       <div className="modal-content" style={{ maxWidth: '1050px', height: '90vh' }}>
@@ -113,6 +117,27 @@ export default function AdminPortalModal({
             style={{
               padding: '12px 18px',
               border: 'none',
+              background: activeTab === 'SHOP_SLA' ? '#ffffff' : 'transparent',
+              fontWeight: 700,
+              fontSize: '0.88rem',
+              color: activeTab === 'SHOP_SLA' ? '#7e22ce' : '#64748b',
+              borderBottom: activeTab === 'SHOP_SLA' ? '2px solid #7e22ce' : 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              whiteSpace: 'nowrap'
+            }}
+            onClick={() => setActiveTab('SHOP_SLA')}
+          >
+            <Clock size={16} />
+            <span>Thời Hạn Phản Hồi Shop</span>
+          </button>
+
+          <button 
+            style={{
+              padding: '12px 18px',
+              border: 'none',
               background: activeTab === 'CONFIG' ? '#ffffff' : 'transparent',
               fontWeight: 700,
               fontSize: '0.88rem',
@@ -139,6 +164,16 @@ export default function AdminPortalModal({
               docTypes={docTypes}
               onSaveProjects={onSaveProjects}
               onSaveDocTypes={onSaveDocTypes}
+              showAlert={showAlert}
+            />
+          )}
+
+          {/* TAB SHOP SLA: QUẢN LÝ THỜI HẠN PHẢN HỒI HỒ SƠ SHOP */}
+          {activeTab === 'SHOP_SLA' && (
+            <ShopSlaManagementView
+              slaConfigs={slaConfigs}
+              onSaveSlaConfigs={onSaveSlaConfigs}
+              onSyncSlaToCloud={onSyncSlaToCloud}
               showAlert={showAlert}
             />
           )}

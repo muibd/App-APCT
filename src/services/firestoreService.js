@@ -746,3 +746,202 @@ export const saveInspectionStandards = async (standardsPayload) => {
     return cleanData;
   }
 };
+
+// ============================================================================
+// 8. HỒ SƠ BỘ PHẬN SHOP & BẢN VẼ KỸ THUẬT (SHOP DRAWINGS & DOCUMENTS)
+// ============================================================================
+const SHOP_DOCUMENTS_COLLECTION = 'shop_documents';
+const SHOP_SLA_COLLECTION = 'shop_sla_configs';
+const SHOP_SLA_DOC_ID = 'default_sla_rules';
+
+/**
+ * Lắng nghe thời gian thực danh sách Hồ sơ Shop từ Firestore
+ */
+export const subscribeToShopDocuments = (callback) => {
+  if (!isFirebaseConfigured || !db) {
+    return () => {};
+  }
+
+  try {
+    const colRef = collection(db, SHOP_DOCUMENTS_COLLECTION);
+    const unsubscribe = onSnapshot(colRef, (snapshot) => {
+      const items = [];
+      snapshot.forEach(docSnap => {
+        items.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      // Sắp xếp giảm dần theo thời gian tạo
+      items.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+      callback(items);
+    }, (error) => {
+      console.warn('[Firestore] Lỗi lắng nghe hồ sơ shop (giữ nguyên dữ liệu cục bộ an toàn):', error?.message || error);
+      // Không gọi callback([]) để bảo toàn 100% dữ liệu đã lưu ở LocalStorage & IndexedDB
+    });
+
+    return unsubscribe;
+  } catch (e) {
+    console.warn('[Firestore Shop Exception]', e);
+    return () => {};
+  }
+};
+
+/**
+ * Lưu hoặc cập nhật Hồ sơ Shop lên Firestore
+ */
+export const saveShopDocument = async (shopDocData) => {
+  const cleanData = sanitizeData({
+    ...shopDocData,
+    updatedAt: new Date().toISOString()
+  });
+
+  if (!isFirebaseConfigured || !db) {
+    console.log('[Firestore Offline] Lưu hồ sơ shop nội bộ:', cleanData?.title);
+    return cleanData;
+  }
+
+  try {
+    const docRef = doc(db, SHOP_DOCUMENTS_COLLECTION, cleanData.id);
+
+    // Tối ưu payload Firestore: nếu dataUrl của file PDF quá lớn (> 700KB), lược bỏ dataUrl trên Cloud để không vượt giới hạn 1MB của Firestore
+    // (Bản gốc đầy đủ 100% luôn được lưu an toàn trong IndexedDB và LocalStorage trên máy)
+    let firestorePayload = cleanData;
+    if (cleanData.pdfFile && typeof cleanData.pdfFile.dataUrl === 'string' && cleanData.pdfFile.dataUrl.length > 700000) {
+      firestorePayload = {
+        ...cleanData,
+        pdfFile: {
+          name: cleanData.pdfFile.name,
+          size: cleanData.pdfFile.size,
+          isStoredLocally: true
+        }
+      };
+    }
+    if (Array.isArray(cleanData.pdfFiles)) {
+      firestorePayload = {
+        ...firestorePayload,
+        pdfFiles: cleanData.pdfFiles.map(f => {
+          if (f && typeof f.dataUrl === 'string' && f.dataUrl.length > 700000) {
+            return {
+              id: f.id,
+              name: f.name,
+              size: f.size,
+              isStoredLocally: true
+            };
+          }
+          return f;
+        })
+      };
+    }
+
+    await setDoc(docRef, firestorePayload);
+    console.log('[Firestore Cloud] Đã lưu hồ sơ shop thành công:', cleanData?.title);
+    return cleanData;
+  } catch (error) {
+    console.warn('[Firestore Save Shop Document Warning] Lưu trữ nội bộ an toàn (Cloud sync pending):', error?.message || error);
+    return cleanData;
+  }
+};
+
+/**
+ * Xóa một hồ sơ shop trên Firestore
+ */
+export const deleteShopDocument = async (shopDocId) => {
+  if (!isFirebaseConfigured || !db) return;
+  try {
+    const docRef = doc(db, SHOP_DOCUMENTS_COLLECTION, shopDocId);
+    await deleteDoc(docRef);
+    console.log('[Firestore Cloud] Đã xóa hồ sơ shop:', shopDocId);
+  } catch (error) {
+    console.error('[Firestore Delete Shop Document Error]', error);
+    throw error;
+  }
+};
+
+/**
+ * Lắng nghe cấu hình SLA thời hạn phản hồi hồ sơ shop
+ */
+export const subscribeToShopSlaConfigs = (callback) => {
+  if (!isFirebaseConfigured || !db) {
+    return () => {};
+  }
+
+  try {
+    const docRef = doc(db, SHOP_SLA_COLLECTION, SHOP_SLA_DOC_ID);
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists() && Array.isArray(docSnap.data()?.configs)) {
+        callback(docSnap.data().configs);
+      }
+    }, (error) => {
+      console.warn('[Firestore] Lỗi lắng nghe cấu hình SLA shop:', error);
+    });
+
+    return unsubscribe;
+  } catch (e) {
+    console.warn('[Firestore Shop SLA Exception]', e);
+    return () => {};
+  }
+};
+
+/**
+ * Lưu cấu hình SLA thời hạn phản hồi hồ sơ shop do Admin quản lý lên Firestore
+ */
+export const saveShopSlaConfigs = async (configsList) => {
+  const cleanData = sanitizeData({
+    configs: configsList,
+    updatedAt: new Date().toISOString()
+  });
+
+  if (!isFirebaseConfigured || !db) {
+    return cleanData;
+  }
+
+  try {
+    const docRef = doc(db, SHOP_SLA_COLLECTION, SHOP_SLA_DOC_ID);
+    await setDoc(docRef, cleanData);
+    console.log('[Firestore Cloud] Đã lưu cấu hình SLA hồ sơ shop thành công');
+    return cleanData;
+  } catch (error) {
+    console.error('[Firestore Save Shop SLA Error]', error);
+    return cleanData;
+  }
+};
+
+/**
+ * Dọn dẹp toàn bộ phiếu mời và biên bản nghiệm thu cũ trước ngày 26/10/2026
+ * Tự động xóa vĩnh viễn trên Firestore
+ */
+export const cleanupOldRequestsAndReports = async (cutoffDate = '2026-10-25T17:00:00.000Z') => {
+  if (!isFirebaseConfigured || !db) return { deletedRequests: 0, deletedReports: 0 };
+
+  let deletedRequests = 0;
+  let deletedReports = 0;
+
+  try {
+    // 1. Xóa trong inspection_requests
+    const reqSnap = await getDocs(collection(db, REQUESTS_COLLECTION));
+    for (const d of reqSnap.docs) {
+      const data = d.data();
+      const created = data.createdAt || '';
+      if (created && created < cutoffDate) {
+        await deleteDoc(doc(db, REQUESTS_COLLECTION, d.id));
+        deletedRequests++;
+      }
+    }
+
+    // 2. Xóa trong inspection_reports
+    const repSnap = await getDocs(collection(db, REPORTS_COLLECTION));
+    for (const d of repSnap.docs) {
+      const data = d.data();
+      const created = data.createdAt || '';
+      if (created && created < cutoffDate) {
+        await deleteDoc(doc(db, REPORTS_COLLECTION, d.id));
+        deletedReports++;
+      }
+    }
+
+    console.log(`[Firestore Cleanup] Đã dọn dẹp ${deletedRequests} phiếu yêu cầu cũ và ${deletedReports} biên bản cũ trước ngày 26/10/2026`);
+  } catch (err) {
+    console.warn('[Firestore Cleanup Warning]', err);
+  }
+
+  return { deletedRequests, deletedReports };
+};
+
