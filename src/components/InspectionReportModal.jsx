@@ -383,6 +383,7 @@ export default function InspectionReportModal({
 
   // Lãnh đạo các bên từ danh sách users
   const leadInvUser = (users || []).find(u => u.role === 'LEAD_INVESTOR') || { fullName: 'Ngô Quý Linh', position: 'Trưởng Ban QLDA', company: 'Công ty TNHH An Phú Cần Thơ' };
+  const leadSupUser = (users || []).find(u => u.role === 'LEAD_SUPERVISOR') || { fullName: 'Đinh Xuân Thám', position: 'Tư vấn giám sát trưởng', company: 'Công ty CP TVXD và TM GELICON' };
   const leadContractorUser = (users || []).find(u => u.role === 'CONTRACTOR' && (((u.position || '').toLowerCase().includes('chỉ huy')) || (u.fullName || '').includes('Chỉ Huy'))) 
     || { fullName: 'Trần Hữu Chỉ Huy', position: 'Chỉ huy trưởng', company: 'Công ty CP Xây dựng An Phú Gia' };
 
@@ -2484,7 +2485,7 @@ export default function InspectionReportModal({
                     </div>
 
                     <div style={{ marginTop: '10px' }}>
-                      <strong>4.3. Các ý kiến khác nếu có:</strong> <em>{(isCompleted && (reportState?.rectification || report?.rectification)) ? 'ĐVTC đã bổ sung đầy đủ hồ sơ kiểm định chất lượng' : isRectified ? 'ĐVTC đã bổ sung hồ sơ và chứng chỉ' : isRejected ? 'Chưa đủ chứng chỉ xuất xưởng hoặc kết quả thí nghiệm' : 'Không'}</em>
+                      <strong>4.3. Các ý kiến khác nếu có:</strong> <em>{isRejected ? 'Chưa đủ chứng chỉ xuất xưởng hoặc kết quả thí nghiệm' : 'Không'}</em>
                     </div>
                   </div>
                 </div>
@@ -2576,7 +2577,7 @@ export default function InspectionReportModal({
                       </strong>
                     </div>
 
-                    <div style={{ marginTop: '6px' }}><strong>4.3. Các ý kiến khác nếu có:</strong> <em>{(isCompleted && (reportState?.rectification || report?.rectification)) ? 'ĐVTC đã nắn chỉnh và khắc phục lỗi đạt yêu cầu TVGS' : isRectified ? 'ĐVTC đã nắn chỉnh và khắc phục lỗi' : isRejected ? 'Có tồn tại khiếm khuyết' : 'Không'}</em></div>
+                    <div style={{ marginTop: '6px' }}><strong>4.3. Các ý kiến khác nếu có:</strong> <em>{isRejected ? 'Có tồn tại khiếm khuyết' : 'Không'}</em></div>
                   </div>
                 </div>
               )}
