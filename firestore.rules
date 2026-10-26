@@ -2,8 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /inspection_requests/{docId} {
-      allow read, delete: if true;
-      allow create, update: if request.resource.data.createdAt >= '2026-10-26T00:26:00.000Z';
+      allow read, write: if true;
     }
     match /inspection_reports/{docId} {
       allow read, write: if true;
