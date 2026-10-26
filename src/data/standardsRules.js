@@ -477,7 +477,7 @@ export function loadStoredStandards() {
  * Tự động đọc từ danh mục Admin quản lý (nếu có) hoặc danh mục mặc định
  */
 export function getSuggestedStandards(taskOrMaterialName, inspectionType = 'WORK', customWorks = null, customMaterials = null, customMandatory = null) {
-  if (!taskOrMaterialName) return [];
+  if (!taskOrMaterialName || typeof taskOrMaterialName !== 'string') return [];
 
   let works = customWorks;
   let materials = customMaterials;
@@ -487,16 +487,17 @@ export function getSuggestedStandards(taskOrMaterialName, inspectionType = 'WORK
     materials = materials || stored.materials;
   }
 
-  const lower = taskOrMaterialName.toLowerCase();
-  const pool = inspectionType === 'MATERIAL' 
-    ? materials 
-    : [...works, ...materials];
+  const lower = String(taskOrMaterialName).toLowerCase();
+  const pool = (inspectionType === 'MATERIAL' 
+    ? (materials || []) 
+    : [...(works || []), ...(materials || [])]) || [];
 
-  let matched = pool.find(item => lower.includes(item.name.toLowerCase()));
+  let matched = pool.find(item => item?.name && lower.includes(String(item.name).toLowerCase()));
   if (!matched) {
     // Tìm kiếm mờ theo từng từ khóa
     matched = pool.find(item => {
-      const parts = item.name.toLowerCase().split(/[\s,]+/);
+      if (!item?.name) return false;
+      const parts = String(item.name).toLowerCase().split(/[\s,]+/);
       return parts.some(p => p.length > 2 && lower.includes(p));
     });
   }

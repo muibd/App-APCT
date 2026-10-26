@@ -383,8 +383,7 @@ export default function InspectionReportModal({
 
   // Lãnh đạo các bên từ danh sách users
   const leadInvUser = (users || []).find(u => u.role === 'LEAD_INVESTOR') || { fullName: 'Ngô Quý Linh', position: 'Trưởng Ban QLDA', company: 'Công ty TNHH An Phú Cần Thơ' };
-  const leadSupUser = (users || []).find(u => u.role === 'LEAD_SUPERVISOR') || { fullName: 'Đinh Xuân Thám', position: 'Tư vấn giám sát trưởng', company: 'Công ty CP TVXD và TM GELICON' };
-  const leadContractorUser = (users || []).find(u => u.role === 'CONTRACTOR' && (u.position?.toLowerCase().includes('chỉ huy') || u.fullName.includes('Chỉ Huy'))) 
+  const leadContractorUser = (users || []).find(u => u.role === 'CONTRACTOR' && (((u.position || '').toLowerCase().includes('chỉ huy')) || (u.fullName || '').includes('Chỉ Huy'))) 
     || { fullName: 'Trần Hữu Chỉ Huy', position: 'Chỉ huy trưởng', company: 'Công ty CP Xây dựng An Phú Gia' };
 
   // a) Đại diện Chủ đầu tư
