@@ -109,6 +109,8 @@ export async function clearAllAPCTStorage() {
     localStorage.removeItem('apct_requests_list');
     localStorage.removeItem('apct_reports_list');
     localStorage.removeItem('apct_notifications_list');
+    localStorage.removeItem('apct_daily_logs_v1');
+    localStorage.removeItem('apct_completion_reports_v1');
     await clearAllFromIndexedDB(STORE_REPORTS);
     await clearAllFromIndexedDB(STORE_REQUESTS);
     return true;

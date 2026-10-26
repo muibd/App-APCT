@@ -14,7 +14,8 @@ import {
   updateDoc, 
   deleteDoc,
   getDocs,
-  onSnapshot 
+  onSnapshot,
+  query 
 } from 'firebase/firestore';
 import { 
   INITIAL_REQUESTS, 
@@ -468,12 +469,13 @@ export const clearAllCloudInspectionData = async () => {
   if (!isFirebaseConfigured || !db) return true;
   try {
     const collectionsToClear = [REQUESTS_COLLECTION, REPORTS_COLLECTION, NOTIFICATIONS_COLLECTION, DAILY_LOGS_COLLECTION, COMPLETION_REPORTS_COLLECTION];
-    for (const colName of collectionsToClear) {
-      const colRef = collection(db, colName);
-      const snapshot = await getDocs(colRef);
-      const deletePromises = snapshot.docs.map(docSnap => deleteDoc(doc(db, colName, docSnap.id)));
-      await Promise.all(deletePromises);
-    }
+    await Promise.all(collectionsToClear.map(async (colName) => {
+      let snapshot = await getDocs(collection(db, colName));
+      while (!snapshot.empty) {
+        await Promise.all(snapshot.docs.map(docSnap => deleteDoc(doc(db, colName, docSnap.id))));
+        snapshot = await getDocs(collection(db, colName));
+      }
+    }));
     console.log('[Firestore Cloud] Đã dọn sạch toàn bộ phiếu, biên bản và nhật ký trên Firestore!');
     return true;
   } catch (err) {

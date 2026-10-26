@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   X, UserCircle, ShieldCheck, BellRing, LogOut, Building,
-  HardHat, Eye, Briefcase, CheckCircle2, ChevronRight, Sparkles, RotateCcw, Award, KeyRound, User
+  HardHat, Eye, Briefcase, CheckCircle2, ChevronRight, Sparkles, Award, KeyRound, User
 } from 'lucide-react';
 import { isIOSDevice, isStandalonePWA } from '../services/notificationService';
 
@@ -16,8 +16,7 @@ export default function MobileProfileSheet({
   onNavigateProfile,
   onLogout,
   pushPermissionGranted,
-  onEnablePush,
-  onResetAllData
+  onEnablePush
 }) {
   if (!isOpen) return null;
 
@@ -343,31 +342,6 @@ export default function MobileProfileSheet({
             );
           })()}
 
-          {/* NÚT XÓA DỮ LIỆU ĐỂ TEST LẠI TỪ ĐẦU */}
-          {/* {onResetAllData && (
-            <div style={{ marginTop: '14px' }}>
-              <button
-                type="button"
-                className="sheet-action-button"
-                style={{
-                  background: '#fef2f2',
-                  borderColor: '#fca5a5',
-                  color: '#dc2626'
-                }}
-                onClick={() => {
-                  onClose();
-                  onResetAllData();
-                }}
-              >
-                <RotateCcw size={18} />
-                <div style={{ flex: 1, textAlign: 'left' }}>
-                  <div style={{ fontWeight: 700, fontSize: '0.88rem' }}>Xóa Biên Bản & Test Lại Từ Đầu</div>
-                  <div style={{ fontSize: '0.74rem', color: '#991b1b' }}>Dọn sạch phiếu và biên bản trên toàn hệ thống</div>
-                </div>
-                <ChevronRight size={16} />
-              </button>
-            </div>
-          )} */}
 
           {/* NÚT ĐĂNG XUẤT */}
           <div style={{ marginTop: '20px', paddingBottom: '10px' }}>

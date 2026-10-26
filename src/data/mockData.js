@@ -11,7 +11,7 @@
 export const MOCK_USERS = [
   {
     "uid": "uid_admin_01",
-    "fullName": "S Chung",
+    "fullName": "Nguyễn Thị Kim Chung - Chủ tịch HĐQT",
     "role": "ADMIN",
     "company": "Chủ Đầu Tư APCT",
     "position": "Chủ Đầu Tư (CĐT)",
@@ -23,7 +23,7 @@ export const MOCK_USERS = [
   },
   {
     "uid": "uid_admin_02",
-    "fullName": "S Vũ",
+    "fullName": "Vương Xuân Vũ - Giám đốc",
     "role": "ADMIN",
     "company": "Chủ Đầu Tư APCT",
     "position": "Chủ Đầu Tư (CĐT)",
@@ -35,7 +35,7 @@ export const MOCK_USERS = [
   },
   {
     "uid": "uid_admin_03",
-    "fullName": "Khánh",
+    "fullName": "Phạm Minh Khánh - Phó giám đốc",
     "role": "ADMIN",
     "company": "Chủ Đầu Tư APCT",
     "position": "Chủ Đầu Tư (CĐT)",
@@ -744,325 +744,11 @@ export const INITIAL_REPORTS = [];
 
 export const INITIAL_NOTIFICATIONS = [];
 
-export const INITIAL_DAILY_LOGS = [
-  {
-    id: "log_mock_01",
-    logNumber: "01/NKTC-APG",
-    bookNumber: "Quyển số: 01/2026",
-    date: "2026-10-21",
-    cityDateFormatted: "Cần Thơ, Ngày 21 tháng 10 năm 2026",
-    projectName: "Đầu tư xây dựng nhà ở Phường Thường Thạnh- An Phú Eco City",
-    buildingName: "Chung cư nhà ở xã hội 2",
-    itemName: "Thi công phần kết cấu – Tòa A và Tòa B (Gói thầu số 02)",
-    location: "Phường Thường Thạnh - Quận Cái Răng – TP. Cần Thơ.",
-    investorName: "Công ty TNHH An Phú Cần Thơ",
-    supervisorName: "Công ty CP Tư vấn xây dựng và Thương mại Gelicon",
-    contractorName: "Công ty CP Xây dựng An Phú Gia",
-    representatives: {
-      investor: {
-        representative: "Ngô Quý Linh",
-        position: "Trưởng Ban QLDA"
-      },
-      supervisor: {
-        representative: "Đinh Xuân Thám",
-        position: "Tư vấn giám sát trưởng",
-        officer: "Đỗ Văn Trường",
-        officerPosition: "Cán bộ TVGS"
-      },
-      contractor: {
-        leader: "Phạm Thanh Nhàn",
-        leaderPosition: "Chỉ huy trưởng công trường",
-        createdBy: "Phạm Thanh Nhàn",
-        createdPosition: "Chỉ huy trưởng"
-      }
-    },
-    weather: {
-      morning: "NẮNG",
-      morningHours: "7h - 11h",
-      afternoon: "NẮNG",
-      afternoonHours: "13h - 15h",
-      evening: "TẠNH RÁO",
-      eveningHours: "18h - 24h",
-      note: "Thời tiết khô ráo, thuận lợi cho công tác bê tông."
-    },
-    manpower: {
-      technical: "Phạm Thanh Nhàn (Chỉ huy trưởng)",
-      workers: "38 công nhân (Đội ván khuôn: 16 người, Đội cốt thép: 14 người, Đội bê tông: 8 người)",
-      otherPersonnel: [
-        { uid: "uid_dvtc_apg_02", name: "Nguyễn Hoàng Bách", position: "Kỹ thuật hiện trường" }
-      ]
-    },
-    equipment: "01 máy vận thăng nâng hàng 1000kg, 02 máy trộn bê tông 350L, 04 máy đầm dùi, 01 cần trục tháp 50m.",
-    workContent: "Nghiệm thu ván khuôn cốt thép dầm sàn tầng 4 Tòa A trục 1-8; Đổ bê tông dầm sàn diện tích 380m2; Bảo dưỡng bê tông cột vách tầng 3.",
-    safetyEnvironment: {
-      status: "Bình thường",
-      notes: "Công nhân tuân thủ nghiêm ngặt bảo hộ lao động; Lan can an toàn mép sàn được lắp đặt đầy đủ."
-    },
-    supervisorComments: "ĐVTC thi công đảm bảo biện pháp an toàn và kỹ thuật được duyệt. Yêu cầu duy trì tưới nước giữ ẩm bảo dưỡng sàn bê tông liên tục trong 7 ngày đầu.",
-    investorComments: "Thống nhất với đánh giá của TVGS. Đề nghị nhà thầu tập trung vật tư cho phân đoạn tiếp theo.",
-    contractorComments: "Đơn vị thi công nghiêm túc tiếp thu ý kiến của TVGS và CĐT, bố trí nhân lực tưới ẩm bảo dưỡng đúng quy trình.",
-    status: "CONFIRMED",
-    signatures: {
-      contractor: {
-        signed: true,
-        name: "Phạm Thanh Nhàn",
-        position: "Chỉ huy trưởng",
-        signedAt: "2026-10-21T10:30:00.000Z"
-      },
-      supervisor: {
-        signed: true,
-        name: "Đinh Xuân Thám",
-        position: "Tư vấn giám sát trưởng",
-        signedAt: "2026-10-21T16:00:00.000Z"
-      },
-      investor: {
-        signed: true,
-        name: "Ngô Quý Linh",
-        position: "Trưởng Ban QLDA",
-        signedAt: "2026-10-21T16:05:00.000Z"
-      }
-    },
-    createdAt: "2026-10-21T07:30:00.000Z",
-    updatedAt: "2026-10-21T16:05:00.000Z",
-    createdByUid: "uid_dvtc_apg_01",
-    createdByName: "Phạm Thanh Nhàn",
-    contractorCompany: "Công ty CP Xây dựng An Phú Gia"
-  }
-];
+export const INITIAL_DAILY_LOGS = [];
 
-export const INITIAL_COMPLETION_REPORTS = [
-  {
-    id: "comp_mock_01",
-    completionType: "STAGE",
-    reportNumber: "02/BBNT-GDTC",
-    referenceDocNumber: "TLCC-02/2026/APCT",
-    date: "2026-10-20",
-    cityDate: "Cần Thơ, Ngày 20 tháng 10 năm 2026",
-    projectName: "Đầu tư xây dựng nhà ở Phường Thường Thạnh-An Phú Eco City",
-    buildingName: "Chung cư nhà ở xã hội 2",
-    itemName: "Thi công phần kết cấu – Tòa A và Tòa B",
-    location: "Phường Thường Thạnh - Quận Cái Răng – Thành phố Cần Thơ",
-    inspectionObject: "Nghiệm thu hoàn thành giai đoạn thi công: Phần kết cấu dầm sàn từ Tầng 1 đến Tầng 5 Tòa A và Tòa B",
-    contractNumber: "0203/HĐXD/APCT-GHVP ký ngày 02 tháng 03 năm 2026",
-    designApprovedDate: "15/01/2026",
-    paymentBatch: "02",
-    stageName: "Phần kết cấu dầm sàn từ Tầng 1 đến Tầng 5 Tòa A và Tòa B",
-    mainMaterials: "Bê tông thương phẩm mác M300, M350; Cốt thép CB400-V, CB500-V Hòa Phát; Xi măng Insee; Cốp pha định hình phủ phim.",
-    standardsApplied: [
-      "TCVN 4453:1995: Kết cấu bê tông và bê tông cốt thép toàn khối - Quy phạm thi công và nghiệm thu",
-      "TCVN 5637:1991: Quản lý chất lượng xây lắp công trình xây dựng - Nguyên tắc cơ bản",
-      "QCVN 18:2021/BXD: Quy chuẩn kỹ thuật quốc gia về An toàn trong thi công xây dựng",
-      "TCVN 9398:2012: Công tác trắc địa trong xây dựng công trình - Yêu cầu chung"
-    ],
-    time: {
-      startTime: "08h30, ngày 20/10/2026",
-      endTime: "11h00, ngày 20/10/2026",
-      place: "Hiện trường Tòa A và Tòa B - Chung cư nhà ở xã hội 2"
-    },
-    representatives: {
-      investor: {
-        company: "Công ty TNHH An Phú Cần Thơ",
-        leadName: "Ngô Quý Linh",
-        leadPosition: "Trưởng Ban QLDA",
-        officerName: "Nguyễn Thành Trung",
-        officerPosition: "Cán bộ ban QLDA"
-      },
-      supervisor: {
-        company: "Công ty CP Tư vấn Xây dựng và Thương mại GELICON",
-        leadName: "Đinh Xuân Thám",
-        leadPosition: "Tư vấn giám sát trưởng",
-        officerName: "Đỗ Văn Trường",
-        officerPosition: "Cán bộ TVGS"
-      },
-      contractor: {
-        company: "Công ty CP Xây dựng An Phú Gia",
-        leadName: "Phạm Thanh Nhàn",
-        leadPosition: "Chỉ huy trưởng công trường",
-        officerName: "Nguyễn Hoàng Bách",
-        officerPosition: "Kỹ thuật hiện trường"
-      }
-    },
-    status: "COMPLETED",
-    signatures: {
-      contractor: {
-        signed: true,
-        name: "Phạm Thanh Nhàn",
-        position: "Chỉ huy trưởng",
-        signedAt: "2026-10-20T08:30:00.000Z"
-      },
-      supervisor: {
-        signed: true,
-        name: "Đinh Xuân Thám",
-        position: "Tư vấn giám sát trưởng",
-        signedAt: "2026-10-20T10:45:00.000Z"
-      },
-      investor: {
-        signed: true,
-        name: "Ngô Quý Linh",
-        position: "Trưởng Ban QLDA",
-        signedAt: "2026-10-20T11:15:00.000Z"
-      }
-    },
-    createdAt: "2026-10-20T08:00:00.000Z",
-    updatedAt: "2026-10-20T11:15:00.000Z",
-    createdByUid: "uid_dvtc_apg_01",
-    createdByName: "Phạm Thanh Nhàn"
-  },
-  {
-    id: "comp_mock_02",
-    completionType: "PROJECT_USE",
-    reportNumber: "01/BBNT-HTCT",
-    referenceDocNumber: "TLCC-01/2026/APCT",
-    date: "2026-10-22",
-    cityDate: "Cần Thơ, Ngày 22 tháng 10 năm 2026",
-    projectName: "Đầu tư xây dựng nhà ở Phường Thường Thạnh-An Phú Eco City",
-    buildingName: "Dãy nhà phố liền kề thương mại LK-01",
-    itemName: "Thi công phần xây thô và hoàn thiện mặt ngoài",
-    location: "Phường Thường Thạnh - Quận Cái Răng – Thành phố Cần Thơ",
-    inspectionObject: "Nghiệm thu hoàn thành hạng mục công trình đưa vào sử dụng: Toàn bộ hạng mục Xây thô & Hoàn thiện mặt ngoài Dãy LK-01 (Căn 01 đến 18)",
-    contractNumber: "0203/HĐXD/APCT-GHVP",
-    designApprovedDate: "15/01/2026",
-    designChanges: "Được sự chấp thuận của CĐT và TVTK tại biên bản xử lý hiện trường số 01/BB-XLHT về cốt cao độ vỉa hè",
-    authorityApprovals: "Biên bản kiểm tra nghiệm thu PCCC số 128/PCCC-CT của Phòng Cảnh sát PCCC TP. Cần Thơ; Báo cáo giám sát môi trường đạt tiêu chuẩn",
-    standardsApplied: [
-      "TCVN 4055:2012: Công trình xây dựng - Tổ chức thi công",
-      "TCVN 5637:1991: Quản lý chất lượng xây lắp công trình xây dựng - Nguyên tắc cơ bản",
-      "QCVN 18:2021/BXD: Quy chuẩn kỹ thuật quốc gia về An toàn trong thi công xây dựng"
-    ],
-    time: {
-      startTime: "09h00, ngày 22/10/2026",
-      endTime: "11h30, ngày 22/10/2026",
-      place: "Hiện trường Dãy LK-01 - Dự án An Phú Eco City"
-    },
-    representatives: {
-      investor: {
-        company: "Công ty TNHH An Phú Cần Thơ",
-        leadName: "Ngô Quý Linh",
-        leadPosition: "Trưởng Ban QLDA",
-        officerName: "Nguyễn Thành Trung",
-        officerPosition: "Cán bộ ban QLDA"
-      },
-      designer: {
-        company: "Công ty CP Tư vấn Thiết kế Xây dựng APCT",
-        leadName: "KTS. Lê Quang Thiết Kế",
-        leadPosition: "Giám đốc thiết kế",
-        officerName: "KTS. Trần Văn Vẽ",
-        officerPosition: "Chủ trì kiến trúc"
-      },
-      supervisor: {
-        company: "Công ty CP Tư vấn Xây dựng và Thương mại GELICON",
-        leadName: "Đinh Xuân Thám",
-        leadPosition: "Tư vấn giám sát trưởng",
-        officerName: "Đỗ Văn Trường",
-        officerPosition: "Cán bộ TVGS"
-      },
-      contractor: {
-        company: "Công ty CP Xây dựng An Phú Gia",
-        leadName: "Phạm Thanh Nhàn",
-        leadPosition: "Chỉ huy trưởng công trường",
-        officerName: "Nguyễn Hoàng Bách",
-        officerPosition: "Kỹ thuật hiện trường"
-      }
-    },
-    status: "PENDING_APPROVAL",
-    signatures: {
-      contractor: {
-        signed: true,
-        name: "Phạm Thanh Nhàn",
-        position: "Chỉ huy trưởng",
-        signedAt: "2026-10-22T08:30:00.000Z"
-      },
-      designer: {
-        signed: true,
-        name: "KTS. Lê Quang Thiết Kế",
-        position: "Giám đốc thiết kế",
-        signedAt: "2026-10-22T09:00:00.000Z"
-      },
-      supervisor: {
-        signed: false,
-        name: "Đinh Xuân Thám",
-        position: "Tư vấn giám sát trưởng",
-        signedAt: null
-      },
-      investor: {
-        signed: false,
-        name: "Ngô Quý Linh",
-        position: "Trưởng Ban QLDA",
-        signedAt: null
-      }
-    },
-    createdAt: "2026-10-22T08:30:00.000Z",
-    updatedAt: "2026-10-22T09:00:00.000Z",
-    createdByUid: "uid_dvtc_apg_01",
-    createdByName: "Phạm Thanh Nhàn"
-  },
-  {
-    id: "comp_mock_03",
-    completionType: "DOSSIER",
-    reportNumber: "01/BBKT-HSHNT",
-    date: "2026-10-21",
-    cityDate: "Cần Thơ, Ngày 21 tháng 10 năm 2026",
-    projectName: "Đầu tư xây dựng nhà ở Phường Thường Thạnh-An Phú Eco City",
-    buildingName: "Chung cư nhà ở xã hội 2",
-    itemName: "Thi công phần kết cấu – Tòa A và Tòa B",
-    location: "Phường Thường Thạnh - Quận Cái Răng – Thành phố Cần Thơ",
-    inspectionObject: "Kiểm tra hồ sơ nghiệm thu chất lượng giai đoạn thi công xây dựng hoàn thành phần kết cấu dầm sàn Tòa A-B",
-    stageName: "phần kết cấu dầm sàn từ Tầng 1 đến Tầng 5",
-    time: {
-      startTime: "14h00, ngày 21/10/2026",
-      endTime: "16h30, ngày 21/10/2026",
-      place: "Văn phòng Ban Điều hành Dự án An Phú Eco City"
-    },
-    representatives: {
-      investor: {
-        company: "Công ty TNHH An Phú Cần Thơ",
-        leadName: "Ngô Quý Linh",
-        leadPosition: "Trưởng Ban QLDA",
-        officerName: "Nguyễn Thành Trung",
-        officerPosition: "Cán bộ ban QLDA"
-      },
-      supervisor: {
-        company: "Công ty CP Tư vấn Xây dựng và Thương mại GELICON",
-        leadName: "Đinh Xuân Thám",
-        leadPosition: "Tư vấn giám sát trưởng",
-        officerName: "Đỗ Văn Trường",
-        officerPosition: "Cán bộ TVGS"
-      },
-      contractor: {
-        company: "Công ty CP Xây dựng An Phú Gia",
-        leadName: "Phạm Thanh Nhàn",
-        leadPosition: "Chỉ huy trưởng công trường",
-        officerName: "Nguyễn Hoàng Bách",
-        officerPosition: "Kỹ thuật hiện trường"
-      }
-    },
-    status: "COMPLETED",
-    signatures: {
-      contractor: {
-        signed: true,
-        name: "Phạm Thanh Nhàn",
-        position: "Chỉ huy trưởng",
-        signedAt: "2026-10-21T14:00:00.000Z"
-      },
-      supervisor: {
-        signed: true,
-        name: "Đinh Xuân Thám",
-        position: "Tư vấn giám sát trưởng",
-        signedAt: "2026-10-21T16:00:00.000Z"
-      },
-      investor: {
-        signed: true,
-        name: "Ngô Quý Linh",
-        position: "Trưởng Ban QLDA",
-        signedAt: "2026-10-21T16:20:00.000Z"
-      }
-    },
-    createdAt: "2026-10-21T14:00:00.000Z",
-    updatedAt: "2026-10-21T16:20:00.000Z",
-    createdByUid: "uid_dvtc_apg_01",
-    createdByName: "Phạm Thanh Nhàn"
-  }
-];
+export const INITIAL_COMPLETION_REPORTS = [];
+export const MOCK_COMPLETION_REPORTS = [];
+
 
 
 

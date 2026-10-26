@@ -104,7 +104,7 @@ const REPORTS_STORAGE_KEY = 'apct_reports_list';
 const DAILY_LOGS_STORAGE_KEY = 'apct_daily_logs_v1';
 const COMPLETION_REPORTS_STORAGE_KEY = 'apct_completion_reports_v1';
 const DATA_VERSION_KEY = 'apct_data_version';
-const CURRENT_DATA_VERSION = '20261020_excel_users_v2';
+const CURRENT_DATA_VERSION = '20261026_clean_v3';
 
 // Tự động dọn dẹp các biên bản/phiếu cũ từ phiên kiểm thử trước để bắt đầu sạch sẽ
 if (typeof window !== 'undefined' && window.localStorage) {
@@ -114,8 +114,8 @@ if (typeof window !== 'undefined' && window.localStorage) {
       localStorage.removeItem(REQUESTS_STORAGE_KEY);
       localStorage.removeItem(REPORTS_STORAGE_KEY);
       localStorage.removeItem(NOTIF_STORAGE_KEY);
-      localStorage.removeItem(USERS_STORAGE_KEY);
-      localStorage.removeItem('apct_logged_user');
+      localStorage.removeItem(DAILY_LOGS_STORAGE_KEY);
+      localStorage.removeItem(COMPLETION_REPORTS_STORAGE_KEY);
       localStorage.setItem(DATA_VERSION_KEY, CURRENT_DATA_VERSION);
       clearAllFromIndexedDB('requests');
       clearAllFromIndexedDB('reports');
@@ -182,14 +182,6 @@ export default function App() {
             const existingIdx = merged.findIndex(u => u.uid === m.uid);
             if (existingIdx === -1) {
               merged.push(m);
-            } else if (m.uid.startsWith('uid_admin_') || m.uid.startsWith('uid_cdt_')) {
-              merged[existingIdx] = {
-                ...merged[existingIdx],
-                fullName: m.fullName,
-                company: m.company,
-                position: m.position,
-                role: m.role
-              };
             }
           });
           return merged.map(u => {
@@ -216,7 +208,7 @@ export default function App() {
       const saved = localStorage.getItem(REQUESTS_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       }
     } catch (e) {
       console.warn('Lỗi đọc requests từ localStorage:', e);
@@ -229,7 +221,7 @@ export default function App() {
       const saved = localStorage.getItem(REPORTS_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           const sanitized = parsed.map(sanitizeReportData);
           safeSaveLocalStorage(REPORTS_STORAGE_KEY, sanitized);
           return sanitized;
@@ -246,7 +238,7 @@ export default function App() {
       const saved = localStorage.getItem(DAILY_LOGS_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       }
     } catch (e) {
       console.warn('Lỗi đọc dailyLogs từ localStorage:', e);
@@ -259,7 +251,7 @@ export default function App() {
       const saved = localStorage.getItem(COMPLETION_REPORTS_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       }
     } catch (e) {
       console.warn('Lỗi đọc completionReports từ localStorage:', e);
@@ -609,28 +601,28 @@ export default function App() {
     });
   }, []);
 
-  // 1. Đồng bộ Real-Time Phiếu yêu cầu từ Firestore (Lấy Firestore làm chuẩn, chống đè mất ảnh cục bộ)
+  // 1. Đồng bộ Real-Time Phiếu yêu cầu từ Firestore (Lấy Firestore làm chuẩn)
   useEffect(() => {
     const unsubscribe = subscribeToRequests((cloudRequests) => {
       setRequests(prev => {
+        if (!Array.isArray(cloudRequests)) return prev;
         const map = new Map();
 
         // Nạp danh sách từ Firestore bằng ID duy nhất
-        if (Array.isArray(cloudRequests)) {
-          cloudRequests.forEach(item => {
-            const key = item.id;
-            if (key) map.set(key, item);
-          });
-        }
+        cloudRequests.forEach(item => {
+          const key = item.id;
+          if (key) map.set(key, item);
+        });
 
-        // BẢO VỆ DỮ LIỆU CỤC BỘ: Giữ lại TẤT CẢ bản ghi trong `prev` chưa có trên cloud
-        prev.forEach(localItem => {
-          const key = localItem.id;
+        // Chỉ giữ lại bản ghi nháp cục bộ đang chờ đồng bộ offline
+        (prev || []).forEach(localItem => {
+          const key = localItem?.id;
           if (!key) return;
           const cloudItem = map.get(key);
           if (!cloudItem) {
-            map.set(key, localItem);
-            saveInspectionRequest(localItem).catch(console.warn);
+            if (localItem._isOfflineDraft) {
+              map.set(key, localItem);
+            }
           } else {
             const localHasRectification = localItem.status === 'RECTIFIED' || Boolean(localItem.rectificationPhotos?.length) || Boolean(localItem.rectificationNotes);
             const cloudHasRectification = cloudItem.status === 'RECTIFIED' || Boolean(cloudItem.rectificationPhotos?.length) || Boolean(cloudItem.rectificationNotes);
@@ -660,24 +652,24 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = subscribeToReports((cloudReports) => {
       setReports(prev => {
+        if (!Array.isArray(cloudReports)) return prev;
         const map = new Map();
 
-        // Nạp danh sách từ Firestore bằng ID duy nhất (Tránh ghi đè vì cùng mã WA)
-        if (Array.isArray(cloudReports)) {
-          cloudReports.forEach(item => {
-            const key = item.id;
-            if (key) map.set(key, sanitizeReportData(item));
-          });
-        }
+        // Nạp danh sách từ Firestore bằng ID duy nhất
+        cloudReports.forEach(item => {
+          const key = item.id;
+          if (key) map.set(key, sanitizeReportData(item));
+        });
 
-        // BẢO VỆ DỮ LIỆU CỤC BỘ: Giữ lại TẤT CẢ biên bản trong `prev` chưa có trên cloud
-        prev.forEach(localItem => {
-          const key = localItem.id;
+        // Chỉ giữ lại bản ghi nháp cục bộ đang chờ đồng bộ offline
+        (prev || []).forEach(localItem => {
+          const key = localItem?.id;
           if (!key) return;
           const cloudItem = map.get(key);
           if (!cloudItem) {
-            map.set(key, localItem);
-            saveInspectionReport(localItem).catch(console.warn);
+            if (localItem._isOfflineDraft) {
+              map.set(key, localItem);
+            }
           } else {
             const localHasRectification = localItem.status === 'RECTIFIED' || Boolean(localItem.rectification?.photos?.length);
             const cloudHasRectification = cloudItem.status === 'RECTIFIED' || Boolean(cloudItem.rectification?.photos?.length);
@@ -746,6 +738,20 @@ export default function App() {
         } catch (e) {
           console.warn('Lỗi lưu users vào cache:', e);
         }
+
+        // Tự động đồng bộ với currentUser nếu thông tin tài khoản đang đăng nhập được cập nhật
+        setCurrentUser(curr => {
+          if (!curr) return curr;
+          const fresh = cloudUsers.find(u => u.uid === curr.uid);
+          if (fresh) {
+            const updated = { ...curr, ...fresh };
+            try {
+              localStorage.setItem('apct_logged_user', JSON.stringify(updated));
+            } catch (e) {}
+            return updated;
+          }
+          return curr;
+        });
       } else if (isFirebaseConfigured) {
         // Tự động seed lên Firestore nếu trên cloud chưa có
         seedOfficialUsersToCloud(MOCK_USERS).catch(console.warn);
@@ -758,15 +764,13 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = subscribeToDailyLogs((cloudLogs) => {
       setDailyLogs(prev => {
-        if (!cloudLogs || cloudLogs.length === 0) {
-          return prev && prev.length > 0 ? prev : (INITIAL_DAILY_LOGS || []);
-        }
+        if (!Array.isArray(cloudLogs)) return prev;
         const map = new Map();
         cloudLogs.forEach(item => {
-          map.set(item.id, item);
+          if (item?.id) map.set(item.id, item);
         });
         (prev || []).forEach(item => {
-          if (!map.has(item.id)) {
+          if (item?._isOfflineDraft && !map.has(item.id)) {
             map.set(item.id, item);
           }
         });
@@ -783,15 +787,13 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = subscribeToCompletionReports((cloudReports) => {
       setCompletionReports(prev => {
-        if (!cloudReports || cloudReports.length === 0) {
-          return prev && prev.length > 0 ? prev : (INITIAL_COMPLETION_REPORTS || []);
-        }
+        if (!Array.isArray(cloudReports)) return prev;
         const map = new Map();
         cloudReports.forEach(item => {
-          map.set(item.id, item);
+          if (item?.id) map.set(item.id, item);
         });
         (prev || []).forEach(item => {
-          if (!map.has(item.id)) {
+          if (item?._isOfflineDraft && !map.has(item.id)) {
             map.set(item.id, item);
           }
         });
@@ -857,6 +859,7 @@ export default function App() {
 
   useEffect(() => {
     if (!requests || !reports) return;
+    if (requests.length === 0 || reports.length === 0) return;
     if (isAutoHealingRef.current) return;
 
     let requestsNeedUpdate = false;
@@ -1093,6 +1096,7 @@ export default function App() {
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [selectedReport, setSelectedReport] = useState(null);
   const [initialOpenRectify, setInitialOpenRectify] = useState(false);
+  const [reportInitialTab, setReportInitialTab] = useState('INVITATION');
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isMobileProfileOpen, setIsMobileProfileOpen] = useState(false);
   const [isCreateDailyLogModalOpen, setIsCreateDailyLogModalOpen] = useState(false);
@@ -1340,19 +1344,43 @@ export default function App() {
     }
   };
 
-  const handleToggleUserStatus = (userId) => {
-    setUsers(prev => prev.map(u => {
-      if (u.uid === userId) {
-        const nextStatus = (u.status || 'ACTIVE') === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-        return { ...u, status: nextStatus };
+  const handleToggleUserStatus = async (userId) => {
+    let updatedTarget = null;
+    setUsers(prev => {
+      const nextUsers = prev.map(u => {
+        if (u.uid === userId) {
+          const nextStatus = (u.status || 'ACTIVE') === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+          updatedTarget = { ...u, status: nextStatus };
+          return updatedTarget;
+        }
+        return u;
+      });
+      safeSaveLocalStorage(USERS_STORAGE_KEY, nextUsers);
+      return nextUsers;
+    });
+    if (updatedTarget) {
+      try {
+        await saveSystemUser(updatedTarget);
+      } catch (e) {
+        console.warn('Lỗi lưu trạng thái user lên Firestore:', e);
       }
-      return u;
-    }));
+    }
   };
 
   // Update user role in Admin Portal
-  const handleUpdateUserRole = (uid, newRole) => {
-    setUsers(prev => prev.map(u => u.uid === uid ? { ...u, role: newRole } : u));
+  const handleUpdateUserRole = async (uid, newRole) => {
+    let updatedTarget = null;
+    setUsers(prev => {
+      const nextUsers = prev.map(u => {
+        if (u.uid === uid) {
+          updatedTarget = { ...u, role: newRole };
+          return updatedTarget;
+        }
+        return u;
+      });
+      safeSaveLocalStorage(USERS_STORAGE_KEY, nextUsers);
+      return nextUsers;
+    });
     if (currentUser?.uid === uid) {
       const updated = { ...currentUser, role: newRole };
       setCurrentUser(updated);
@@ -1362,14 +1390,20 @@ export default function App() {
         console.warn(e);
       }
     }
+    if (updatedTarget) {
+      try {
+        await saveSystemUser(updatedTarget);
+      } catch (e) {
+        console.warn('Lỗi lưu role user lên Firestore:', e);
+      }
+    }
   };
 
-  // Đồng bộ toàn bộ 39 cán bộ lên Google Firestore Cloud
+  // Đồng bộ toàn bộ danh sách cán bộ hiện có lên Google Firestore Cloud
   const handleSyncAllUsersToCloud = async () => {
     try {
-      await seedOfficialUsersToCloud(MOCK_USERS);
-      setUsers(MOCK_USERS);
-      safeSaveLocalStorage(USERS_STORAGE_KEY, MOCK_USERS);
+      await seedOfficialUsersToCloud(users);
+      safeSaveLocalStorage(USERS_STORAGE_KEY, users);
       return true;
     } catch (e) {
       console.warn('Lỗi đồng bộ cán bộ lên Cloud:', e);
@@ -1461,15 +1495,19 @@ export default function App() {
       cancelText: 'Hủy Bỏ',
       onConfirm: async () => {
         try {
-          await clearAllCloudInspectionData();
-          await clearAllAPCTStorage();
+          isAutoHealingRef.current = true;
           setRequests([]);
           setReports([]);
           setNotifications([]);
           setDailyLogs([]);
           setCompletionReports([]);
+          await clearAllAPCTStorage();
           try { localStorage.removeItem(DAILY_LOGS_STORAGE_KEY); } catch (e) {}
           try { localStorage.removeItem(COMPLETION_REPORTS_STORAGE_KEY); } catch (e) {}
+          await clearAllCloudInspectionData();
+          setTimeout(() => {
+            isAutoHealingRef.current = false;
+          }, 1000);
           showAlert({
             type: 'success',
             title: 'Đã Xóa Thành Công!',
@@ -1477,6 +1515,7 @@ export default function App() {
             confirmText: 'Bắt đầu ngay'
           });
         } catch (err) {
+          isAutoHealingRef.current = false;
           console.error("Lỗi xóa dữ liệu:", err);
           showAlert({
             type: 'danger',
@@ -1942,7 +1981,7 @@ export default function App() {
   };
 
   // Khởi tạo biên bản nghiệm thu mới hoặc mở biên bản hiện có
-  const handleOpenOrCreateReport = async (reportIdOrReqId, isCreateNew = false) => {
+  const handleOpenOrCreateReport = async (reportIdOrReqId, isCreateNew = false, defaultTab = 'INVITATION') => {
     // 1. Kiểm tra xem đã có report nào khớp với reportIdOrReqId hay chưa
     let rep = reports.find(r => r.id === reportIdOrReqId || r.requestId === reportIdOrReqId);
     let targetReq = requests.find(r => r.id === reportIdOrReqId || r.reportId === reportIdOrReqId);
@@ -2059,6 +2098,7 @@ export default function App() {
       }
 
       setSelectedReport(rep);
+      setReportInitialTab(defaultTab);
       return;
     }
 
@@ -2203,6 +2243,7 @@ export default function App() {
     }
 
     setSelectedReport(newReport);
+    setReportInitialTab(defaultTab);
   };
 
   // Mở modal điều chuyển cán bộ TVGS hoặc CĐT cho phiếu
@@ -3440,6 +3481,7 @@ export default function App() {
 
     setSelectedReport(repWithRecipients);
     setInitialOpenRectify(Boolean(options.openRectify));
+    setReportInitialTab(options.initialTab || (options.openRectify ? 'DEFECTS' : 'INVITATION'));
   };
 
 
@@ -3751,7 +3793,6 @@ export default function App() {
         onOpenAdmin={() => setIsAdminModalOpen(true)}
         onOpenProfile={() => setActiveTab('PROFILE')}
         onLogout={handleLogout}
-        onResetAllData={handleResetAllData}
       />
 
       {/* PUSH NOTIFICATION TOAST POPUP */}
@@ -4549,41 +4590,33 @@ export default function App() {
                           </div>
                         </div>
 
-                        {/* NÚT HÀNH ĐỘNG CHUẨN NGHIỆP VỤ */}
-                        <div className="card-actions-row">
-                          <button 
-                            className="btn-secondary" 
-                            onClick={() => setSelectedRequest(req)}
-                          >
-                            <FileText size={16} />
-                            <span>{isCancelled ? 'Xem Phiếu (Đã Hủy)' : 'Phiếu Yêu Cầu'}</span>
-                          </button>
-
+                        {/* NÚT HÀNH ĐỘNG CHUẨN NGHIỆP VỤ: MỞ XEM HỒ SƠ TỔNG HỢP (PHIẾU YÊU CẦU & BIÊN BẢN) */}
+                        <div className="card-actions-row" style={{ justifyContent: 'flex-end' }}>
                           {isCancelled ? (
                             <button 
                               className="btn-secondary" 
-                              style={{ color: '#64748b' }}
+                              style={{ color: '#64748b', padding: '7px 18px', fontSize: '0.86rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                               onClick={() => {
                                 if (matchingRep) {
-                                  handleOpenReport(matchingRep);
+                                  handleOpenReport(matchingRep, { initialTab: 'INVITATION' });
                                 } else {
-                                  handleOpenOrCreateReport(req.reportId || req.id, false);
+                                  handleOpenOrCreateReport(req.reportId || req.id, false, 'INVITATION');
                                 }
                               }}
                             >
                               <Eye size={16} />
-                              <span>Xem Biên Bản</span>
+                              <span>Xem</span>
                             </button>
                           ) : isRejected ? (
                             currentRole === 'CONTRACTOR' ? (
                               <button 
                                 className="btn-primary" 
-                                style={{ background: '#7c3aed' }}
+                                style={{ background: '#7c3aed', padding: '7px 18px', fontSize: '0.86rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                                 onClick={() => {
                                   if (matchingRep) {
-                                    handleOpenReport(matchingRep, { openRectify: true });
+                                    handleOpenReport(matchingRep, { openRectify: true, initialTab: 'DEFECTS' });
                                   } else {
-                                    handleOpenOrCreateReport(req.reportId || req.id, false);
+                                    handleOpenOrCreateReport(req.reportId || req.id, false, 'DEFECTS');
                                   }
                                 }}
                               >
@@ -4593,30 +4626,30 @@ export default function App() {
                             ) : (
                               <button 
                                 className="btn-secondary" 
-                                style={{ borderColor: '#fca5a5', color: '#b91c1c', background: '#fff' }}
-                                onClick={() => handleOpenOrCreateReport(req.reportId || req.id, false)}
+                                style={{ borderColor: '#fca5a5', color: '#b91c1c', background: '#fff', padding: '7px 18px', fontSize: '0.86rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                                onClick={() => handleOpenOrCreateReport(req.reportId || req.id, false, 'DEFECTS')}
                               >
                                 <AlertTriangle size={16} color="#dc2626" />
-                                <span>Xem Biên Bản Lỗi</span>
+                                <span>Xem</span>
                               </button>
                             )
                           ) : isRectified ? (
                             <button 
                               className="btn-primary" 
-                              style={{ background: '#7c3aed' }}
-                              onClick={() => handleOpenOrCreateReport(req.reportId || req.id, false)}
+                              style={{ background: '#7c3aed', padding: '7px 18px', fontSize: '0.86rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                              onClick={() => handleOpenOrCreateReport(req.reportId || req.id, false, 'RECTIFIED')}
                             >
                               <RotateCcw size={16} />
-                              <span>{(currentRole === 'CONTRACTOR' || currentRole === 'ADMIN') ? 'Xem Biên Bản Đã Sửa' : 'Nghiệm Thu Lại Sau Sửa'}</span>
+                              <span>Xem</span>
                             </button>
                           ) : (
                             <button 
                               className="btn-primary" 
-                              style={{ background: '#059669' }}
-                              onClick={() => handleOpenOrCreateReport(req.reportId || req.id, false)}
+                              style={{ background: '#059669', padding: '7px 20px', fontSize: '0.88rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                              onClick={() => handleOpenOrCreateReport(req.reportId || req.id, false, 'INVITATION')}
                             >
-                              <Award size={16} />
-                              <span>Xem Biên Bản Nghiệm Thu</span>
+                              <Eye size={16} />
+                              <span>Xem</span>
                             </button>
                           )}
                         </div>
@@ -4700,7 +4733,6 @@ export default function App() {
         onLogout={handleLogout}
         pushPermissionGranted={pushPermissionGranted}
         onEnablePush={handleEnablePush}
-        onResetAllData={handleResetAllData}
       />
 
       {/* MODALS */}
@@ -4741,6 +4773,7 @@ export default function App() {
         onClose={() => {
           setSelectedReport(null);
           setInitialOpenRectify(false);
+          setReportInitialTab('INVITATION');
         }}
         report={selectedReport}
         currentRole={currentRole}
@@ -4755,6 +4788,7 @@ export default function App() {
         onReinspectReport={handleReinspectReport}
         onResubmitReport={handleResubmitReport}
         initialOpenRectify={initialOpenRectify}
+        initialTab={reportInitialTab}
         showAlert={showAlert}
         onReassign={(req, type) => {
           handleOpenReassignModal(req, type);
@@ -4789,7 +4823,6 @@ export default function App() {
         onUpdateUserRole={handleUpdateUserRole}
         onToggleUserStatus={handleToggleUserStatus}
         onSyncAllUsersToCloud={handleSyncAllUsersToCloud}
-        onResetAllData={handleResetAllData}
         showAlert={showAlert}
       />
 

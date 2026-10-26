@@ -1,9 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   X, Printer, CheckCircle2, ShieldCheck, Camera, MapPin, Clock, 
   Download, PenTool, AlertCircle, AlertTriangle, Trash2, ImagePlus, 
   Zap, RotateCcw, FileWarning, Eye, User, Wrench, Send, ChevronRight, XCircle,
-  ArrowLeftRight
+  ArrowLeftRight, Calendar, ArrowRight, Ban, UserCheck, FileText, Check
 } from 'lucide-react';
 import { STANDARD_CRITERIA_LIST } from '../data/mockData';
 import { getSuggestedStandards, GENERAL_MANDATORY_STANDARDS } from '../data/standardsRules';
@@ -39,18 +39,21 @@ export default function InspectionReportModal({
   users = [],
   requests = [],
   standardsData = null,
+  projects = [],
+  docTypes = [],
   onSaveReport,
   onRejectReport,
   onReinspectReport,
   onResubmitReport,
   initialOpenRectify = false,
+  initialTab = null,
   showAlert,
   onReassign
 }) {
-  // Tabs: 'DOCUMENT' | 'EVIDENCE' | 'DEFECTS' | 'RECTIFIED'
+  // Tabs: 'INVITATION' | 'DOCUMENT' | 'EVIDENCE' | 'DEFECTS' | 'RECTIFIED'
   const isInitiallyRectified = report?.status === 'RECTIFIED';
   const [activeTab, setActiveTab] = useState(
-    isInitiallyRectified ? 'RECTIFIED' : 'DOCUMENT'
+    initialTab || (isInitiallyRectified ? 'RECTIFIED' : 'INVITATION')
   );
   const [reportState, setReportState] = useState(report || {});
 
@@ -116,6 +119,7 @@ export default function InspectionReportModal({
   const [isRectifyModalOpen, setIsRectifyModalOpen] = useState(Boolean(initialOpenRectify));
   const [rectifyDesc, setRectifyDesc] = useState(reportState?.rectification?.description || '');
   const [rectifyPhotos, setRectifyPhotos] = useState(reportState?.rectification?.photos || []);
+  const [evidencePhotos, setEvidencePhotos] = useState(report?.evidencePhotos || reportState?.evidencePhotos || []);
 
   const getInitialRectifyDate = () => {
     if (reportState?.rectification?.suggestedDate && /^\d{4}-\d{2}-\d{2}$/.test(reportState.rectification.suggestedDate)) {
@@ -244,10 +248,12 @@ export default function InspectionReportModal({
 
   // Lấy yêu cầu nghiệm thu tương ứng (nếu có) để truy xuất danh sách cán bộ được chọn
   const relatedRequest = (requests || []).find(r => 
-    r.id === reportState.requestId || 
-    r.reportId === reportState.id ||
+    (reportState.requestId && r.id === reportState.requestId) || 
+    (reportState.id && (r.reportId === reportState.id || r.id === reportState.id)) ||
     (reportState.requestNumber && r.requestNumber === reportState.requestNumber)
   );
+
+  const isCancelled = reportState?.status === 'CANCELLED' || relatedRequest?.status === 'CANCELLED';
 
   const docCode = isMaterialReport ? 'MI' : 'WA';
   const projCode = reportState.projectCode || relatedRequest?.projectCode || (
@@ -337,6 +343,43 @@ export default function InspectionReportModal({
 
   const assignedInv = effectiveAssignedRecipients.find(r => r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR') || reportState.attendees?.investor;
   const assignedSup = effectiveAssignedRecipients.find(r => r.role === 'SUPERVISOR' || r.role === 'LEAD_SUPERVISOR') || reportState.attendees?.supervisor;
+
+  const effectiveRequest = relatedRequest || {
+    id: reportState.requestId || reportState.id,
+    requestNumber: cleanReqCode,
+    projectName: reportState.projectInfo?.projectName || 'Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City',
+    buildingName: reportState.projectInfo?.buildingName || 'Chung cư nhà ở xã hội 2',
+    itemName: reportState.projectInfo?.itemName || reportState.projectInfo?.packageName || 'Thi công phần hoàn thiện Tòa A và Tòa B',
+    packageName: reportState.projectInfo?.packageName,
+    location: reportState.location || 'Phường Thường Thạnh - Quận Cái Răng - Thành phố Cần Thơ',
+    contractorCompany: reportState.contractorCompany || 'Công ty CP Xây dựng An Phú Gia',
+    taskContent: reportState.inspectionObject || 'Nghiệm thu công việc xây dựng',
+    inspectionType: isMaterialReport ? 'MATERIAL' : 'WORK',
+    materials: rawMaterialsList,
+    scheduledTime: reportState.time ? `${reportState.time} ${reportState.date || ''}`.trim() : (reportState.date || 'Theo thông báo'),
+    scheduledDate: reportState.date,
+    inspectionPlace: reportState.location || 'Tại hiện trường công trình',
+    createdByName: reportState.attendees?.contractor?.person || 'KS. Lê Văn Kỹ Thuật',
+    createdByRole: reportState.attendees?.contractor?.position || 'Kỹ thuật hiện trường',
+    createdAt: reportState.createdAt || new Date(),
+    assignedRecipients: effectiveAssignedRecipients,
+    evidencePhotos: evidencePhotos
+  };
+
+  const createdTimeFormatted = (() => {
+    try {
+      const dt = new Date(effectiveRequest.createdAt || Date.now());
+      if (isNaN(dt.getTime())) return 'Hôm nay';
+      const timeStr = dt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+      const dateStr = dt.toLocaleDateString('vi-VN');
+      return `${timeStr} ngày ${dateStr}`;
+    } catch {
+      return 'Hôm nay';
+    }
+  })();
+
+  const assignedSupCompany = assignedSup?.company || 'Công ty CP Tư vấn Xây dựng và Thương mại GELICON';
+  const assignedInvCompany = assignedInv?.company || 'Ban QLDA - Công ty TNHH An Phú Cần Thơ';
 
   // Lãnh đạo các bên từ danh sách users
   const leadInvUser = (users || []).find(u => u.role === 'LEAD_INVESTOR') || { fullName: 'Ngô Quý Linh', position: 'Trưởng Ban QLDA', company: 'Công ty TNHH An Phú Cần Thơ' };
@@ -464,7 +507,6 @@ export default function InspectionReportModal({
   const fileRectifyRef = useRef(null);
   const cameraEvidenceRef = useRef(null);
   const fileEvidenceRef = useRef(null);
-  const [evidencePhotos, setEvidencePhotos] = useState(report?.evidencePhotos || []);
   
   // Tùy chọn in: Mặc định FALSE để xuất nhanh đúng 1 trang Biên bản A4 chuẩn pháp lý, tránh treo Print Preview vì ảnh lớn
   const [includePhotosInPrint, setIncludePhotosInPrint] = useState(false);
@@ -547,7 +589,7 @@ export default function InspectionReportModal({
         } else {
           setRectifyTime(getInitialRectifyTime());
         }
-        setActiveTab('DOCUMENT');
+        setActiveTab(initialTab || 'DOCUMENT');
         setIsRectifyModalOpen(false);
       } else if (report.status === 'REJECTED' || report.conclusion?.isAccepted === false) {
         const existingPhotos = report.rectification?.photos;
@@ -555,7 +597,7 @@ export default function InspectionReportModal({
         setRectifyDesc(report.rectification?.description || '');
         setRectifyDate(getInitialRectifyDate());
         setRectifyTime('16:30');
-        setActiveTab('DOCUMENT');
+        setActiveTab(initialTab || (initialOpenRectify ? 'DEFECTS' : 'INVITATION'));
         setIsRectifyModalOpen(Boolean(initialOpenRectify));
       } else {
         // TẤT CẢ CÁC TRƯỜNG HỢP CÒN LẠI (TẠO MỚI, CHỜ DUYỆT, HOÀN TẤT, CHỜ CĐT...):
@@ -565,7 +607,7 @@ export default function InspectionReportModal({
         setRectifyDesc(report.rectification?.description || '');
         setRectifyDate(getInitialRectifyDate());
         setRectifyTime('16:30');
-        setActiveTab('DOCUMENT');
+        setActiveTab(initialTab || 'INVITATION');
         setIsRectifyModalOpen(false);
       }
     } else {
@@ -656,7 +698,7 @@ export default function InspectionReportModal({
     const handleBeforePrint = () => {
       document.body.classList.remove('modal-open');
       document.documentElement.classList.remove('modal-open');
-      if (activeTab !== 'DOCUMENT') {
+      if (activeTab !== 'DOCUMENT' && activeTab !== 'INVITATION') {
         setActiveTab('DOCUMENT');
       }
     };
@@ -694,7 +736,7 @@ export default function InspectionReportModal({
       }, 400);
     };
 
-    if (activeTab !== 'DOCUMENT') {
+    if (activeTab !== 'DOCUMENT' && activeTab !== 'INVITATION') {
       setActiveTab('DOCUMENT');
       setTimeout(executePrint, 250);
     } else {
@@ -1235,9 +1277,9 @@ export default function InspectionReportModal({
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <h3 style={{ margin: 0, fontSize: '1.12rem', color: '#0f172a', lineHeight: 1.35 }}>
-                    {isMaterialReport 
-                      ? 'Biên Bản Nghiệm Thu Vật Liệu (Mẫu 12)' 
-                      : 'Biên Bản Nghiệm Thu Công Việc Xây Dựng'}
+                    {activeTab === 'INVITATION'
+                      ? (isMaterialReport ? 'Phiếu Yêu Cầu Nghiệm Thu Vật Liệu (Mẫu 12)' : 'Phiếu Yêu Cầu Nghiệm Thu Công Việc Xây Dựng')
+                      : (isMaterialReport ? 'Biên Bản Nghiệm Thu Vật Liệu (Mẫu 12)' : 'Biên Bản Nghiệm Thu Công Việc Xây Dựng')}
                   </h3>
                   {isCompleted ? (
                     <span style={{ 
@@ -1293,7 +1335,11 @@ export default function InspectionReportModal({
                   )}
                 </div>
                 <p style={{ margin: '3px 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
-                  Mã biên bản: <strong style={{ color: '#0f172a' }}>{cleanReportNum}</strong> • Căn cứ: Nghị định 06/2021/NĐ-CP
+                  {activeTab === 'INVITATION' ? (
+                    <>Mã phiếu: <strong style={{ color: '#0f172a' }}>{cleanReqCode}</strong> • Căn cứ: Nghị định 06/2021/NĐ-CP</>
+                  ) : (
+                    <>Mã biên bản: <strong style={{ color: '#0f172a' }}>{cleanReportNum}</strong> • Căn cứ: Nghị định 06/2021/NĐ-CP</>
+                  )}
                 </p>
               </div>
             </div>
@@ -1332,7 +1378,7 @@ export default function InspectionReportModal({
                 )}
                 <button className="btn-secondary" onClick={handlePrint} style={{ padding: '5px 10px', fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
                   <Printer size={14} />
-                  <span>{includePhotosInPrint ? 'In A4 + Ảnh' : 'In A4'}</span>
+                  <span>{includePhotosInPrint ? 'In A4 + Ảnh' : (activeTab === 'INVITATION' ? 'In A4 Phiếu Yêu Cầu' : 'In A4 Biên Bản')}</span>
                 </button>
               </div>
               <button className="modal-close-btn" onClick={onClose} style={{ marginLeft: '4px', padding: '6px', background: '#f1f5f9', borderRadius: '50%' }} title="Đóng biên bản">
@@ -1371,7 +1417,7 @@ export default function InspectionReportModal({
             )}
             <button className="btn-secondary" onClick={handlePrint} style={{ padding: '4px 10px', fontSize: '0.76rem', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
               <Printer size={14} />
-              <span>{includePhotosInPrint ? 'In A4 + Phụ Lục Ảnh' : 'In A4 Biên Bản'}</span>
+              <span>{includePhotosInPrint ? 'In A4 + Phụ Lục Ảnh' : (activeTab === 'INVITATION' ? 'In A4 Phiếu Yêu Cầu' : 'In A4 Biên Bản')}</span>
             </button>
           </div>
         </div>
@@ -1395,6 +1441,34 @@ export default function InspectionReportModal({
           position: 'relative',
           zIndex: 10
         }}>
+          {/* TAB 1: PHIẾU YÊU CẦU NGHIỆM THU */}
+          <button 
+            style={{
+              padding: '0 16px',
+              height: '100%',
+              minHeight: '48px',
+              border: 'none',
+              background: activeTab === 'INVITATION' ? '#ffffff' : 'transparent',
+              fontWeight: 700,
+              fontSize: '0.86rem',
+              color: activeTab === 'INVITATION' ? '#2563eb' : '#64748b',
+              borderBottom: activeTab === 'INVITATION' ? '3px solid #2563eb' : '3px solid transparent',
+              borderRadius: 0,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              boxSizing: 'border-box'
+            }}
+            onClick={() => setActiveTab('INVITATION')}
+          >
+            📋 Phiếu Yêu Cầu Nghiệm Thu
+          </button>
+
+          {/* TAB 2: BIÊN BẢN NGHIỆM THU */}
           <button 
             style={{
               padding: '0 16px',
@@ -1418,8 +1492,10 @@ export default function InspectionReportModal({
             }}
             onClick={() => setActiveTab('DOCUMENT')}
           >
-            📄 Văn Bản Biên Bản A4 Chuẩn
+            📄 Biên Bản Nghiệm Thu (A4)
           </button>
+
+          {/* TAB 3: ẢNH HIỆN TRƯỜNG */}
           <button 
             style={{
               padding: '0 16px',
@@ -1509,7 +1585,363 @@ export default function InspectionReportModal({
 
         {/* MODAL BODY */}
         <div className="modal-body" style={{ background: '#f8fafc' }}>
-          {activeTab === 'DOCUMENT' ? (
+          {activeTab === 'INVITATION' ? (
+            /* TRÌNH BÀY CHUẨN PHIẾU YÊU CẦU NGHIỆM THU (MẪU 03) */
+            <div className="document-paper invitation-paper" style={{ maxWidth: '820px', width: '100%', margin: '0 auto', fontSize: '0.92rem', boxSizing: 'border-box' }}>
+              {/* BANNER KHI PHIẾU BỊ HỦY */}
+              {isCancelled && (
+                <div className="no-print" style={{
+                  background: '#fef2f2',
+                  border: '1.5px solid #f87171',
+                  borderRadius: '10px',
+                  padding: '14px 18px',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '12px',
+                  color: '#991b1b'
+                }}>
+                  <div style={{ background: '#fee2e2', borderRadius: '50%', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Ban size={22} color="#dc2626" />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <strong style={{ fontSize: '0.98rem', display: 'block', color: '#991b1b' }}>
+                      🚫 PHIẾU YÊU CẦU NGHIỆM THU ĐÃ BỊ HỦY
+                    </strong>
+                    <div style={{ fontSize: '0.88rem', marginTop: '4px', color: '#7f1d1d' }}>
+                      <strong>Lý do hủy:</strong> "{effectiveRequest.cancellationReason || 'Đã hủy theo yêu cầu của đơn vị thi công.'}"
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* BANNER CẢNH BÁO TRẠNG THÁI NGHIỆM THU */}
+              {isRejected && (
+                <div className="no-print" style={{
+                  background: '#fef2f2',
+                  border: '1.5px solid #fca5a5',
+                  borderRadius: '10px',
+                  padding: '12px 16px',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '10px',
+                  color: '#991b1b'
+                }}>
+                  <AlertTriangle size={20} color="#dc2626" style={{ flexShrink: 0, marginTop: '2px' }} />
+                  <div>
+                    <strong>⚠️ KẾT QUẢ KIỂM TRA: CHƯA ĐẠT (CẦN SỬA CHỮA)</strong>
+                    <div style={{ fontSize: '0.84rem', marginTop: '3px', color: '#b91c1c' }}>
+                      Lý do: "{reportState?.conclusion?.notes || reportState?.conclusion?.comments || 'Có khiếm khuyết kỹ thuật hiện trường cần khắc phục sửa chữa.'}"
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {isRectified && (
+                <div className="no-print" style={{
+                  background: '#f5f3ff',
+                  border: '1.5px solid #d8b4fe',
+                  borderRadius: '10px',
+                  padding: '12px 16px',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '10px',
+                  color: '#6b21a8'
+                }}>
+                  <RotateCcw size={20} color="#7c3aed" style={{ flexShrink: 0, marginTop: '2px' }} />
+                  <div>
+                    <strong>🔄 ĐÃ KHẮC PHỤC SỬA CHỮA - CHỜ KIỂM TRA LẠI</strong>
+                    <div style={{ fontSize: '0.84rem', marginTop: '3px', color: '#7e22ce' }}>
+                      {reportState?.rectification?.description ? `Nội dung đã sửa: "${reportState.rectification.description}"` : 'ĐVTC đã bổ sung bằng chứng ảnh sửa chữa.'}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {isCompleted && (
+                <div className="no-print" style={{
+                  background: '#ecfdf5',
+                  border: '1.5px solid #a7f3d0',
+                  borderRadius: '10px',
+                  padding: '12px 16px',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  color: '#065f46'
+                }}>
+                  <CheckCircle2 size={20} color="#059669" style={{ flexShrink: 0 }} />
+                  <div>
+                    <strong>✅ ĐÃ HOÀN TẤT NGHIỆM THU ĐẠT</strong>
+                    <div style={{ fontSize: '0.84rem', marginTop: '2px', color: '#047857' }}>
+                      Công tác đã được CĐT, TVGS và ĐVTC ký duyệt hoàn tất theo quy định.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* VĂN BẢN NỘI DUNG PHIẾU YÊU CẦU THEO CHUẨN MẪU 03 */}
+              <div style={{
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                padding: '24px 20px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                fontFamily: '"Times New Roman", Times, serif',
+                lineHeight: 1.5
+              }}>
+                {/* Header Quốc hiệu tiêu ngữ */}
+                <div style={{ textAlign: 'center', marginBottom: '14px' }}>
+                  <div style={{ fontWeight: 'bold', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                    CỘNG HOÀ XÃ HỘI CHỦ NGHĨA VIỆT NAM
+                  </div>
+                  <div style={{ fontWeight: 'bold', fontSize: '0.94rem', marginTop: '2px' }}>
+                    <u>Độc lập - Tự do - Hạnh phúc</u>
+                  </div>
+                  <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '1px' }}>
+                    ----------***---------
+                  </div>
+                  <div style={{ textAlign: 'right', fontSize: '0.85rem', fontStyle: 'italic', marginTop: '6px' }}>
+                    {reportState?.cityDate || `Cần Thơ, ngày ${new Date(effectiveRequest.createdAt || Date.now()).getDate()} tháng ${new Date(effectiveRequest.createdAt || Date.now()).getMonth() + 1} năm ${new Date(effectiveRequest.createdAt || Date.now()).getFullYear()}`}
+                  </div>
+                </div>
+
+                {/* Tiêu đề & Mã số */}
+                <div style={{
+                  textAlign: 'center',
+                  margin: '12px 0 16px 0',
+                  padding: '8px 12px'
+                }}>
+                  <h2 style={{ fontSize: '1.25rem', color: '#0f172a', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.02em', fontWeight: 800 }}>
+                    PHIẾU YÊU CẦU NGHIỆM THU
+                  </h2>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', fontSize: '0.9rem' }}>
+                    <div>
+                      <strong>Số:</strong> <strong style={{ color: '#0f172a' }}>{cleanReqCode}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.9rem', lineHeight: 1.6 }}>
+                  <div><strong>Dự án:</strong> {effectiveRequest.projectName || 'Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City'}</div>
+                  <div><strong>Công trình:</strong> {effectiveRequest.buildingName || 'Chung cư nhà ở xã hội 2'}</div>
+                  <div><strong>Hạng mục:</strong> {effectiveRequest.itemName || effectiveRequest.packageName || 'Thi công phần hoàn thiện Tòa A và Tòa B'}</div>
+                  <div><strong>Địa điểm xây dựng:</strong> {effectiveRequest.location || 'Phường Thường Thạnh - Quận Cái Răng - Thành phố Cần Thơ'}</div>
+                  <div><strong>Đơn vị yêu cầu nghiệm thu:</strong> {effectiveRequest.contractorCompany || 'Công ty CP Xây dựng An Phú Gia'}</div>
+
+                  <div style={{
+                    background: (isMaterialReport || (effectiveRequest.materials && effectiveRequest.materials.length > 0)) ? '#f0fdf4' : '#f1f5f9',
+                    padding: '12px',
+                    borderRadius: '8px',
+                    margin: '8px 0',
+                    borderLeft: (isMaterialReport || (effectiveRequest.materials && effectiveRequest.materials.length > 0)) ? '4px solid #059669' : '4px solid #2563eb'
+                  }}>
+                    <strong style={{ color: (isMaterialReport || (effectiveRequest.materials && effectiveRequest.materials.length > 0)) ? '#065f46' : '#1e40af' }}>
+                      {(isMaterialReport || (effectiveRequest.materials && effectiveRequest.materials.length > 0))
+                        ? 'Vật liệu đầu vào yêu cầu nghiệm thu (Mẫu số 12):'
+                        : 'Công tác xây dựng yêu cầu nghiệm thu:'}
+                    </strong>
+
+                    {effectiveRequest.materials && effectiveRequest.materials.length > 0 ? (
+                      <div style={{ marginTop: '8px', overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', background: '#ffffff', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
+                          <thead>
+                            <tr style={{ background: '#ecfdf5', color: '#065f46', borderBottom: '1px solid #a7f3d0' }}>
+                              <th style={{ padding: '6px 8px', textAlign: 'center', width: '32px' }}>#</th>
+                              <th style={{ padding: '6px 8px', textAlign: 'left' }}>Tên / Chủng loại vật liệu</th>
+                              <th style={{ padding: '6px 8px', textAlign: 'left' }}>Xuất xứ</th>
+                              <th style={{ padding: '6px 8px', textAlign: 'center', width: '55px' }}>ĐVT</th>
+                              <th style={{ padding: '6px 8px', textAlign: 'right', width: '75px' }}>K.Lượng</th>
+                              <th style={{ padding: '6px 8px', textAlign: 'left' }}>Số CCXX</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {effectiveRequest.materials.map((mat, idx) => (
+                              <tr key={idx} style={{ borderBottom: idx < effectiveRequest.materials.length - 1 ? '1px solid #f0fdf4' : 'none' }}>
+                                <td style={{ padding: '6px 8px', textAlign: 'center', color: '#059669', fontWeight: 600 }}>{idx + 1}</td>
+                                <td style={{ padding: '6px 8px', fontWeight: 600, color: '#0f172a' }}>{mat.name || mat.materialName}</td>
+                                <td style={{ padding: '6px 8px', color: '#334155' }}>{mat.origin || 'Việt Nam'}</td>
+                                <td style={{ padding: '6px 8px', textAlign: 'center', color: '#475569' }}>{mat.unit || '—'}</td>
+                                <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, color: '#059669' }}>{mat.quantity || '—'}</td>
+                                <td style={{ padding: '6px 8px', color: '#64748b', fontSize: '0.78rem' }}>{mat.certificateNumber || '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '1rem', fontWeight: '700', color: '#0f172a', marginTop: '4px' }}>
+                        {effectiveRequest.taskContent}
+                      </div>
+                    )}
+
+                    <p style={{ fontSize: '0.83rem', color: '#475569', margin: '6px 0 0 0', fontStyle: 'italic' }}>
+                      Sau khi kiểm tra chất lượng, đối chiếu với bản vẽ thiết kế và các tiêu chuẩn kỹ thuật được áp dụng, chúng tôi đã nghiệm thu nội bộ. Đơn vị thi công kính mời Chủ đầu tư và Tư vấn giám sát tiến hành nghiệm thu.
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '10px 16px', marginTop: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Calendar size={16} color="#2563eb" style={{ flexShrink: 0 }} />
+                        <strong>Thời gian nghiệm thu: {effectiveRequest.scheduledTime}</strong>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Clock size={16} color="#64748b" style={{ flexShrink: 0 }} />
+                      <span style={{ color: '#334155' }}>Thời gian tạo phiếu: {createdTimeFormatted}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', gridColumn: '1 / -1' }}>
+                      <MapPin size={16} color="#2563eb" style={{ flexShrink: 0 }} />
+                      <span><strong>Tại:</strong> {effectiveRequest.inspectionPlace || effectiveRequest.location}</span>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px dashed #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem', color: '#64748b' }}>
+                    <div>Đại diện đơn vị thi công: <strong>{effectiveRequest.createdByName || 'KS. Lê Văn Kỹ Thuật'}</strong> ({effectiveRequest.createdByRole || 'Kỹ thuật hiện trường'})</div>
+                    <span style={{ color: '#059669', fontWeight: 600 }}>✓ ĐVTC đã ký xác nhận gửi</span>
+                  </div>
+
+                  {/* Nơi nhận theo mẫu 03 */}
+                  <div style={{ marginTop: '14px', paddingTop: '10px', borderTop: '1px solid #e2e8f0', fontSize: '0.82rem', color: '#475569' }}>
+                    <strong>Nơi nhận:</strong>
+                    <div style={{ paddingLeft: '14px', marginTop: '3px', lineHeight: 1.5 }}>
+                      - TVGS: {assignedSupCompany}<br />
+                      - CĐT: {assignedInvCompany}<br />
+                      - Lưu: {effectiveRequest.contractorCompany || 'Đơn vị thi công'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* DANH SÁCH CÁN BỘ TIẾP NHẬN PHIẾU YÊU CẦU */}
+              {effectiveAssignedRecipients && effectiveAssignedRecipients.length > 0 && (
+                <div className="no-print" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px', marginTop: '18px' }}>
+                  <div style={{ margin: '0 0 10px 0', fontSize: '0.86rem', color: '#1e293b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <UserCheck size={16} color="#2563eb" />
+                    <span>Thành phần tiếp nhận phiếu yêu cầu ({effectiveAssignedRecipients.length}):</span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {effectiveAssignedRecipients.map((rec, i) => (
+                      <div key={i} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '8px 12px',
+                        background: '#ffffff',
+                        borderRadius: '8px',
+                        border: '1px solid #e2e8f0'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div className="avatar-circle" style={{
+                            width: '30px',
+                            height: '30px',
+                            fontSize: '0.74rem',
+                            background: (rec.role === 'SUPERVISOR' || rec.role === 'LEAD_SUPERVISOR') ? '#059669' : '#d97706'
+                          }}>
+                            {(rec.role === 'SUPERVISOR' || rec.role === 'LEAD_SUPERVISOR') ? 'TV' : 'ĐT'}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: '700', fontSize: '0.86rem', color: '#0f172a' }}>
+                              {rec.fullName}
+                              {rec.uid === currentUser?.uid && (
+                                <span style={{ marginLeft: '6px', fontSize: '0.72rem', background: '#e0e7ff', color: '#3730a3', padding: '2px 6px', borderRadius: '4px' }}>
+                                  (Bạn)
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                              {rec.position} • {rec.company}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span className="badge-status badge-confirmed" style={{ fontSize: '0.74rem', padding: '3px 8px' }}>
+                            {rec.role === 'LEAD_SUPERVISOR'
+                              ? 'TVGS Trưởng'
+                              : rec.role === 'SUPERVISOR'
+                                ? 'Đại diện TVGS'
+                                : rec.role === 'LEAD_INVESTOR'
+                                  ? 'Trưởng Ban QLDA'
+                                  : 'Ban QLDA'}
+                          </span>
+
+                          {(() => {
+                            const isSup = rec.role === 'SUPERVISOR' || rec.role === 'LEAD_SUPERVISOR';
+                            const isLeadSup = currentRole === 'LEAD_SUPERVISOR' || Boolean(currentUser?.isLead && currentRole === 'SUPERVISOR');
+                            const isLeadInv = currentRole === 'LEAD_INVESTOR' || Boolean(currentUser?.isLead && currentRole === 'INVESTOR');
+                            const canReassign = onReassign && !isCompleted && !isCancelled && (isAdmin || (isSup && isLeadSup) || (!isSup && isLeadInv));
+
+                            if (!canReassign) return null;
+
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => onReassign(effectiveRequest, isSup ? 'SUPERVISOR' : 'INVESTOR')}
+                                style={{
+                                  background: isSup ? '#f0fdf4' : '#fffbeb',
+                                  border: isSup ? '1px solid #86efac' : '1px solid #fde68a',
+                                  color: isSup ? '#15803d' : '#b45309',
+                                  borderRadius: '6px',
+                                  padding: '3px 8px',
+                                  fontSize: '0.74rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                                title={`Điều chuyển người nhận ${isSup ? 'TVGS' : 'CĐT'} khác`}
+                              >
+                                <ArrowLeftRight size={12} />
+                                <span>Đổi cán bộ</span>
+                              </button>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* BANNER ĐIỀU HƯỚNG SANG BIÊN BẢN */}
+              <div className="no-print" style={{
+                marginTop: '20px',
+                padding: '14px 18px',
+                background: 'linear-gradient(135deg, #eff6ff 0%, #e0e7ff 100%)',
+                border: '1.5px solid #bfdbfe',
+                borderRadius: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '12px'
+              }}>
+                <div>
+                  <div style={{ fontWeight: 800, color: '#1e40af', fontSize: '0.92rem' }}>
+                    📑 Biên Bản Nghiệm Thu Đi Kèm: Mẫu {isMaterialReport ? '12 (Vật Liệu)' : 'Công Việc Xây Dựng'}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: '#475569', marginTop: '2px' }}>
+                    Chuyển sang tab Biên Bản để kiểm tra nội dung A4, tiêu chuẩn, ký số và phê duyệt đạt.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  style={{ background: '#2563eb', padding: '8px 16px', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  onClick={() => setActiveTab('DOCUMENT')}
+                >
+                  <span>Mở Biên Bản Nghiệm Thu</span>
+                  <ArrowRight size={15} />
+                </button>
+              </div>
+            </div>
+          ) : activeTab === 'DOCUMENT' ? (
             /* TRÌNH BÀY CHUẨN BIÊN BẢN KHỔ A4 */
             <div className="document-paper" style={{ maxWidth: '820px', width: '100%', margin: '0 auto', fontSize: '0.92rem', boxSizing: 'border-box' }}>
               {/* THÔNG BÁO HOÀN TẤT NẾU ĐÃ NGHIỆM THU ĐẠT SAU SỬA CHỮA */}
@@ -3409,23 +3841,7 @@ export default function InspectionReportModal({
                         <Clock size={16} />
                         <span>Chờ TVGS duyệt trước: CĐT chỉ phê duyệt sau khi TVGS xác nhận đạt</span>
                       </div>
-                    ) : (
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        background: '#eff6ff',
-                        border: '1px solid #bfdbfe',
-                        color: '#1e40af',
-                        padding: '7px 14px',
-                        borderRadius: '8px',
-                        fontSize: '0.84rem',
-                        fontWeight: 600
-                      }}>
-                        <Clock size={16} />
-                        <span>Đã phát hành phiếu: Đang chờ Tư Vấn Giám Sát kiểm tra & duyệt</span>
-                      </div>
-                    )}
+                    ) : null}
                   </>
                 ) : (
                   /* GIAI ĐOẠN 2: TVGS ĐÃ ĐẠT -> CĐT PHÊ DUYỆT & KÝ SỐ */
@@ -3515,25 +3931,6 @@ export default function InspectionReportModal({
                     <PenTool size={16} />
                     <span>Đơn Vị Thi Công Ký Xác Nhận</span>
                   </button>
-                )}
-
-                {/* Trạng thái ký cho ĐVTC */}
-                {currentRole === 'CONTRACTOR' && isContractorSigned && (
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    color: '#059669',
-                    fontSize: '0.84rem',
-                    fontWeight: 600,
-                    background: '#ecfdf5',
-                    border: '1px solid #a7f3d0',
-                    padding: '7px 14px',
-                    borderRadius: '8px'
-                  }}>
-                    <CheckCircle2 size={16} color="#059669" />
-                    <span>ĐVTC đã ký xác nhận độc lập</span>
-                  </div>
                 )}
 
                 {currentRole === 'ADMIN' && (

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Building2, Bell, ShieldCheck, UserCircle, LogOut, BellRing, RotateCcw } from 'lucide-react';
+import { Building2, Bell, ShieldCheck, UserCircle, LogOut, BellRing } from 'lucide-react';
 import NotificationDropdown from './NotificationDropdown';
 
 export default function Navbar({
@@ -16,8 +16,7 @@ export default function Navbar({
   onOpenProfile,
   onLogout,
   pushPermissionGranted,
-  onEnablePush,
-  onResetAllData
+  onEnablePush
 }) {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
 
@@ -92,24 +91,6 @@ export default function Navbar({
           </button>
         )} */}
 
-        {/* NÚT RESET DỮ LIỆU ĐỂ TEST TỪ ĐẦU (DESKTOP ONLY) */}
-        {/* {onResetAllData && (
-          <button 
-            className="btn-secondary desktop-only-action" 
-            style={{ 
-              padding: '6px 12px', 
-              fontSize: '0.82rem', 
-              borderColor: '#fca5a5', 
-              color: '#dc2626', 
-              background: '#fff5f5' 
-            }}
-            onClick={onResetAllData}
-            title="Xóa toàn bộ biên bản & phiếu để test lại từ đầu"
-          >
-            <RotateCcw size={14} color="#dc2626" />
-            <span>Reset Data</span>
-          </button>
-        )} */}
 
         {/* NOTIFICATION BELL */}
         <div style={{ position: 'relative' }}>

@@ -274,9 +274,6 @@ export default function CreateCompletionReportModal({
               <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#ffffff', fontWeight: 800 }}>
                 Lập Biên Bản Nghiệm Thu Hoàn Thành
               </h3>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: '#cbd5e1' }}>
-                Chuẩn biểu mẫu pháp lý Nghị định 06/2021/NĐ-CP • Ký duyệt cấp Trưởng TVGS & CĐT
-              </p>
             </div>
           </div>
           <button className="modal-close-btn" onClick={onClose} style={{ color: '#ffffff' }}>
@@ -287,65 +284,14 @@ export default function CreateCompletionReportModal({
         {/* BODY */}
         <form onSubmit={handleSubmit} className="modal-body" style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
           
-          {/* BANNER TỰ ĐỘNG PHÂN PHỐI NGƯỜI NHẬN THEO YÊU CẦU */}
-          <div style={{
-            background: 'linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%)',
-            border: '1.5px solid #93c5fd',
-            borderRadius: '12px',
-            padding: '14px 18px',
-            marginBottom: '18px',
-            boxShadow: '0 2px 8px rgba(37,99,235,0.06)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#1e40af', marginBottom: '6px' }}>
-              <ShieldCheck size={20} color="#2563eb" />
-              <strong style={{ fontSize: '0.94rem' }}>
-                ⚡ Tự Động Phân Phối Gửi Trực Tiếp Cấp Trưởng (Không Cần Chọn Người Nhận)
-              </strong>
-            </div>
-            <p style={{ margin: '0 0 10px 0', fontSize: '0.83rem', color: '#334155', lineHeight: 1.5 }}>
-              Theo quy chế nghiệm thu hoàn thành, biên bản được lập bởi <strong>Đơn vị thi công ({currentUser?.fullName || 'Chỉ huy trưởng'})</strong> và <strong>tự động gửi đến Tư Vấn Giám Sát Trưởng</strong> cùng <strong>Chủ Đầu Tư Trưởng</strong> để tổ chức kiểm tra và ký xác nhận.
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px' }}>
-              <div style={{ background: '#ffffff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div className="avatar-circle" style={{ width: '30px', height: '30px', background: '#059669', color: '#fff', fontSize: '0.75rem', fontWeight: 700 }}>
-                  {leadSupervisor?.avatar || 'XT'}
-                </div>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.84rem', color: '#0f172a' }}>
-                    {leadSupervisor?.fullName || 'Đinh Xuân Thám'}{' '}
-                    <span style={{ fontSize: '0.68rem', color: '#059669', background: '#ecfdf5', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>
-                      TVGS Trưởng
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{leadSupervisor?.company || 'GELICON'}</div>
-                </div>
-              </div>
-
-              <div style={{ background: '#ffffff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div className="avatar-circle" style={{ width: '30px', height: '30px', background: '#d97706', color: '#fff', fontSize: '0.75rem', fontWeight: 700 }}>
-                  {leadInvestor?.avatar || 'QL'}
-                </div>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.84rem', color: '#0f172a' }}>
-                    {leadInvestor?.fullName || 'Ngô Quý Linh'}{' '}
-                    <span style={{ fontSize: '0.68rem', color: '#d97706', background: '#fef3c7', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>
-                      Trưởng Ban QLDA
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{leadInvestor?.company || 'An Phú Cần Thơ'}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* CHỌN 1 TRONG 3 MẪU BIÊN BẢN THEO ẢNH */}
+          {/* CHỌN MẪU BIÊN BẢN */}
           <div style={{ marginBottom: '18px' }}>
             <label className="form-label" style={{ fontWeight: 800, color: '#1e3a8a', textTransform: 'uppercase', fontSize: '0.84rem', marginBottom: '8px', display: 'block' }}>
               1. Chọn Loại Mẫu Biên Bản Nghiệm Thu Hoàn Thành:
             </label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
               
-              {/* Mẫu 1: Hoàn thành hạng mục / công trình đưa vào sử dụng (Ảnh 1-2) */}
+              {/* Mẫu 1: Hoàn thành hạng mục / công trình đưa vào sử dụng */}
               <div
                 onClick={() => handleSelectCompletionType('PROJECT_USE')}
                 style={{
@@ -356,23 +302,22 @@ export default function CreateCompletionReportModal({
                   cursor: 'pointer',
                   boxShadow: completionType === 'PROJECT_USE' ? '0 4px 12px rgba(37,99,235,0.12)' : 'none',
                   transition: 'all 0.2s ease',
-                  position: 'relative'
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center'
                 }}
               >
                 {completionType === 'PROJECT_USE' && (
-                  <span style={{ position: 'absolute', top: '8px', right: '8px', color: '#2563eb' }}>
+                  <span style={{ position: 'absolute', top: '10px', right: '10px', color: '#2563eb' }}>
                     <CheckCircle2 size={16} />
                   </span>
                 )}
-                <div style={{ fontWeight: 800, fontSize: '0.88rem', color: completionType === 'PROJECT_USE' ? '#1d4ed8' : '#0f172a', marginBottom: '4px' }}>
+                <div style={{ fontWeight: 800, fontSize: '0.88rem', color: completionType === 'PROJECT_USE' ? '#1d4ed8' : '#0f172a', paddingRight: '20px' }}>
                   🏛️ Mẫu 1: Hoàn Thành Hạng Mục / Công Trình Đưa Vào Sử Dụng
-                </div>
-                <div style={{ fontSize: '0.74rem', color: '#64748b', lineHeight: 1.4 }}>
-                  Ký 4 bên: CĐT, TV Thiết Kế, TV Giám Sát, ĐV Thi Công (Kèm kết quả PCCC, chạy thử liên động)
                 </div>
               </div>
 
-              {/* Mẫu 2: Hoàn thành giai đoạn thi công (Ảnh 3-4) */}
+              {/* Mẫu 2: Hoàn thành giai đoạn thi công */}
               <div
                 onClick={() => handleSelectCompletionType('STAGE')}
                 style={{
@@ -383,46 +328,18 @@ export default function CreateCompletionReportModal({
                   cursor: 'pointer',
                   boxShadow: completionType === 'STAGE' ? '0 4px 12px rgba(5,150,105,0.12)' : 'none',
                   transition: 'all 0.2s ease',
-                  position: 'relative'
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center'
                 }}
               >
                 {completionType === 'STAGE' && (
-                  <span style={{ position: 'absolute', top: '8px', right: '8px', color: '#059669' }}>
+                  <span style={{ position: 'absolute', top: '10px', right: '10px', color: '#059669' }}>
                     <CheckCircle2 size={16} />
                   </span>
                 )}
-                <div style={{ fontWeight: 800, fontSize: '0.88rem', color: completionType === 'STAGE' ? '#047857' : '#0f172a', marginBottom: '4px' }}>
+                <div style={{ fontWeight: 800, fontSize: '0.88rem', color: completionType === 'STAGE' ? '#047857' : '#0f172a', paddingRight: '20px' }}>
                   📑 Mẫu 2: Hoàn Thành Giai Đoạn Thi Công Xây Dựng
-                </div>
-                <div style={{ fontSize: '0.74rem', color: '#64748b', lineHeight: 1.4 }}>
-                  Ký 3 bên: CĐT, TV Giám Sát, ĐV Thi Công (Làm cơ sở thanh toán theo đợt)
-                </div>
-              </div>
-
-              {/* Mẫu 3: Kiểm tra hồ sơ nghiệm thu chất lượng (Ảnh 5) */}
-              <div
-                onClick={() => handleSelectCompletionType('DOSSIER')}
-                style={{
-                  border: completionType === 'DOSSIER' ? '2.5px solid #d97706' : '1.5px solid #e2e8f0',
-                  background: completionType === 'DOSSIER' ? '#fef3c7' : '#ffffff',
-                  borderRadius: '12px',
-                  padding: '12px 14px',
-                  cursor: 'pointer',
-                  boxShadow: completionType === 'DOSSIER' ? '0 4px 12px rgba(217,119,6,0.12)' : 'none',
-                  transition: 'all 0.2s ease',
-                  position: 'relative'
-                }}
-              >
-                {completionType === 'DOSSIER' && (
-                  <span style={{ position: 'absolute', top: '8px', right: '8px', color: '#d97706' }}>
-                    <CheckCircle2 size={16} />
-                  </span>
-                )}
-                <div style={{ fontWeight: 800, fontSize: '0.88rem', color: completionType === 'DOSSIER' ? '#b45309' : '#0f172a', marginBottom: '4px' }}>
-                  📁 Mẫu 3: Kiểm Tra Hồ Sơ Nghiệm Thu Chất Lượng Hoàn Thành
-                </div>
-                <div style={{ fontSize: '0.74rem', color: '#64748b', lineHeight: 1.4 }}>
-                  Ký 3 bên: CĐT, TV Giám Sát, ĐV Thi Công (Kiểm tra tính pháp lý danh mục hồ sơ)
                 </div>
               </div>
             </div>
@@ -507,7 +424,7 @@ export default function CreateCompletionReportModal({
           {/* ĐỐI TƯỢNG NGHIỆM THU / KIỂM TRA */}
           <div className="form-group" style={{ marginBottom: '18px' }}>
             <label className="form-label" style={{ fontWeight: 800, color: '#1e3a8a' }}>
-              {completionType === 'DOSSIER' ? 'Đối tượng kiểm tra hồ sơ:' : 'Đối tượng nghiệm thu hoàn thành:'}
+              Đối tượng nghiệm thu hoàn thành:
             </label>
             <textarea
               className="form-textarea"
@@ -573,7 +490,7 @@ export default function CreateCompletionReportModal({
             <div style={{ background: '#eff6ff', border: '1.5px solid #bfdbfe', borderRadius: '12px', padding: '16px', marginBottom: '18px' }}>
               <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', color: '#1e40af', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Building size={16} />
-                <span>Thông Tin Đơn Vị Tư Vấn Thiết Kế (Bên Ký Thứ 4 - Mẫu 1)</span>
+                <span>Thông Tin Đơn Vị Tư Vấn Thiết Kế</span>
               </h4>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginBottom: '12px' }}>
                 <div>
@@ -627,34 +544,6 @@ export default function CreateCompletionReportModal({
             </div>
           )}
 
-          {completionType === 'DOSSIER' && (
-            <div style={{ background: '#fef3c7', border: '1.5px solid #fde68a', borderRadius: '12px', padding: '16px', marginBottom: '18px' }}>
-              <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', color: '#92400e', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <BookOpen size={16} />
-                <span>Nội Dung Kiểm Tra Hồ Sơ Chất Lượng Hoàn Thành (Mẫu 3)</span>
-              </h4>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem' }}>Giai đoạn hoàn thành:</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={stageName}
-                    onChange={(e) => setStageName(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem' }}>Địa điểm tổ chức kiểm tra hồ sơ:</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={place}
-                    onChange={(e) => setPlace(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* THỜI GIAN NGHIỆM THU / KIỂM TRA */}
           <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', marginBottom: '18px' }}>

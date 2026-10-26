@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, ShieldCheck, Users, BookOpen, Settings, Cloud, RotateCcw, Building2 } from 'lucide-react';
+import { X, ShieldCheck, Users, BookOpen, Settings, Cloud, Building2 } from 'lucide-react';
 import UserManagementView from './UserManagementView';
 import StandardsManagementView from './StandardsManagementView';
 import ProjectManagementView from './ProjectManagementView';
@@ -22,7 +22,6 @@ export default function AdminPortalModal({
   onUpdateUserRole,
   onToggleUserStatus,
   onSyncAllUsersToCloud,
-  onResetAllData,
   showAlert
 }) {
   if (!isOpen) return null;
@@ -195,44 +194,6 @@ export default function AdminPortalModal({
                   • <strong>Định dạng nén tự động:</strong> WebP (Giảm 75% dung lượng để tải siêu nhanh ngoài công trường sóng yếu)
                 </div>
               </div>
-
-              {/* KHU VỰC RESET DỮ LIỆU ĐỂ TEST LẠI */}
-              {onResetAllData && (
-                <div style={{ background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: '10px', padding: '18px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                        <RotateCcw size={18} color="#e11d48" />
-                        <strong style={{ fontSize: '0.95rem', color: '#9f1239' }}>Khởi Động Lại Toàn Bộ Dữ Liệu Nghiệm Thu:</strong>
-                      </div>
-                      <div style={{ fontSize: '0.85rem', color: '#881337', lineHeight: 1.5 }}>
-                        Xóa sạch toàn bộ Phiếu yêu cầu, Biên bản nghiệm thu và Thông báo trên Cloud Firestore & bộ nhớ máy để bắt đầu kiểm thử lại quy trình từ đầu.
-                      </div>
-                    </div>
-                    <button 
-                      type="button"
-                      onClick={onResetAllData}
-                      style={{
-                        background: '#e11d48',
-                        color: '#ffffff',
-                        border: 'none',
-                        borderRadius: '8px',
-                        padding: '10px 16px',
-                        fontWeight: 700,
-                        fontSize: '0.86rem',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        boxShadow: '0 2px 8px rgba(225, 29, 72, 0.25)'
-                      }}
-                    >
-                      <RotateCcw size={16} />
-                      <span>Xóa Dữ Liệu & Test Lại Từ Đầu</span>
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>
