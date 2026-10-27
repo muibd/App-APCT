@@ -41,8 +41,6 @@ export default function LoginScreen({ onLogin, users = MOCK_USERS }) {
         return uEmail === trimmedEmail || 
                uUid === trimmedEmail || 
                prefix === trimmedEmail ||
-               (trimmedEmail.startsWith('muitvgs') && prefix.startsWith('muitvgs')) ||
-               (trimmedEmail.startsWith('muicdt') && prefix.startsWith('muicdt')) ||
                (uPhone && cleanInput && uPhone === cleanInput) ||
                (trimmedEmail.includes('@') && uEmail === trimmedEmail.split('@')[0]) ||
                (uEmail.includes('@') && uEmail.split('@')[0] === trimmedEmail);

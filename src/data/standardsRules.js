@@ -155,11 +155,10 @@ export const CONSTRUCTION_WORK_STANDARDS = [
   {
     "id": "work_16",
     "stt": 16,
-    "name": "Cung cấp, lắp đặt cửa thép chống cháy",
+    "name": "Thí nghiệm cọc thử tại hiện trường",
     "category": "CÔNG VIỆC XÂY DỰNG",
     "standards": [
-      "QCVN 06:2022/BXD Quy chuẩn kỹ thuật quốc gia về An toàn cháy cho nhà và công trình",
-      "TCVN 9383:2012 Thử nghiệm khả năng chịu lửa của cửa đi và cửa chắn ngăn cháy"
+      "TCVN 9393:2012 Cọc - Phương pháp thử nghiệm hiện trường bằng tải trọng tĩnh"
     ]
   },
   {
@@ -183,7 +182,12 @@ export const CONSTRUCTION_WORK_STANDARDS = [
       "TCVN 3890:2023 Phòng cháy chữa cháy - Phương tiện phòng cháy và chữa cháy cho nhà và công trình",
       "TCVN 7336:2021 Phòng cháy chữa cháy - Hệ thống chữa cháy tự động bằng nước, bọt - Yêu cầu thiết kế và lắp đặt",
       "TCVN 5738:2021 Phòng cháy chữa cháy - Hệ thống báo cháy tự động - Yêu cầu kỹ thuật",
-      "QCVN 06:2022/BXD Quy chuẩn kỹ thuật quốc gia về An toàn cháy cho nhà và công trình"
+      "QCVN 06:2022/BXD Quy chuẩn kỹ thuật quốc gia về An toàn cháy cho nhà và công trình",
+      "TCVN 5637:1991 Quản lý chất lượng xây lắp công trình xây dựng - Nguyên tắc cơ bản",
+      "TCXD 217:1998 Hệ thống phát hiện cháy và báo động cháy - Quy định chung",
+      "TCVN 3991:1985 Tiêu chuẩn phòng cháy trong thiết kế xây dựng - Thuật ngữ và định nghĩa",
+      "TCVN 3254:1989 An toàn cháy - Yêu cầu chung",
+      "TCVN 3890:2023 Phương tiện phòng cháy và chữa cháy cho nhà và công trình – trang bị, bố trí, kiểm tra, bảo dưỡng"
     ]
   }
 ];
@@ -459,8 +463,25 @@ export function loadStoredStandards() {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.works) && Array.isArray(parsed.materials)) {
+        // Luôn bảo toàn các mục cốt lõi (như Thí nghiệm cọc, MEP, PCCC) nếu cache cũ chỉ có 16 mục
+        const mergedWorks = [...parsed.works];
+        INITIAL_STANDARDS_DATA.works.forEach(defaultWork => {
+          const exists = mergedWorks.some(w => 
+            w.id === defaultWork.id || 
+            (w.name && defaultWork.name && w.name.trim().toLowerCase() === defaultWork.name.trim().toLowerCase())
+          );
+          if (!exists) {
+            mergedWorks.push(defaultWork);
+          }
+        });
+
+        // Đánh lại số thứ tự STT
+        mergedWorks.forEach((w, idx) => {
+          w.stt = idx + 1;
+        });
+
         return {
-          works: parsed.works,
+          works: mergedWorks,
           materials: parsed.materials,
           mandatory: []
         };
@@ -476,7 +497,14 @@ export function loadStoredStandards() {
  * Tìm kiếm tiêu chuẩn tương ứng theo công việc hoặc chủng loại vật liệu (Rule Engine)
  * Tự động đọc từ danh mục Admin quản lý (nếu có) hoặc danh mục mặc định
  */
-export function getSuggestedStandards(taskOrMaterialName, inspectionType = 'WORK', customWorks = null, customMaterials = null, customMandatory = null) {
+export function getSuggestedStandards(
+  taskOrMaterialName, 
+  inspectionType = 'WORK', 
+  customWorks = null, 
+  customMaterials = null, 
+  customMandatory = null,
+  packageName = ''
+) {
   if (!taskOrMaterialName || typeof taskOrMaterialName !== 'string') return [];
 
   let works = customWorks;
@@ -487,18 +515,81 @@ export function getSuggestedStandards(taskOrMaterialName, inspectionType = 'WORK
     materials = materials || stored.materials;
   }
 
-  const lower = String(taskOrMaterialName).toLowerCase();
-  const pool = (inspectionType === 'MATERIAL' 
-    ? (materials || []) 
-    : [...(works || []), ...(materials || [])]) || [];
+  // Đảm bảo works luôn có ít nhất các mục mặc định nếu customWorks truyền vào bị thiếu
+  if (Array.isArray(works) && works.length < INITIAL_STANDARDS_DATA.works.length) {
+    const existingIds = new Set(works.map(w => w.id || w.name));
+    INITIAL_STANDARDS_DATA.works.forEach(dw => {
+      if (!existingIds.has(dw.id) && !existingIds.has(dw.name)) {
+        works = [...works, dw];
+      }
+    });
+  }
 
-  let matched = pool.find(item => item?.name && lower.includes(String(item.name).toLowerCase()));
+  const queryText = `${packageName || ''} ${taskOrMaterialName}`.trim();
+  const lower = queryText.toLowerCase();
+
+  // QUAN TRỌNG: Phân tách tuyệt đối 2 nhóm:
+  // - Nếu là WORK (Công việc xây dựng / MEP / PCCC) -> CHỈ tìm trong works, TUYỆT ĐỐI KHÔNG tìm trong materials!
+  // - Nếu là MATERIAL (Vật liệu đầu vào) -> CHỈ tìm trong materials!
+  const pool = inspectionType === 'MATERIAL' ? (materials || []) : (works || []);
+
+  // Ưu tiên 1: Kiểm tra từ khóa đặc thù ngành (Domain keywords)
+  let matched = null;
+
+  if (inspectionType === 'WORK') {
+    // 1a. Từ khóa PCCC
+    const isPCCC = lower.includes('pccc') || 
+                   lower.includes('phòng cháy') || 
+                   lower.includes('chữa cháy') || 
+                   lower.includes('báo cháy') || 
+                   lower.includes('cứu hỏa') || 
+                   lower.includes('sprinkler') ||
+                   lower.includes('thử áp lực tĩnh');
+    if (isPCCC) {
+      matched = pool.find(item => item?.name && (
+        item.name.toLowerCase().includes('pccc') || 
+        item.name.toLowerCase().includes('phòng cháy')
+      ));
+    }
+
+    // 1b. Từ khóa MEP / Điện nước
+    if (!matched) {
+      const isMEP = lower.includes('mep') || 
+                    lower.includes('cơ điện') || 
+                    lower.includes('cấp nước') || 
+                    lower.includes('thoát nước') || 
+                    lower.includes('chiếu sáng') ||
+                    lower.includes('thông gió') ||
+                    lower.includes('hút khói');
+      if (isMEP) {
+        matched = pool.find(item => item?.name && (
+          item.name.toLowerCase().includes('mep') || 
+          item.name.toLowerCase().includes('cơ điện')
+        ));
+      }
+    }
+  }
+
+  // Ưu tiên 2: Tìm kiếm khớp tên trực tiếp
   if (!matched) {
-    // Tìm kiếm mờ theo từng từ khóa
+    matched = pool.find(item => item?.name && lower.includes(String(item.name).toLowerCase()));
+  }
+
+  // Ưu tiên 3: Tìm kiếm mờ theo cụm từ có ý nghĩa (bỏ các từ dừng phổ biến như 'thi', 'công', 'hệ', 'thống', 'ống', 'nhà', 'trong', 'ngoài', 'và', 'cho')
+  if (!matched) {
+    const stopWords = new Set(['thi', 'công', 'hệ', 'thống', 'ống', 'nhà', 'trong', 'ngoài', 'cho', 'và', 'các', 'của', 'tại', 'với', 'theo', 'loại']);
     matched = pool.find(item => {
       if (!item?.name) return false;
-      const parts = String(item.name).toLowerCase().split(/[\s,]+/);
-      return parts.some(p => p.length > 2 && lower.includes(p));
+      const parts = String(item.name)
+        .toLowerCase()
+        .split(/[\s,–—\-\/]+/)
+        .filter(p => p.length > 2 && !stopWords.has(p));
+      
+      // Khớp theo từ nguyên vẹn (whole word token match) thay vì includes() tự do
+      return parts.some(p => {
+        const regex = new RegExp(`(^|[^a-z0-9àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ])${p}([^a-z0-9àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]|$)`, 'i');
+        return regex.test(lower);
+      });
     });
   }
 

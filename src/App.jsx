@@ -4,7 +4,7 @@ import {
   AlertTriangle, FileText, ChevronRight, Layers, MapPin, Calendar, 
   Send, Users, ShieldAlert, Award, HardHat, Eye, Briefcase, ShieldCheck,
   BellRing, LogOut, ArrowRight, UserCheck, BookOpen, Settings, Wrench, RotateCcw,
-  ArrowLeftRight, NotebookPen, Ban
+  ArrowLeftRight, NotebookPen, Ban, CreditCard
 } from 'lucide-react';
 
 import Navbar from './components/Navbar';
@@ -32,6 +32,9 @@ import ProjectManagementView from './components/ProjectManagementView';
 import ShopDocumentsView from './components/ShopDocumentsView';
 import CreateShopDocumentModal from './components/CreateShopDocumentModal';
 import ShopDocumentDetailModal from './components/ShopDocumentDetailModal';
+import PaymentDocumentsView from './components/PaymentDocumentsView';
+import CreatePaymentDocumentModal from './components/CreatePaymentDocumentModal';
+import PaymentDocumentDetailModal from './components/PaymentDocumentDetailModal';
 import { 
   MOCK_USERS, 
   MOCK_PROJECT, 
@@ -42,7 +45,7 @@ import {
   INITIAL_DAILY_LOGS,
   INITIAL_COMPLETION_REPORTS
 } from './data/mockData';
-import { getSuggestedStandards, loadStoredStandards, STANDARDS_STORAGE_KEY } from './data/standardsRules';
+import { getSuggestedStandards, loadStoredStandards, STANDARDS_STORAGE_KEY, INITIAL_STANDARDS_DATA } from './data/standardsRules';
 import { 
   loadStoredProjects, 
   saveStoredProjects, 
@@ -67,6 +70,21 @@ import {
   SHOP_DOCUMENTS_STORAGE_KEY,
   SHOP_SLA_STORAGE_KEY
 } from './data/shopDocumentConstants';
+import {
+  loadStoredPaymentDocuments,
+  saveStoredPaymentDocuments,
+  loadStoredPaymentSlaConfigs,
+  saveStoredPaymentSlaConfigs,
+  DEFAULT_PAYMENT_SLA_CONFIGS,
+  PAYMENT_STATUS,
+  getEffectivePaymentStatus,
+  isPaymentAssignmentOverdue,
+  isPaymentReviewOverdue,
+  getPaymentLeadSupervisor,
+  getPaymentLeadInvestor,
+  PAYMENT_DOCUMENTS_STORAGE_KEY,
+  PAYMENT_SLA_STORAGE_KEY
+} from './data/paymentDocumentConstants';
 
 import { 
   saveInspectionRequest, 
@@ -101,6 +119,11 @@ import {
   deleteShopDocument,
   subscribeToShopSlaConfigs,
   saveShopSlaConfigs,
+  subscribeToPaymentDocuments,
+  savePaymentDocument,
+  deletePaymentDocument,
+  subscribeToPaymentSlaConfigs,
+  savePaymentSlaConfigs,
   cleanupOldRequestsAndReports
 } from './services/firestoreService';
 import { 
@@ -195,14 +218,21 @@ function sanitizeReportData(r) {
 }
 
 export default function App() {
-  // Quản lý danh sách cán bộ: ưu tiên localStorage, tự chuẩn hóa password & status
+  // Quản lý danh sách cán bộ: ưu tiên localStorage, tự chuẩn hóa password & status (lọc bỏ tài khoản test cũ)
   const [users, setUsers] = useState(() => {
     try {
       const saved = localStorage.getItem(USERS_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const merged = [...parsed];
+          const filtered = parsed.filter(u => {
+            const uid = (u?.uid || '').toLowerCase();
+            const email = (u?.email || '').toLowerCase();
+            return !(uid === 'uid_muitvgsv' || uid === 'uid_muicdt' ||
+                     uid === 'uid_custom_1792576174520' || uid === 'uid_custom_1792576233247' ||
+                     email.includes('muitvgs') || email.includes('muicdt'));
+          });
+          const merged = [...filtered];
           MOCK_USERS.forEach(m => {
             const existingIdx = merged.findIndex(u => u.uid === m.uid || ((u.email || '').toLowerCase() === (m.email || '').toLowerCase()));
             if (existingIdx === -1) {
@@ -303,6 +333,10 @@ export default function App() {
   const [shopDocuments, setShopDocuments] = useState(loadStoredShopDocuments);
   const [shopSlaConfigs, setShopSlaConfigs] = useState(loadStoredShopSlaConfigs);
 
+  // Quản lý Hồ sơ thanh toán (Tạm ứng, Thanh toán, Quyết toán) & Cấu hình thời hạn phản hồi (SLA)
+  const [paymentDocuments, setPaymentDocuments] = useState(loadStoredPaymentDocuments);
+  const [paymentSlaConfigs, setPaymentSlaConfigs] = useState(loadStoredPaymentSlaConfigs);
+
   const [standards, setStandards] = useState(STANDARD_CRITERIA_LIST);
   const [standardsData, setStandardsData] = useState(loadStoredStandards);
   const [projectsList, setProjectsList] = useState(loadStoredProjects);
@@ -322,7 +356,20 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const saved = localStorage.getItem('apct_logged_user');
-      return saved ? JSON.parse(saved) : null;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const uid = (parsed?.uid || '').toLowerCase();
+        const email = (parsed?.email || '').toLowerCase();
+        const isTest = uid === 'uid_muitvgsv' || uid === 'uid_muicdt' ||
+                       uid === 'uid_custom_1792576174520' || uid === 'uid_custom_1792576233247' ||
+                       email.includes('muitvgs') || email.includes('muicdt');
+        if (isTest) {
+          localStorage.removeItem('apct_logged_user');
+          return null;
+        }
+        return parsed;
+      }
+      return null;
     } catch {
       return null;
     }
@@ -362,229 +409,497 @@ export default function App() {
   reportsRef.current = reports;
   const usersRef = useRef(users);
   usersRef.current = users;
+  const shopDocumentsRef = useRef(shopDocuments);
+  shopDocumentsRef.current = shopDocuments;
+  const paymentDocumentsRef = useRef(paymentDocuments);
+  paymentDocumentsRef.current = paymentDocuments;
+  const dailyLogsRef = useRef(dailyLogs);
+  dailyLogsRef.current = dailyLogs;
+  const completionReportsRef = useRef(completionReports);
+  completionReportsRef.current = completionReports;
+
+  // Helper chuẩn hóa so sánh tên (loại bỏ chức danh như KS, Chỉ huy trưởng...)
+  const normalizePersonName = (name) => {
+    if (!name) return '';
+    return name
+      .toLowerCase()
+      .replace(/^(ks\.|kỹ sư|thạc sĩ|tiến sĩ|chỉ huy trưởng|chỉ huy phó|cán bộ)\s+/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
 
   // ============================================================================
-  // HÀM KIỂM TRA PHÂN PHỐI THÔNG BÁO CHÍNH XÁC (NOTIFICATION RECIPIENT RESOLVER)
-  // Quy tắc chuẩn:
-  // 1. Quản trị viên (ADMIN): Luôn nhận để giám sát toàn dự án.
-  // 2. Những người Trưởng (TVGS Trưởng, CĐT Trưởng, Chỉ huy trưởng ĐVTC):
-  //    Nhận thông báo thuộc phân hệ của mình hoặc do cán bộ dưới quyền mình phụ trách.
-  // 3. Những người ĐƯỢC CHỌN (Assigned Recipients):
-  //    - Cán bộ TVGS được tick chọn tiếp nhận phiếu.
-  //    - Cán bộ CĐT được tick chọn tiếp nhận / phê duyệt.
-  //    - Cán bộ ĐVTC lập phiếu yêu cầu đó (Creator).
-  //    - Cán bộ tham gia / ký số trên biên bản (Attendees).
-  // 4. Các cán bộ thường KHÔNG được chọn và KHÔNG phải Trưởng:
-  //    TUYỆT ĐỐI KHÔNG NHẬN THÔNG BÁO!
+  // 1. HÀM KIỂM TRA PHÂN QUYỀN TRUY CẬP PHIẾU YÊU CẦU & BIÊN BẢN NGHIỆM THU
   // ============================================================================
+  const canAccessInspection = (req, rep, user, allUsers) => {
+    if (!user) return false;
+    const role = user.role;
+
+    // 1. Quản trị viên (ADMIN): luôn xem được tất cả
+    if (role === 'ADMIN') return true;
+
+    const curUid = user.uid;
+    const curEmail = (user.email || '').trim().toLowerCase();
+    const curName = (user.fullName || '').trim().toLowerCase();
+    const curNormName = normalizePersonName(user.fullName);
+
+    // 2. Phân hệ Đơn Vị Thi Công (CONTRACTOR):
+    // "Ai xem được của người đó": Mỗi cán bộ ĐVTC chỉ xem phiếu/biên bản do chính mình tạo ra hoặc đứng tên ký
+    if (role === 'CONTRACTOR') {
+      const reqCreatedUid = req?.createdByUid;
+      const reqCreatedName = (req?.createdByName || '').trim().toLowerCase();
+      const reqCreatedNorm = normalizePersonName(req?.createdByName);
+      const repContractorPerson = (rep?.attendees?.contractor?.person || '').trim().toLowerCase();
+      const repContractorNorm = normalizePersonName(rep?.attendees?.contractor?.person);
+      const repContractorUid = rep?.attendees?.contractor?.uid;
+
+      const isMyInspection = Boolean(
+        (curUid && reqCreatedUid && curUid === reqCreatedUid) ||
+        (curName && reqCreatedName && curName === reqCreatedName) ||
+        (curNormName && reqCreatedNorm && curNormName === reqCreatedNorm) ||
+        (curUid && repContractorUid && curUid === repContractorUid) ||
+        (curName && repContractorPerson && curName === repContractorPerson) ||
+        (curNormName && repContractorNorm && curNormName === repContractorNorm)
+      );
+
+      return isMyInspection;
+    }
+
+    // 3. Phân hệ Tư Vấn Giám Sát (SUPERVISOR & LEAD_SUPERVISOR):
+    const isSupervisorLead = role === 'LEAD_SUPERVISOR' || Boolean(user.isLead && role === 'SUPERVISOR') || (role === 'SUPERVISOR' && (user.position || '').toLowerCase().includes('trưởng'));
+    if (role === 'SUPERVISOR' || role === 'LEAD_SUPERVISOR') {
+      const recipients = req?.assignedRecipients || rep?.assignedRecipients || [];
+      const supPerson = (rep?.attendees?.supervisor?.person || '').trim().toLowerCase();
+      const supPersonNorm = normalizePersonName(rep?.attendees?.supervisor?.person);
+      const supEmail = (rep?.attendees?.supervisor?.email || '').trim().toLowerCase();
+      const supUid = rep?.attendees?.supervisor?.uid;
+
+      // Kiểm tra chỉ định đích danh cho chính cán bộ này ("ai xem được của người đó")
+      const isDirectlyAssigned = recipients.some(rec => {
+        if (rec.role !== 'SUPERVISOR' && rec.role !== 'LEAD_SUPERVISOR') return false;
+        const rUid = rec.uid;
+        const rEmail = (rec.email || '').trim().toLowerCase();
+        const rName = (rec.fullName || '').trim().toLowerCase();
+        const rNormName = normalizePersonName(rec.fullName);
+        return (curUid && rUid && curUid === rUid) || 
+               (curEmail && rEmail && curEmail === rEmail) || 
+               (curName && rName && curName === rName) ||
+               (curNormName && rNormName && curNormName === rNormName);
+      });
+
+      const isDirectAttendee = Boolean(
+        (curUid && supUid && curUid === supUid) ||
+        (curName && supPerson && curName === supPerson) ||
+        (curNormName && supPersonNorm && curNormName === supPersonNorm) ||
+        (curEmail && supEmail && curEmail === supEmail)
+      );
+
+      // Nếu là cán bộ TVGS thường: CHỈ xem nếu được chỉ định đích danh cho chính mình
+      if (!isSupervisorLead) {
+        return Boolean(isDirectlyAssigned || isDirectAttendee);
+      }
+
+      // Nếu là TVGS Trưởng: xem nếu chỉ định cho mình HOẶC cho các cán bộ TVGS cấp dưới quyền
+      const subIds = Array.isArray(user.subordinateIds) ? user.subordinateIds : [];
+      const hasExplicitSubs = subIds.length > 0 || (allUsers || []).some(u => u.leaderId === curUid);
+      const mySubordinates = (allUsers || []).filter(u => {
+        if (u.uid === curUid) return false;
+        if (u.role !== 'SUPERVISOR') return false;
+        if ((u.position || '').toLowerCase().includes('trưởng')) return false;
+        if (hasExplicitSubs) {
+          return u.leaderId === curUid || subIds.includes(u.uid);
+        }
+        return true;
+      });
+      const subUids = mySubordinates.map(u => u.uid);
+      const subEmails = mySubordinates.map(u => (u.email || '').trim().toLowerCase()).filter(Boolean);
+      const subNormNames = mySubordinates.map(u => normalizePersonName(u.fullName)).filter(Boolean);
+
+      const isAssignedToSub = recipients.some(rec => {
+        if (rec.role !== 'SUPERVISOR') return false;
+        const rUid = rec.uid;
+        const rEmail = (rec.email || '').trim().toLowerCase();
+        const rNormName = normalizePersonName(rec.fullName);
+        const rLeader = rec.leaderId;
+
+        if (rLeader && rLeader === curUid) return true;
+        if (rUid && subUids.includes(rUid)) return true;
+        if (rEmail && subEmails.includes(rEmail)) return true;
+        if (rNormName && subNormNames.includes(rNormName)) return true;
+        return false;
+      });
+
+      const isSubAttendee = Boolean(
+        (supPersonNorm && subNormNames.includes(supPersonNorm)) ||
+        (supEmail && subEmails.includes(supEmail))
+      );
+
+      return Boolean(isDirectlyAssigned || isDirectAttendee || isAssignedToSub || isSubAttendee);
+    }
+
+    // 4. Phân hệ Chủ Đầu Tư (INVESTOR & LEAD_INVESTOR):
+    const isInvestorLead = role === 'LEAD_INVESTOR' || Boolean(user.isLead && role === 'INVESTOR') || (role === 'INVESTOR' && ((user.position || '').toLowerCase().includes('trưởng') || (user.position || '').toLowerCase().includes('giám đốc')));
+    if (role === 'INVESTOR' || role === 'LEAD_INVESTOR') {
+      const recipients = req?.assignedRecipients || rep?.assignedRecipients || [];
+      const invPerson = (rep?.attendees?.investor?.person || '').trim().toLowerCase();
+      const invPersonNorm = normalizePersonName(rep?.attendees?.investor?.person);
+      const invEmail = (rep?.attendees?.investor?.email || '').trim().toLowerCase();
+      const invUid = rep?.attendees?.investor?.uid;
+
+      // Kiểm tra chỉ định đích danh cho chính cán bộ này ("ai xem được của người đó")
+      const isDirectlyAssigned = recipients.some(rec => {
+        if (rec.role !== 'INVESTOR' && rec.role !== 'LEAD_INVESTOR') return false;
+        const rUid = rec.uid;
+        const rEmail = (rec.email || '').trim().toLowerCase();
+        const rName = (rec.fullName || '').trim().toLowerCase();
+        const rNormName = normalizePersonName(rec.fullName);
+        return (curUid && rUid && curUid === rUid) || 
+               (curEmail && rEmail && curEmail === rEmail) || 
+               (curName && rName && curName === rName) ||
+               (curNormName && rNormName && curNormName === rNormName);
+      });
+
+      const isDirectAttendee = Boolean(
+        (curUid && invUid && curUid === invUid) ||
+        (curName && invPerson && curName === invPerson) ||
+        (curNormName && invPersonNorm && curNormName === invPersonNorm) ||
+        (curEmail && invEmail && curEmail === invEmail)
+      );
+
+      // Nếu là cán bộ CĐT thường: CHỈ xem nếu được chỉ định đích danh cho chính mình
+      if (!isInvestorLead) {
+        return Boolean(isDirectlyAssigned || isDirectAttendee);
+      }
+
+      // Nếu là CĐT Trưởng: xem nếu chỉ định cho mình HOẶC cho các cán bộ CĐT cấp dưới quyền
+      const subIds = Array.isArray(user.subordinateIds) ? user.subordinateIds : [];
+      const hasExplicitSubs = subIds.length > 0 || (allUsers || []).some(u => u.leaderId === curUid);
+      const mySubordinates = (allUsers || []).filter(u => {
+        if (u.uid === curUid) return false;
+        if (u.role !== 'INVESTOR') return false;
+        if ((u.position || '').toLowerCase().includes('trưởng') || (u.position || '').toLowerCase().includes('giám đốc')) return false;
+        if (hasExplicitSubs) {
+          return u.leaderId === curUid || subIds.includes(u.uid);
+        }
+        return true;
+      });
+      const subUids = mySubordinates.map(u => u.uid);
+      const subEmails = mySubordinates.map(u => (u.email || '').trim().toLowerCase()).filter(Boolean);
+      const subNormNames = mySubordinates.map(u => normalizePersonName(u.fullName)).filter(Boolean);
+
+      const isAssignedToSub = recipients.some(rec => {
+        if (rec.role !== 'INVESTOR') return false;
+        const rUid = rec.uid;
+        const rEmail = (rec.email || '').trim().toLowerCase();
+        const rNormName = normalizePersonName(rec.fullName);
+        const rLeader = rec.leaderId;
+
+        if (rLeader && rLeader === curUid) return true;
+        if (rUid && subUids.includes(rUid)) return true;
+        if (rEmail && subEmails.includes(rEmail)) return true;
+        if (rNormName && subNormNames.includes(rNormName)) return true;
+        return false;
+      });
+
+      const isSubAttendee = Boolean(
+        (invPersonNorm && subNormNames.includes(invPersonNorm)) ||
+        (invEmail && subEmails.includes(invEmail))
+      );
+
+      return Boolean(isDirectlyAssigned || isDirectAttendee || isAssignedToSub || isSubAttendee);
+    }
+
+    return false;
+  };
+
   // ============================================================================
-  // HỆ THỐNG LỌC VÀ ĐIỀU HƯỚNG THÔNG BÁO THEO QUY CHUẨN (NOTIFICATION ACCESS CONTROL)
-  // Quy tắc chuẩn 100% theo yêu cầu:
-  // 1. CĐT Trưởng (LEAD_INVESTOR): Nhận toàn bộ thông báo của dự án.
-  // 2. TVGS Trưởng (LEAD_SUPERVISOR): Nhận toàn bộ thông báo của dự án.
-  // 3. CĐT thường (INVESTOR):
-  //    - Nhận khi có người tạo phiếu hoặc sửa phiếu và yêu cầu mình duyệt (được phân công).
-  //    - Nhận khi 3 bên xác nhận hết (hoàn thành nghiệm thu của phiếu phân công cho mình).
-  //    - KHÔNG nhận thông báo của các người khác!
-  // 4. TVGS thường (SUPERVISOR):
-  //    - Nhận khi có người tạo phiếu hoặc sửa phiếu và yêu cầu mình duyệt (được phân công).
-  //    - Hoặc khi phiếu có tên mình duyệt bị CĐT hủy (từ chối / yêu cầu sửa).
-  //    - Hoặc 3 bên xác nhận hết (hoàn thành nghiệm thu của phiếu phân công cho mình).
-  //    - KHÔNG nhận thông báo của các người khác!
-  // 5. Kỹ thuật hiện trường (CONTRACTOR):
-  //    - Nhận thông báo khi phiếu của mình tạo có xác nhận duyệt (TVGS duyệt hoặc CĐT duyệt).
-  //    - Hoặc không đồng ý duyệt (TVGS hoặc CĐT từ chối / hủy).
-  //    - Hoặc khi cả 3 bên xác nhận duyệt xong (hoàn tất).
-  //    - KHÔNG nhận thông báo của người khác!
+  // 2. CÁC HÀM KIỂM TRA PHÂN QUYỀN TRUY CẬP CHO SHOP, THANH TOÁN, NHẬT KÝ, HOÀN THÀNH
+  // ============================================================================
+  const canAccessShopDocument = (doc, user, allUsers, notif) => {
+    if (!user) return false;
+    if (user.role === 'ADMIN') return true;
+    const curUid = user.uid;
+    const curName = normalizePersonName(user.fullName);
+
+    if (notif?.recipientUid && notif.recipientUid === curUid) return true;
+    if (Array.isArray(notif?.extraRecipientUids) && notif.extraRecipientUids.includes(curUid)) return true;
+
+    const isSupervisorLead = user.role === 'LEAD_SUPERVISOR' || Boolean(user.isLead && user.role === 'SUPERVISOR') || (user.role === 'SUPERVISOR' && (user.position || '').toLowerCase().includes('giám sát trưởng'));
+    const isInvestorLead = user.role === 'LEAD_INVESTOR' || Boolean(user.isLead && user.role === 'INVESTOR') || (user.role === 'INVESTOR' && ((user.position || '').toLowerCase().includes('trưởng ban') || (user.position || '').toLowerCase().includes('giám đốc')));
+
+    if (isSupervisorLead || isInvestorLead) return true;
+
+    const creatorUid = doc?.createdByUid || notif?.createdByUid;
+    const creatorName = normalizePersonName(doc?.createdByName || notif?.createdByName);
+    if (user.role === 'CONTRACTOR') {
+      return Boolean((curUid && creatorUid && curUid === creatorUid) || (curName && creatorName && curName === creatorName));
+    }
+
+    if (user.role === 'SUPERVISOR') {
+      const tvgsAssignee = doc?.assignedTvgs?.assignee || (doc?.assignedTvgs?.uid ? doc.assignedTvgs : null);
+      const tvgsUid = tvgsAssignee?.uid;
+      const tvgsName = normalizePersonName(tvgsAssignee?.fullName);
+      return Boolean((curUid && tvgsUid && curUid === tvgsUid) || (curName && tvgsName && curName === tvgsName));
+    }
+
+    if (user.role === 'INVESTOR') {
+      const invAssignee = doc?.assignedInvestor?.assignee || (doc?.assignedInvestor?.uid ? doc.assignedInvestor : null);
+      const invUid = invAssignee?.uid;
+      const invName = normalizePersonName(invAssignee?.fullName);
+      return Boolean((curUid && invUid && curUid === invUid) || (curName && invName && curName === invName));
+    }
+
+    return false;
+  };
+
+  const canAccessPaymentDocument = (doc, user, allUsers, notif) => {
+    if (!user) return false;
+    if (user.role === 'ADMIN') return true;
+    const curUid = user.uid;
+    const curName = normalizePersonName(user.fullName);
+
+    if (notif?.recipientUid && notif.recipientUid === curUid) return true;
+    if (Array.isArray(notif?.extraRecipientUids) && notif.extraRecipientUids.includes(curUid)) return true;
+
+    const isSupervisorLead = user.role === 'LEAD_SUPERVISOR' || Boolean(user.isLead && user.role === 'SUPERVISOR') || (user.role === 'SUPERVISOR' && (user.position || '').toLowerCase().includes('giám sát trưởng'));
+    const isInvestorLead = user.role === 'LEAD_INVESTOR' || Boolean(user.isLead && user.role === 'INVESTOR') || (user.role === 'INVESTOR' && ((user.position || '').toLowerCase().includes('trưởng ban') || (user.position || '').toLowerCase().includes('giám đốc')));
+
+    if (isSupervisorLead || isInvestorLead) return true;
+
+    const creatorUid = doc?.createdByUid || notif?.createdByUid;
+    const creatorName = normalizePersonName(doc?.createdByName || notif?.createdByName);
+    if (user.role === 'CONTRACTOR') {
+      return Boolean((curUid && creatorUid && curUid === creatorUid) || (curName && creatorName && curName === creatorName));
+    }
+
+    if (user.role === 'SUPERVISOR') {
+      const tvgsAssignee = doc?.assignedTvgs?.assignee || (doc?.assignedTvgs?.uid ? doc.assignedTvgs : null);
+      const tvgsUid = tvgsAssignee?.uid;
+      const tvgsName = normalizePersonName(tvgsAssignee?.fullName);
+      return Boolean((curUid && tvgsUid && curUid === tvgsUid) || (curName && tvgsName && curName === tvgsName));
+    }
+
+    if (user.role === 'INVESTOR') {
+      const invAssignee = doc?.assignedInvestor?.assignee || (doc?.assignedInvestor?.uid ? doc.assignedInvestor : null);
+      const invUid = invAssignee?.uid;
+      const invName = normalizePersonName(invAssignee?.fullName);
+      return Boolean((curUid && invUid && curUid === invUid) || (curName && invName && curName === invName));
+    }
+
+    return false;
+  };
+
+  const canAccessDailyLog = (log, user, allUsers, notif) => {
+    if (!user) return false;
+    if (user.role === 'ADMIN') return true;
+    const curUid = user.uid;
+    const curName = normalizePersonName(user.fullName);
+
+    if (notif?.recipientUid && notif.recipientUid === curUid) return true;
+    if (Array.isArray(notif?.extraRecipientUids) && notif.extraRecipientUids.includes(curUid)) return true;
+
+    const isSupervisorLead = user.role === 'LEAD_SUPERVISOR' || Boolean(user.isLead && user.role === 'SUPERVISOR');
+    const isInvestorLead = user.role === 'LEAD_INVESTOR' || Boolean(user.isLead && user.role === 'INVESTOR');
+    if (isSupervisorLead || isInvestorLead) return true;
+
+    const creatorUid = log?.createdByUid || log?.contractorUid || notif?.createdByUid;
+    const creatorName = normalizePersonName(log?.contractorName || notif?.createdByName);
+    if (user.role === 'CONTRACTOR') {
+      return Boolean((curUid && creatorUid && curUid === creatorUid) || (curName && creatorName && curName === creatorName));
+    }
+
+    if (user.role === 'SUPERVISOR') {
+      const supUid = log?.supervisorUid || log?.assignedSupervisor?.uid;
+      const supName = normalizePersonName(log?.assignedSupervisor?.name || log?.assignedSupervisor?.fullName);
+      return Boolean((curUid && supUid && curUid === supUid) || (curName && supName && curName === supName));
+    }
+
+    return false;
+  };
+
+  const canAccessCompletionReport = (cr, user, allUsers, notif) => {
+    if (!user) return false;
+    if (user.role === 'ADMIN') return true;
+    const curUid = user.uid;
+    const curName = normalizePersonName(user.fullName);
+
+    if (notif?.recipientUid && notif.recipientUid === curUid) return true;
+    if (Array.isArray(notif?.extraRecipientUids) && notif.extraRecipientUids.includes(curUid)) return true;
+
+    const isSupervisorLead = user.role === 'LEAD_SUPERVISOR' || Boolean(user.isLead && user.role === 'SUPERVISOR');
+    const isInvestorLead = user.role === 'LEAD_INVESTOR' || Boolean(user.isLead && user.role === 'INVESTOR');
+    if (isSupervisorLead || isInvestorLead) return true;
+
+    const creatorUid = cr?.createdByUid || cr?.contractorUid || notif?.createdByUid;
+    const creatorName = normalizePersonName(cr?.contractorName || notif?.createdByName);
+    if (user.role === 'CONTRACTOR') {
+      return Boolean((curUid && creatorUid && curUid === creatorUid) || (curName && creatorName && curName === creatorName));
+    }
+
+    const hasSig = Boolean(
+      (user.role === 'SUPERVISOR' && (cr?.signatures?.supervisor?.signerUid === curUid || normalizePersonName(cr?.signatures?.supervisor?.signerName) === curName)) ||
+      (user.role === 'INVESTOR' && (cr?.signatures?.investor?.signerUid === curUid || normalizePersonName(cr?.signatures?.investor?.signerName) === curName))
+    );
+    return hasSig;
+  };
+
+  // ============================================================================
+  // 3. HÀM KIỂM TRA PHÂN PHỐI THÔNG BÁO CHÍNH XÁC (NOTIFICATION RECIPIENT RESOLVER)
+  // Chỉ những người được ủy quyền / phân công mới nhận được thông báo
   // ============================================================================
   const checkNotificationRecipient = (
     notif, 
     user = currentUserRef.current, 
     reqList = requestsRef.current, 
-    repList = reportsRef.current
+    repList = reportsRef.current,
+    allUsers = usersRef.current
   ) => {
     if (!user || !notif) return false;
     const role = user.role;
 
-    // 0. Quản trị viên luôn nhận được thông báo
+    // 0. Quản trị viên (ADMIN): Luôn nhận để giám sát toàn dự án
     if (role === 'ADMIN') return true;
-
-    // 1. CĐT TRƯỞNG: Nhận toàn bộ thông báo (bao gồm tài khoản test muicdt)
-    const isLeadInvestor = role === 'LEAD_INVESTOR' || 
-      Boolean(user.isLead && role === 'INVESTOR') || 
-      (user.email || '').toLowerCase().includes('muicdt') || 
-      user.uid === 'uid_custom_1792576233247';
-    if (isLeadInvestor) return true;
-
-    // 2. TVGS TRƯỞNG: Nhận toàn bộ thông báo (bao gồm tài khoản test muitvgs)
-    const isLeadSupervisor = role === 'LEAD_SUPERVISOR' || 
-      Boolean(user.isLead && role === 'SUPERVISOR') || 
-      (user.email || '').toLowerCase().includes('muitvgs') || 
-      user.uid === 'uid_custom_1792576174520';
-    if (isLeadSupervisor) return true;
-
-    // Tìm phiếu yêu cầu và biên bản liên quan
-    const req = (reqList || []).find(r => 
-      (notif.targetRequestId && (r.id === notif.targetRequestId || r.requestNumber === notif.targetRequestId)) ||
-      (notif.targetReportId && (r.reportId === notif.targetReportId || r.id === notif.targetReportId))
-    );
-    const rep = (repList || []).find(r => 
-      (notif.targetReportId && (r.id === notif.targetReportId || r.reportNumber === notif.targetReportId)) ||
-      (notif.targetRequestId && (r.requestId === notif.targetRequestId || r.id === notif.targetRequestId))
-    );
 
     const curUid = user.uid;
     const curEmail = (user.email || '').trim().toLowerCase();
     const curName = (user.fullName || '').trim().toLowerCase();
+    const curNormName = normalizePersonName(user.fullName);
 
-    // Thông báo gửi đích danh trực tiếp cho UID này
-    if (notif.recipientUid && notif.recipientUid === curUid) return true;
-    if (Array.isArray(notif.extraRecipientUids) && notif.extraRecipientUids.includes(curUid)) return true;
+    // 1. THÔNG BÁO HỒ SƠ SHOP
+    if (notif.targetShopDocId) {
+      const sDoc = (shopDocumentsRef.current || []).find(d => d.id === notif.targetShopDocId);
+      return canAccessShopDocument(sDoc, user, allUsers, notif);
+    }
 
-    // Danh sách cán bộ được phân công tiếp nhận phiếu
-    const assignedRecipients = notif.assignedRecipients || req?.assignedRecipients || rep?.assignedRecipients || [];
+    // 2. THÔNG BÁO HỒ SƠ THANH TOÁN
+    if (notif.targetPaymentDocId) {
+      const pDoc = (paymentDocumentsRef.current || []).find(d => d.id === notif.targetPaymentDocId);
+      return canAccessPaymentDocument(pDoc, user, allUsers, notif);
+    }
 
-    // Hàm kiểm tra cán bộ có nằm trong danh sách phân công duyệt hay không
-    const isAssigned = (roleToCheck) => {
-      return assignedRecipients.some(rec => {
-        if (roleToCheck && rec.role && rec.role !== roleToCheck) return false;
+    // 3. THÔNG BÁO NHẬT KÝ THI CÔNG
+    if (notif.targetDailyLogId) {
+      const dl = (dailyLogsRef.current || []).find(l => l.id === notif.targetDailyLogId);
+      return canAccessDailyLog(dl, user, allUsers, notif);
+    }
+
+    // 4. THÔNG BÁO BIÊN BẢN NGHIỆM THU HOÀN THÀNH
+    if (notif.targetCompletionReportId) {
+      const cr = (completionReportsRef.current || []).find(l => l.id === notif.targetCompletionReportId);
+      return canAccessCompletionReport(cr, user, allUsers, notif);
+    }
+
+    // 5. THÔNG BÁO PHIẾU YÊU CẦU & BIÊN BẢN NGHIỆM THU
+    if (notif.targetRequestId || notif.targetReportId) {
+      const req = (reqList || []).find(r => 
+        (notif.targetRequestId && (r.id === notif.targetRequestId || r.requestNumber === notif.targetRequestId)) ||
+        (notif.targetReportId && (r.reportId === notif.targetReportId || r.id === notif.targetReportId))
+      );
+      const rep = (repList || []).find(r => 
+        (notif.targetReportId && (r.id === notif.targetReportId || r.reportNumber === notif.targetReportId)) ||
+        (notif.targetRequestId && (r.requestId === notif.targetRequestId || r.id === notif.targetRequestId))
+      );
+
+      // Tạo đối tượng dữ liệu tổng hợp
+      const effectiveReq = req || {
+        id: notif.targetRequestId,
+        createdByUid: notif.createdByUid,
+        createdByName: notif.createdByName,
+        assignedRecipients: notif.assignedRecipients || []
+      };
+      const effectiveRep = rep || {
+        id: notif.targetReportId,
+        requestId: notif.targetRequestId,
+        assignedRecipients: notif.assignedRecipients || [],
+        attendees: {
+          contractor: { uid: notif.createdByUid, person: notif.createdByName },
+          supervisor: (notif.assignedRecipients || []).find(r => r.role === 'SUPERVISOR'),
+          investor: (notif.assignedRecipients || []).find(r => r.role === 'INVESTOR')
+        }
+      };
+
+      // ĐIỀU KIỆN TIÊN QUYẾT BẮT BUỘC: Nếu không có quyền truy cập phiếu -> TUYỆT ĐỐI KHÔNG NHẬN THÔNG BÁO!
+      const hasAccess = canAccessInspection(effectiveReq, effectiveRep, user, allUsers);
+      if (!hasAccess) {
+        return false;
+      }
+
+      // Đích danh trực tiếp
+      if (notif.recipientUid && notif.recipientUid === curUid) return true;
+      if (Array.isArray(notif.extraRecipientUids) && notif.extraRecipientUids.includes(curUid)) return true;
+
+      // Kỹ thuật hiện trường (CONTRACTOR): Phải là người tạo phiếu
+      if (role === 'CONTRACTOR') {
+        const creatorUid = notif.createdByUid || effectiveReq.createdByUid || effectiveRep.createdByUid;
+        const creatorName = (notif.createdByName || effectiveReq.createdByName || effectiveRep.createdByName || '').trim().toLowerCase();
+        const creatorNorm = normalizePersonName(notif.createdByName || effectiveReq.createdByName || effectiveRep.createdByName);
+        return Boolean(
+          (curUid && creatorUid && curUid === creatorUid) ||
+          (curName && creatorName && curName === creatorName) ||
+          (curNormName && creatorNorm && curNormName === creatorNorm)
+        );
+      }
+
+      const isSupervisorLead = role === 'LEAD_SUPERVISOR' || Boolean(user.isLead && role === 'SUPERVISOR') || (role === 'SUPERVISOR' && (user.position || '').toLowerCase().includes('trưởng'));
+      const isInvestorLead = role === 'LEAD_INVESTOR' || Boolean(user.isLead && role === 'INVESTOR') || (role === 'INVESTOR' && ((user.position || '').toLowerCase().includes('trưởng') || (user.position || '').toLowerCase().includes('giám đốc')));
+
+      // Trưởng bộ phận phụ trách cấp dưới liên quan
+      if (isSupervisorLead) {
+        if (!notif.targetRoles || notif.targetRoles.includes('LEAD_SUPERVISOR') || notif.targetRoles.includes('SUPERVISOR')) {
+          return true;
+        }
+      }
+      if (isInvestorLead) {
+        if (!notif.targetRoles || notif.targetRoles.includes('LEAD_INVESTOR') || notif.targetRoles.includes('INVESTOR')) {
+          return true;
+        }
+      }
+
+      // Cán bộ TVGS / CĐT thường: Phải là người được phân công trực tiếp
+      const assignedRecipients = effectiveReq.assignedRecipients || effectiveRep.assignedRecipients || [];
+      const isDirectAssigned = assignedRecipients.some(rec => {
+        if (rec.role && rec.role !== role) return false;
         const rUid = rec.uid;
         const rEmail = (rec.email || '').trim().toLowerCase();
         const rName = (rec.fullName || '').trim().toLowerCase();
-        return Boolean(
-          (curUid && rUid === curUid) ||
-          (curEmail && rEmail && curEmail === rEmail) ||
-          (curName && rName && (curName === rName || curName.includes(rName) || rName.includes(curName)))
-        );
+        const rNorm = normalizePersonName(rec.fullName);
+        return (curUid && rUid && curUid === rUid) ||
+               (curEmail && rEmail && curEmail === rEmail) ||
+               (curName && rName && curName === rName) ||
+               (curNormName && rNorm && curNormName === rNorm);
       });
-    };
 
-    // Kiểm tra người tạo phiếu (ĐVTC Kỹ thuật hiện trường)
-    const creatorUid = notif.createdByUid || req?.createdByUid || rep?.createdByUid;
-    const creatorName = (notif.createdByName || req?.createdByName || rep?.createdByName || '').trim().toLowerCase();
-    const isCreator = Boolean(
-      (curUid && creatorUid === curUid) ||
-      (curName && creatorName && (curName === creatorName || curName.includes(creatorName) || creatorName.includes(curName)))
-    );
-
-    // Kiểm tra cán bộ tham gia ký biên bản (Attendees)
-    const isAttendeeSupervisor = Boolean(
-      (rep?.attendees?.supervisor?.email && curEmail && rep.attendees.supervisor.email.toLowerCase() === curEmail) ||
-      (rep?.attendees?.supervisor?.person && curName && rep.attendees.supervisor.person.toLowerCase().includes(curName))
-    );
-    const isAttendeeInvestor = Boolean(
-      (rep?.attendees?.investor?.email && curEmail && rep.attendees.investor.email.toLowerCase() === curEmail) ||
-      (rep?.attendees?.investor?.person && curName && rep.attendees.investor.person.toLowerCase().includes(curName))
-    );
-
-    // Cờ 3 bên xác nhận hết (COMPLETION)
-    const isCompletion = 
-      notif.type === 'COMPLETION' || 
-      notif.type === 'COMPLETION_REPORT_CREATED' ||
-      notif.type === 'COMPLETION_REPORT_SIGNED' ||
-      Boolean(notif.targetCompletionReportId) ||
-      (notif.title && notif.title.includes('Hoàn thành nghiệm thu'));
-
-    // Cờ từ chối / không đồng ý nghiệm thu
-    const isRejection = 
-      notif.type === 'REJECTION' || 
-      (notif.title && (notif.title.includes('Không đạt') || notif.title.includes('yêu cầu sửa') || notif.title.includes('Từ chối')));
-
-    // Cờ xác nhận duyệt đạt
-    const isApproved = 
-      notif.type === 'APPROVAL' || 
-      (notif.title && (notif.title.includes('Đã Phê Duyệt') || notif.title.includes('Đã Ký') || notif.title.includes('Mời CĐT'))) ||
-      (notif.body && notif.body.includes('nghiệm thu đạt'));
-
-    // --------------------------------------------------------------------------
-    // 3. CĐT THƯỜNG (INVESTOR)
-    // Quy tắc: Có thông báo khi có người tạo phiếu hoặc sửa phiếu và yêu cầu mình duyệt.
-    // 3 bên xác nhận hết. KHÔNG nhận thông báo của các người khác.
-    // --------------------------------------------------------------------------
-    if (role === 'INVESTOR') {
-      const isAssignedCdt = isAssigned('INVESTOR') || isAttendeeInvestor;
-      if (!isAssignedCdt) {
-        // Tuyệt đối không nhận thông báo của các người khác!
-        return false;
-      }
-
-      // 3 bên xác nhận hết
-      if (isCompletion) return true;
-
-      // Khi có người tạo phiếu hoặc sửa phiếu và yêu cầu mình duyệt:
-      // - TVGS duyệt xong mời CĐT ký (APPROVAL / INVITATION)
-      // - ĐVTC sửa xong lỗi gửi lại yêu cầu CĐT duyệt (resubmit targeting INVESTOR)
-      // - Điều chuyển cán bộ sang cho mình
-      const targetsInvestor = !notif.targetRoles || notif.targetRoles.includes('INVESTOR');
-      if (targetsInvestor && (isApproved || notif.type === 'INVITATION' || notif.type === 'OFFICER_REASSIGNED')) {
-        return true;
-      }
-
-      return false;
-    }
-
-    // --------------------------------------------------------------------------
-    // 4. TVGS THƯỜNG (SUPERVISOR)
-    // Quy tắc: Có thông báo khi có người tạo phiếu hoặc sửa phiếu và yêu cầu mình duyệt.
-    // Hoặc khi phiếu có tên mình duyệt bị CĐT hủy. Hoặc 3 bên xác nhận hết.
-    // KHÔNG nhận thông báo của các người khác.
-    // --------------------------------------------------------------------------
-    if (role === 'SUPERVISOR') {
-      const isAssignedTvgs = isAssigned('SUPERVISOR') || isAttendeeSupervisor;
-      if (!isAssignedTvgs) {
-        // Tuyệt đối không nhận thông báo của các người khác!
-        return false;
-      }
-
-      // 3 bên xác nhận hết
-      if (isCompletion) return true;
-
-      // Khi phiếu có tên mình duyệt bị CĐT hủy (từ chối / yêu cầu sửa)
-      const isRejectedByCdt = isRejection && (
-        notif.rejectedByRole === 'INVESTOR' ||
-        (notif.title && notif.title.toLowerCase().includes('chủ đầu tư')) ||
-        (notif.body && notif.body.toLowerCase().includes('chủ đầu tư'))
+      const isDirectAttendee = Boolean(
+        (role === 'SUPERVISOR' && (
+          (curUid && effectiveRep.attendees?.supervisor?.uid === curUid) ||
+          (curEmail && effectiveRep.attendees?.supervisor?.email?.toLowerCase() === curEmail) ||
+          (curNormName && normalizePersonName(effectiveRep.attendees?.supervisor?.person) === curNormName)
+        )) ||
+        (role === 'INVESTOR' && (
+          (curUid && effectiveRep.attendees?.investor?.uid === curUid) ||
+          (curEmail && effectiveRep.attendees?.investor?.email?.toLowerCase() === curEmail) ||
+          (curNormName && normalizePersonName(effectiveRep.attendees?.investor?.person) === curNormName)
+        ))
       );
-      if (isRejectedByCdt) return true;
 
-      // Có người tạo phiếu hoặc sửa phiếu và yêu cầu mình duyệt
-      const targetsSupervisor = !notif.targetRoles || notif.targetRoles.includes('SUPERVISOR');
-      if (targetsSupervisor && (
-        notif.type === 'INVITATION' || 
-        notif.type === 'REQUEST_CREATED' || 
-        notif.type === 'OFFICER_REASSIGNED' ||
-        (notif.title && notif.title.includes('Phiếu yêu cầu & Biên bản mới')) ||
-        (notif.title && notif.title.includes('Đã sửa lỗi'))
-      )) {
-        return true;
-      }
-
-      return false;
-    }
-
-    // --------------------------------------------------------------------------
-    // 5. KỸ THUẬT HIỆN TRƯỜNG (CONTRACTOR)
-    // Quy tắc: Nhận thông báo khi phiếu của mình tạo có xác nhận duyệt hoặc không đồng ý duyệt
-    // hoặc khi cả 3 xác nhận duyệt xong. KHÔNG nhận thông báo của người khác.
-    // --------------------------------------------------------------------------
-    if (role === 'CONTRACTOR') {
-      // Phải là phiếu do chính mình tạo (hoặc đích danh gửi cho mình)
-      if (!isCreator && !isAssigned('CONTRACTOR')) {
-        // Tuyệt đối không nhận thông báo của người khác!
+      if (!isDirectAssigned && !isDirectAttendee) {
         return false;
       }
 
-      // 1. Khi cả 3 xác nhận duyệt xong
-      if (isCompletion) return true;
-
-      // 2. Khi không đồng ý duyệt (TVGS hoặc CĐT từ chối / yêu cầu sửa)
-      if (isRejection) return true;
-
-      // 3. Khi có xác nhận duyệt (TVGS duyệt hoặc CĐT duyệt)
-      if (isApproved) return true;
+      // Kiểm tra vai trò đích
+      if (role === 'SUPERVISOR') {
+        return !notif.targetRoles || notif.targetRoles.includes('SUPERVISOR');
+      }
+      if (role === 'INVESTOR') {
+        return !notif.targetRoles || notif.targetRoles.includes('INVESTOR');
+      }
 
       return false;
     }
+
+    // 6. THÔNG BÁO ĐÍCH DANH KHÁC
+    if (notif.recipientUid && notif.recipientUid === curUid) return true;
+    if (Array.isArray(notif.extraRecipientUids) && notif.extraRecipientUids.includes(curUid)) return true;
 
     return false;
   };
@@ -604,6 +919,9 @@ export default function App() {
           idbReports.forEach(rawIr => {
             const ir = sanitizeReportData(rawIr);
             const key = ir.id;
+            const created = ir.createdAt || '';
+            // Bỏ qua các bản ghi trước ngày cutoff
+            if (!key || (created && created < OLD_DATA_CUTOFF)) return;
             const existing = map.get(key);
             if (!existing) {
               map.set(key, ir);
@@ -634,6 +952,9 @@ export default function App() {
           prev.forEach(r => map.set(r.id, r));
           idbRequests.forEach(ir => {
             const key = ir.id;
+            const created = ir.createdAt || '';
+            // Bỏ qua các bản ghi trước ngày cutoff
+            if (!key || (created && created < OLD_DATA_CUTOFF)) return;
             const existing = map.get(key);
             if (!existing) {
               map.set(key, ir);
@@ -667,11 +988,36 @@ export default function App() {
         });
       }
     });
+
+    getAllFromIndexedDB('payment_documents').then(idbPaymentDocs => {
+      if (idbPaymentDocs && idbPaymentDocs.length > 0) {
+        setPaymentDocuments(prev => {
+          const map = new Map();
+          (prev || []).forEach(d => { if (d?.id) map.set(d.id, d); });
+          idbPaymentDocs.forEach(d => {
+            if (d?.id && !map.has(d.id)) {
+              map.set(d.id, d);
+            }
+          });
+          const merged = Array.from(map.values());
+          merged.sort((a, b) => new Date(b.submittedAt || b.createdAt || 0) - new Date(a.submittedAt || a.createdAt || 0));
+          saveStoredPaymentDocuments(merged);
+          return merged;
+        });
+      }
+    });
   }, []);
 
-  // 0. Tự động dọn dẹp các phiếu và biên bản cũ trước ngày 26/10/2026 trên Firestore
+  // 0. Tự động dọn dẹp các phiếu và biên bản cũ trước ngày 26/10/2026 trên Firestore (chỉ thực hiện 1 lần)
   useEffect(() => {
-    cleanupOldRequestsAndReports(OLD_DATA_CUTOFF).catch(console.warn);
+    const cleanupKey = `apct_cleaned_${OLD_DATA_CUTOFF}`;
+    if (!localStorage.getItem(cleanupKey)) {
+      cleanupOldRequestsAndReports(OLD_DATA_CUTOFF)
+        .then(() => {
+          try { localStorage.setItem(cleanupKey, 'done'); } catch (_) {}
+        })
+        .catch(console.warn);
+    }
   }, []);
 
   // 1. Đồng bộ Real-Time Phiếu yêu cầu từ Firestore (Lấy Firestore làm chuẩn)
@@ -813,9 +1159,22 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = subscribeToUsers((cloudUsers) => {
       if (cloudUsers && cloudUsers.length > 0) {
-        setUsers(cloudUsers);
+        // Dọn dẹp và loại bỏ các tài khoản test cũ khỏi danh sách chính thức
+        const cleanUsers = cloudUsers.filter(u => {
+          const uid = (u?.uid || '').toLowerCase();
+          const email = (u?.email || '').toLowerCase();
+          const isTest = uid === 'uid_muitvgsv' || uid === 'uid_muicdt' ||
+                         uid === 'uid_custom_1792576174520' || uid === 'uid_custom_1792576233247' ||
+                         email.includes('muitvgs') || email.includes('muicdt');
+          if (isTest && isFirebaseConfigured && u.uid) {
+            deleteSystemUser(u.uid).catch(() => {});
+          }
+          return !isTest;
+        });
+
+        setUsers(cleanUsers);
         try {
-          localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(cloudUsers));
+          localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(cleanUsers));
         } catch (e) {
           console.warn('Lỗi lưu users vào cache:', e);
         }
@@ -823,7 +1182,15 @@ export default function App() {
         // Tự động đồng bộ với currentUser nếu thông tin tài khoản đang đăng nhập được cập nhật
         setCurrentUser(curr => {
           if (!curr) return curr;
-          const fresh = cloudUsers.find(u => u.uid === curr.uid);
+          const curUid = (curr.uid || '').toLowerCase();
+          const curEmail = (curr.email || '').toLowerCase();
+          if (curUid === 'uid_muitvgsv' || curUid === 'uid_muicdt' ||
+              curUid === 'uid_custom_1792576174520' || curUid === 'uid_custom_1792576233247' ||
+              curEmail.includes('muitvgs') || curEmail.includes('muicdt')) {
+            try { localStorage.removeItem('apct_logged_user'); } catch (e) {}
+            return null;
+          }
+          const fresh = cleanUsers.find(u => u.uid === curr.uid);
           if (fresh) {
             const updated = { ...curr, ...fresh };
             try {
@@ -891,15 +1258,43 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = subscribeToStandards((remoteStandards) => {
       if (remoteStandards && (remoteStandards.works || remoteStandards.materials)) {
-        setStandardsData(prev => ({
-          works: Array.isArray(remoteStandards.works) ? remoteStandards.works : (prev?.works || []),
-          materials: Array.isArray(remoteStandards.materials) ? remoteStandards.materials : (prev?.materials || []),
+        // Hợp nhất dữ liệu từ Cloud với danh mục mặc định để không bao giờ bị mất mục 16, 17 (MEP) và mục 18 (PCCC)
+        const incomingWorks = Array.isArray(remoteStandards.works) ? remoteStandards.works : [];
+        const mergedWorks = [...incomingWorks];
+
+        INITIAL_STANDARDS_DATA.works.forEach(defaultWork => {
+          const exists = mergedWorks.some(w => 
+            w.id === defaultWork.id || 
+            (w.name && defaultWork.name && w.name.trim().toLowerCase() === defaultWork.name.trim().toLowerCase())
+          );
+          if (!exists) {
+            mergedWorks.push(defaultWork);
+          }
+        });
+
+        // Sắp xếp lại STT
+        mergedWorks.forEach((w, idx) => {
+          w.stt = idx + 1;
+        });
+
+        const updatedStandards = {
+          works: mergedWorks,
+          materials: Array.isArray(remoteStandards.materials) ? remoteStandards.materials : (INITIAL_STANDARDS_DATA.materials || []),
           mandatory: []
-        }));
+        };
+
+        setStandardsData(updatedStandards);
         try {
-          localStorage.setItem(STANDARDS_STORAGE_KEY, JSON.stringify(remoteStandards));
+          localStorage.setItem(STANDARDS_STORAGE_KEY, JSON.stringify(updatedStandards));
         } catch (e) {
           console.warn('Lỗi lưu standards từ Cloud vào localStorage:', e);
+        }
+
+        // Nếu danh mục trên Cloud cũ thiếu mục, tự động đồng bộ bù lên Cloud
+        if (incomingWorks.length < mergedWorks.length) {
+          saveInspectionStandards(updatedStandards).catch(err => {
+            console.warn('[Firestore] Tự động cập nhật 18 hạng mục lên Cloud:', err);
+          });
         }
       }
     });
@@ -987,6 +1382,57 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // 4g. Đồng bộ Real-Time Hồ Sơ Thanh Toán từ Firestore (Bảo toàn dữ liệu cục bộ)
+  useEffect(() => {
+    const unsubscribe = subscribeToPaymentDocuments((cloudDocs) => {
+      if (!Array.isArray(cloudDocs) || cloudDocs.length === 0) {
+        return;
+      }
+
+      setPaymentDocuments(prev => {
+        const localStored = loadStoredPaymentDocuments();
+        const baseItems = Array.isArray(prev) && prev.length > 0 ? prev : localStored;
+        const map = new Map();
+
+        baseItems.forEach(item => {
+          if (item?.id) map.set(item.id, item);
+        });
+
+        cloudDocs.forEach(cloudItem => {
+          if (!cloudItem?.id) return;
+          const existing = map.get(cloudItem.id);
+          if (!existing) {
+            map.set(cloudItem.id, cloudItem);
+          } else {
+            const cloudTime = new Date(cloudItem.updatedAt || cloudItem.createdAt || 0).getTime();
+            const localTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+            if (cloudTime >= localTime) {
+              const finalPdf = existing.pdfFile?.dataUrl ? existing.pdfFile : (cloudItem.pdfFile || existing.pdfFile);
+              map.set(cloudItem.id, { ...existing, ...cloudItem, pdfFile: finalPdf });
+            }
+          }
+        });
+
+        const merged = Array.from(map.values());
+        merged.sort((a, b) => new Date(b.submittedAt || b.createdAt || 0) - new Date(a.submittedAt || a.createdAt || 0));
+        saveStoredPaymentDocuments(merged);
+        return merged;
+      });
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // 4h. Đồng bộ Real-Time Cấu hình SLA Thời hạn phản hồi Hồ sơ Thanh Toán từ Firestore
+  useEffect(() => {
+    const unsubscribe = subscribeToPaymentSlaConfigs((cloudSla) => {
+      if (Array.isArray(cloudSla) && cloudSla.length > 0) {
+        setPaymentSlaConfigs(cloudSla);
+        saveStoredPaymentSlaConfigs(cloudSla);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Quản lý SLA Thời hạn phản hồi
   const handleSaveShopSlaConfigs = async (newConfigs) => {
     setShopSlaConfigs(newConfigs);
@@ -1033,7 +1479,7 @@ export default function App() {
         return next;
       });
 
-      // Tìm UID của TVGS Trưởng và Trưởng Ban QLDA (Ưu tiên tài khoản test muitvgsv & muicdt)
+      // Tìm UID của TVGS Trưởng (Đinh Xuân Thám) và Trưởng Ban QLDA (Ngô Quý Linh)
       const leadSup = getShopLeadSupervisor(users);
       const leadInv = getShopLeadInvestor(users);
 
@@ -1795,6 +2241,772 @@ export default function App() {
   }, [shopDocuments, users]);
 
   // ============================================================================
+  // HỒ SƠ THANH TOÁN (TẠM ỨNG, THANH TOÁN, QUYẾT TOÁN) HANDLERS
+  // ============================================================================
+
+  // 1. Tạo mới hồ sơ thanh toán (Mặc định gửi TVGS Trưởng & Trưởng Ban QLDA, hạn 1 ngày)
+  const handleCreatePaymentDocument = async (newDoc) => {
+    try {
+      // Lưu ngay vào state & LocalStorage
+      setPaymentDocuments(prev => {
+        const next = [newDoc, ...prev.filter(d => d.id !== newDoc.id)];
+        saveStoredPaymentDocuments(next);
+        return next;
+      });
+
+      // Đồng bộ lên Firestore
+      const saved = (await savePaymentDocument(newDoc)) || newDoc;
+      setPaymentDocuments(prev => {
+        const next = [saved, ...prev.filter(d => d.id !== saved.id)];
+        saveStoredPaymentDocuments(next);
+        return next;
+      });
+
+      const leadSup = getPaymentLeadSupervisor(users);
+      const leadInv = getPaymentLeadInvestor(users);
+
+      const notifTitle = `💰 [Cần phân công] Hồ sơ Thanh toán mới: ${saved.title}`;
+      const notifBody = `${saved.createdByName} (${saved.contractorCompany || 'ĐVTC'}) vừa trình duyệt "${saved.typeName}": ${saved.title}. Mời TVGS Trưởng (${leadSup.fullName}) & Trưởng Ban QLDA (${leadInv.fullName}) phân công cán bộ phụ trách trong vòng 1 ngày (24 giờ).`;
+
+      const notif = {
+        id: `notif_${Date.now()}`,
+        type: 'PAYMENT_DOCUMENT_WAITING_ASSIGNMENT',
+        title: notifTitle,
+        body: notifBody,
+        targetPaymentDocId: saved.id,
+        actionText: 'Xem hồ sơ & Phân công cán bộ',
+        assignedRecipients: saved.assignedRecipients || [],
+        createdByUid: saved.createdByUid,
+        createdByName: saved.createdByName,
+        extraRecipientUids: [
+          saved.createdByUid,
+          leadSup.uid,
+          leadInv.uid
+        ].filter(Boolean),
+        targetRoles: ['LEAD_SUPERVISOR', 'LEAD_INVESTOR', 'ADMIN', 'CONTRACTOR'],
+        createdAt: new Date().toISOString(),
+        time: 'Vừa xong',
+        isRead: false
+      };
+
+      setNotifications(prev => {
+        const nextNotifs = [notif, ...prev.filter(n => n.id !== notif.id)];
+        safeSaveLocalStorage(NOTIF_STORAGE_KEY, nextNotifs);
+        return nextNotifs;
+      });
+
+      if (checkNotificationRecipient(notif, currentUser)) {
+        setActivePushToast(notif);
+        showSystemNotification(notifTitle, notifBody);
+      }
+
+      saveSystemNotification(notif).catch(console.warn);
+      sendOneSignalPush({
+        title: notifTitle,
+        message: notifBody,
+        targetRoles: ['LEAD_SUPERVISOR', 'LEAD_INVESTOR', 'ADMIN']
+      }).catch(console.warn);
+
+      showAlert({
+        type: 'success',
+        title: 'Tạo Hồ Sơ Thành Công!',
+        message: `Đã phát hành hồ sơ "${saved.title}" (Mã: ${saved.docCode}).\nHồ sơ đã được gửi mặc định đến TVGS Trưởng (${leadSup.fullName}) và Trưởng Ban QLDA (${leadInv.fullName}) để phân công cán bộ trong vòng 1 ngày.`,
+        confirmText: 'Xem Hồ Sơ',
+        cancelText: 'Đóng',
+        onConfirm: () => setSelectedPaymentDoc(saved)
+      });
+    } catch (err) {
+      console.error('Lỗi tạo hồ sơ thanh toán:', err);
+      showAlert({
+        type: 'error',
+        title: 'Lỗi Tạo Hồ Sơ',
+        message: 'Có lỗi xảy ra: ' + (err.message || err)
+      });
+    }
+  };
+
+  // 2. Phân công cán bộ thụ lý hồ sơ thanh toán
+  const handleAssignPaymentDocument = async ({ docId, roleType, assignee, slaDays, leader }) => {
+    try {
+      const doc = (paymentDocuments || []).find(d => d.id === docId) || selectedPaymentDoc;
+      if (!doc) return;
+
+      const nowIso = new Date().toISOString();
+      const targetDueDateIso = calculateDueDate(nowIso, slaDays).toISOString();
+      const isTvgs = roleType === 'SUPERVISOR';
+
+      const updatedTvgs = isTvgs ? {
+        ...doc.assignedTvgs,
+        assignee,
+        uid: assignee.uid,
+        fullName: assignee.fullName,
+        email: assignee.email || '',
+        position: assignee.position || 'Kỹ sư TVGS',
+        company: assignee.company || 'Tư Vấn Giám Sát Gelicon',
+        assignedBy: {
+          uid: leader?.uid || currentUser?.uid,
+          fullName: leader?.fullName || currentUser?.fullName,
+          role: leader?.role || currentUser?.role
+        },
+        assignedAt: nowIso,
+        slaDays: Number(slaDays || 3),
+        dueDate: targetDueDateIso,
+        status: 'PENDING'
+      } : doc.assignedTvgs;
+
+      const updatedInvestor = !isTvgs ? {
+        ...doc.assignedInvestor,
+        assignee,
+        uid: assignee.uid,
+        fullName: assignee.fullName,
+        email: assignee.email || '',
+        position: assignee.position || 'Kỹ sư QLDA',
+        company: assignee.company || 'Ban Quản Lý Dự Án An Phú Eco City',
+        assignedBy: {
+          uid: leader?.uid || currentUser?.uid,
+          fullName: leader?.fullName || currentUser?.fullName,
+          role: leader?.role || currentUser?.role
+        },
+        assignedAt: nowIso,
+        slaDays: Number(slaDays || 3),
+        dueDate: targetDueDateIso,
+        status: 'PENDING'
+      } : doc.assignedInvestor;
+
+      const bothAssigned = Boolean(updatedTvgs?.assignee || updatedTvgs?.uid) && Boolean(updatedInvestor?.assignee || updatedInvestor?.uid);
+
+      const updatedDoc = {
+        ...doc,
+        assignedTvgs: updatedTvgs,
+        assignedInvestor: updatedInvestor,
+        status: bothAssigned ? PAYMENT_STATUS.SENT : doc.status,
+        dueDate: targetDueDateIso,
+        assignedRecipients: [
+          ...(doc.assignedRecipients || []).filter(r => r.role !== roleType),
+          { uid: assignee.uid, role: roleType, name: assignee.fullName, position: assignee.position }
+        ],
+        history: [
+          ...(doc.history || []),
+          {
+            action: 'ASSIGNED',
+            by: leader?.fullName || currentUser?.fullName,
+            role: leader?.role || currentUser?.role,
+            time: nowIso,
+            note: `${leader?.position || 'Trưởng ban'} đã phân công cho cán bộ ${assignee.fullName} (${isTvgs ? 'TVGS' : 'Ban QLDA'}) thẩm định. Hạn hoàn thành: ${slaDays} ngày.`
+          }
+        ],
+        updatedAt: nowIso
+      };
+
+      await savePaymentDocument(updatedDoc);
+      setPaymentDocuments(prev => {
+        const next = prev.map(d => d.id === docId ? updatedDoc : d);
+        saveStoredPaymentDocuments(next);
+        return next;
+      });
+      setSelectedPaymentDoc(updatedDoc);
+
+      const notifTitle = `📋 [Được giao nhiệm vụ] Thẩm định hồ sơ Thanh toán: ${updatedDoc.title}`;
+      const notifBody = `${leader?.fullName || 'Trưởng ban'} đã phân công bạn (${assignee.fullName}) thẩm định hồ sơ "${updatedDoc.title}". Hạn hoàn thành: ${slaDays} ngày.`;
+
+      const notif = {
+        id: `notif_${Date.now()}`,
+        type: 'PAYMENT_DOCUMENT_ASSIGNED',
+        title: notifTitle,
+        body: notifBody,
+        targetPaymentDocId: updatedDoc.id,
+        actionText: 'Xem hồ sơ & Thẩm định',
+        assignedRecipients: updatedDoc.assignedRecipients || [],
+        recipientUid: assignee.uid,
+        createdByUid: updatedDoc.createdByUid,
+        createdByName: updatedDoc.createdByName,
+        extraRecipientUids: [
+          assignee.uid,
+          leader?.uid,
+          updatedDoc.createdByUid
+        ].filter(Boolean),
+        targetRoles: [roleType, 'LEAD_SUPERVISOR', 'LEAD_INVESTOR', 'ADMIN'],
+        createdAt: nowIso,
+        time: 'Vừa xong',
+        isRead: false
+      };
+
+      setNotifications(prev => {
+        const nextNotifs = [notif, ...prev.filter(n => n.id !== notif.id)];
+        safeSaveLocalStorage(NOTIF_STORAGE_KEY, nextNotifs);
+        return nextNotifs;
+      });
+
+      if (checkNotificationRecipient(notif, currentUser)) {
+        setActivePushToast(notif);
+        showSystemNotification(notifTitle, notifBody);
+      }
+
+      saveSystemNotification(notif).catch(console.warn);
+      sendOneSignalPush({ title: notifTitle, message: notifBody, targetRoles: [roleType, 'LEAD_SUPERVISOR', 'LEAD_INVESTOR', 'ADMIN'] }).catch(console.warn);
+
+      showAlert({
+        type: 'success',
+        title: 'Phân Công Thành Công! 📋',
+        message: `Đã giao hồ sơ thanh toán "${updatedDoc.title}" cho cán bộ ${assignee.fullName}.\nThời hạn phản hồi: ${slaDays} ngày.`
+      });
+    } catch (err) {
+      console.error('Lỗi phân công hồ sơ thanh toán:', err);
+      showAlert({ type: 'error', title: 'Lỗi', message: err.message || err });
+    }
+  };
+
+  // 3. Xác nhận đạt hồ sơ thanh toán (TVGS duyệt trước -> Ban QLDA phê duyệt sau)
+  const handleApprovePaymentDocument = async (docId, { roleType, note, reviewer }) => {
+    try {
+      const doc = (paymentDocuments || []).find(d => d.id === docId) || selectedPaymentDoc;
+      if (!doc) return;
+
+      if (roleType === 'INVESTOR' && doc.assignedTvgs?.status !== 'ACCEPTED') {
+        showAlert({
+          type: 'warning',
+          title: 'Chưa đủ điều kiện phê duyệt',
+          message: 'Tư Vấn Giám Sát chưa thẩm định đạt hồ sơ thanh toán này. Ban QLDA chỉ được phê duyệt sau khi TVGS đã duyệt đạt!'
+        });
+        return;
+      }
+
+      const nowIso = new Date().toISOString();
+      const updatedAssignedTvgs = roleType === 'SUPERVISOR' ? {
+        ...doc.assignedTvgs,
+        status: 'ACCEPTED',
+        reviewedAt: nowIso,
+        note: note || 'Xác nhận đạt yêu cầu'
+      } : doc.assignedTvgs;
+
+      const updatedAssignedInvestor = roleType === 'INVESTOR' ? {
+        ...doc.assignedInvestor,
+        status: 'ACCEPTED',
+        reviewedAt: nowIso,
+        note: note || 'Xác nhận đạt yêu cầu'
+      } : doc.assignedInvestor;
+
+      const isBothAccepted = (updatedAssignedTvgs?.status === 'ACCEPTED') && (updatedAssignedInvestor?.status === 'ACCEPTED');
+
+      const updatedDoc = {
+        ...doc,
+        assignedTvgs: updatedAssignedTvgs,
+        assignedInvestor: updatedAssignedInvestor,
+        status: isBothAccepted ? PAYMENT_STATUS.APPROVED : PAYMENT_STATUS.SENT,
+        history: [
+          ...(doc.history || []),
+          {
+            action: 'APPROVED',
+            by: reviewer?.fullName || (roleType === 'SUPERVISOR' ? 'Tư Vấn Giám Sát' : 'Ban QLDA'),
+            role: roleType === 'SUPERVISOR' ? 'Tư Vấn Giám Sát' : 'Ban QLDA',
+            time: nowIso,
+            note: note ? `Xác nhận đạt: ${note}` : 'Đã xác nhận phê duyệt đạt'
+          }
+        ],
+        updatedAt: nowIso
+      };
+
+      await savePaymentDocument(updatedDoc);
+      setPaymentDocuments(prev => {
+        const next = prev.map(d => d.id === docId ? updatedDoc : d);
+        saveStoredPaymentDocuments(next);
+        return next;
+      });
+      setSelectedPaymentDoc(updatedDoc);
+
+      let notifTitle = '';
+      let notifBody = '';
+      let targetRoles = [];
+      let extraRecipientUids = [];
+
+      if (roleType === 'SUPERVISOR') {
+        notifTitle = `📋 TVGS đã duyệt đạt - Mời Ban QLDA phê duyệt: ${updatedDoc.title}`;
+        notifBody = `Tư Vấn Giám Sát (${reviewer?.fullName || 'TVGS'}) đã thẩm định và xác nhận ĐẠT hồ sơ thanh toán "${updatedDoc.title}". Kính mời Ban QLDA (${updatedDoc.assignedInvestor?.fullName || updatedDoc.assignedInvestor?.assignee?.fullName || 'QLDA'}) vào kiểm tra và phê duyệt cuối cùng.`;
+        targetRoles = ['INVESTOR', 'LEAD_INVESTOR', 'ADMIN', 'CONTRACTOR'];
+        extraRecipientUids = [
+          updatedDoc.assignedInvestor?.uid || updatedDoc.assignedInvestor?.assignee?.uid,
+          updatedDoc.createdByUid,
+          updatedDoc.assignedTvgs?.uid || updatedDoc.assignedTvgs?.assignee?.uid
+        ].filter(Boolean);
+      } else {
+        notifTitle = `✅ Hồ sơ Thanh toán đã được Ban QLDA phê duyệt hoàn tất: ${updatedDoc.title}`;
+        notifBody = `Ban QLDA (${reviewer?.fullName || 'Ban QLDA'}) đã phê duyệt hoàn tất hồ sơ "${updatedDoc.title}". Cả TVGS và Ban QLDA đều đã xác nhận đạt!`;
+        targetRoles = ['CONTRACTOR', 'SUPERVISOR', 'LEAD_SUPERVISOR', 'INVESTOR', 'LEAD_INVESTOR', 'ADMIN'];
+        extraRecipientUids = [
+          updatedDoc.createdByUid,
+          updatedDoc.assignedTvgs?.uid || updatedDoc.assignedTvgs?.assignee?.uid,
+          updatedDoc.assignedInvestor?.uid || updatedDoc.assignedInvestor?.assignee?.uid
+        ].filter(Boolean);
+      }
+
+      const notif = {
+        id: `notif_${Date.now()}`,
+        type: roleType === 'SUPERVISOR' ? 'PAYMENT_DOCUMENT_TVGS_APPROVED' : 'PAYMENT_DOCUMENT_APPROVED',
+        title: notifTitle,
+        body: notifBody,
+        targetPaymentDocId: updatedDoc.id,
+        actionText: 'Xem chi tiết hồ sơ thanh toán',
+        assignedRecipients: updatedDoc.assignedRecipients || [],
+        createdByUid: updatedDoc.createdByUid,
+        createdByName: updatedDoc.createdByName,
+        extraRecipientUids,
+        targetRoles,
+        createdAt: nowIso,
+        time: 'Vừa xong',
+        isRead: false
+      };
+
+      setNotifications(prev => {
+        const nextNotifs = [notif, ...prev.filter(n => n.id !== notif.id)];
+        safeSaveLocalStorage(NOTIF_STORAGE_KEY, nextNotifs);
+        return nextNotifs;
+      });
+
+      if (checkNotificationRecipient(notif, currentUser)) {
+        setActivePushToast(notif);
+        showSystemNotification(notifTitle, notifBody);
+      }
+
+      saveSystemNotification(notif).catch(console.warn);
+      sendOneSignalPush({ title: notifTitle, message: notifBody, targetRoles }).catch(console.warn);
+
+      showAlert({
+        type: 'success',
+        title: roleType === 'SUPERVISOR' ? 'TVGS Đã Thẩm Định Đạt!' : 'Phê Duyệt Hoàn Tất!',
+        message: roleType === 'SUPERVISOR'
+          ? `Hồ sơ "${updatedDoc.title}" đã được TVGS duyệt đạt.\nHệ thống đã gửi thông báo đến Ban QLDA để tiến hành phê duyệt bước tiếp theo.`
+          : `Hồ sơ "${updatedDoc.title}" đã được Ban QLDA phê duyệt hoàn tất. Cả 2 bên TVGS và Ban QLDA đều đã xác nhận đạt!`
+      });
+    } catch (err) {
+      console.error('Lỗi duyệt hồ sơ thanh toán:', err);
+      showAlert({ type: 'error', title: 'Lỗi', message: err.message || err });
+    }
+  };
+
+  // 4. Yêu cầu sửa / Từ chối hồ sơ thanh toán
+  const handleRejectPaymentDocument = async (docId, { roleType, reason, reviewer }) => {
+    try {
+      const doc = (paymentDocuments || []).find(d => d.id === docId) || selectedPaymentDoc;
+      if (!doc) return;
+
+      if (roleType === 'INVESTOR' && doc.assignedTvgs?.status !== 'ACCEPTED') {
+        showAlert({
+          type: 'warning',
+          title: 'Chưa đủ điều kiện thao tác',
+          message: 'Tư Vấn Giám Sát chưa duyệt đạt hồ sơ thanh toán này nên Ban QLDA chưa thể thực hiện yêu cầu sửa hay hủy!'
+        });
+        return;
+      }
+
+      const nowIso = new Date().toISOString();
+      const updatedAssignedTvgs = roleType === 'SUPERVISOR' ? {
+        ...doc.assignedTvgs,
+        status: 'REJECTED',
+        reviewedAt: nowIso,
+        note: reason
+      } : doc.assignedTvgs;
+
+      const updatedAssignedInvestor = roleType === 'INVESTOR' ? {
+        ...doc.assignedInvestor,
+        status: 'REJECTED',
+        reviewedAt: nowIso,
+        note: reason
+      } : doc.assignedInvestor;
+
+      const updatedDoc = {
+        ...doc,
+        assignedTvgs: updatedAssignedTvgs,
+        assignedInvestor: updatedAssignedInvestor,
+        status: PAYMENT_STATUS.REJECTED,
+        rejectionReason: reason,
+        rejectedBy: {
+          uid: reviewer?.uid || currentUser?.uid,
+          fullName: reviewer?.fullName || currentUser?.fullName,
+          role: roleType,
+          position: reviewer?.position || (roleType === 'SUPERVISOR' ? 'Kỹ sư TVGS' : 'Cán bộ Ban QLDA'),
+          time: nowIso,
+          reason
+        },
+        history: [
+          ...(doc.history || []),
+          {
+            action: 'REJECTED',
+            by: reviewer?.fullName || (roleType === 'SUPERVISOR' ? 'Tư Vấn Giám Sát' : 'Ban QLDA'),
+            role: roleType === 'SUPERVISOR' ? 'Tư Vấn Giám Sát' : 'Ban QLDA',
+            time: nowIso,
+            note: `Yêu cầu chỉnh sửa: ${reason}`
+          }
+        ],
+        updatedAt: nowIso
+      };
+
+      await savePaymentDocument(updatedDoc);
+      setPaymentDocuments(prev => {
+        const next = prev.map(d => d.id === docId ? updatedDoc : d);
+        saveStoredPaymentDocuments(next);
+        return next;
+      });
+      setSelectedPaymentDoc(updatedDoc);
+
+      const isTvgsReject = roleType === 'SUPERVISOR';
+      const notifTitle = isTvgsReject 
+        ? `⚠️ TVGS yêu cầu chỉnh sửa hồ sơ thanh toán: ${updatedDoc.title}`
+        : `⚠️ Ban QLDA yêu cầu chỉnh sửa hồ sơ thanh toán: ${updatedDoc.title}`;
+      const notifBody = `${reviewer?.fullName || 'Cán bộ'} (${isTvgsReject ? 'TVGS' : 'Ban QLDA'}) yêu cầu chỉnh sửa hồ sơ "${updatedDoc.title}". Lý do: ${reason}`;
+
+      const notif = {
+        id: `notif_${Date.now()}`,
+        type: 'PAYMENT_DOCUMENT_REJECTED',
+        title: notifTitle,
+        body: notifBody,
+        targetPaymentDocId: updatedDoc.id,
+        actionText: 'Xem lý do & chỉnh sửa',
+        assignedRecipients: updatedDoc.assignedRecipients || [],
+        recipientUid: updatedDoc.createdByUid,
+        createdByUid: updatedDoc.createdByUid,
+        createdByName: updatedDoc.createdByName,
+        extraRecipientUids: [
+          updatedDoc.createdByUid,
+          updatedDoc.assignedTvgs?.uid || updatedDoc.assignedTvgs?.assignee?.uid,
+          updatedDoc.assignedInvestor?.uid || updatedDoc.assignedInvestor?.assignee?.uid
+        ].filter(Boolean),
+        targetRoles: ['CONTRACTOR', 'SUPERVISOR', 'LEAD_SUPERVISOR', 'INVESTOR', 'LEAD_INVESTOR', 'ADMIN'],
+        createdAt: nowIso,
+        time: 'Vừa xong',
+        isRead: false
+      };
+
+      setNotifications(prev => {
+        const nextNotifs = [notif, ...prev.filter(n => n.id !== notif.id)];
+        safeSaveLocalStorage(NOTIF_STORAGE_KEY, nextNotifs);
+        return nextNotifs;
+      });
+
+      if (checkNotificationRecipient(notif, currentUser)) {
+        setActivePushToast(notif);
+        showSystemNotification(notifTitle, notifBody);
+      }
+
+      saveSystemNotification(notif).catch(console.warn);
+      sendOneSignalPush({ title: notifTitle, message: notifBody, targetRoles: ['CONTRACTOR', 'SUPERVISOR', 'INVESTOR', 'ADMIN'] }).catch(console.warn);
+
+      showAlert({
+        type: 'info',
+        title: 'Đã Gửi Yêu Cầu Chỉnh Sửa',
+        message: `Đã gửi yêu cầu chỉnh sửa hồ sơ thanh toán "${updatedDoc.title}" đến Nhà thầu.\nLý do: ${reason}`
+      });
+    } catch (err) {
+      console.error('Lỗi từ chối hồ sơ thanh toán:', err);
+      showAlert({ type: 'error', title: 'Lỗi', message: err.message || err });
+    }
+  };
+
+  // 5. Khắc phục & Nộp lại trực tiếp cho người từ chối (Bypasses 2 leaders)
+  const handleResubmitPaymentDocument = async (docId, { notes, pdfFile, pdfFiles, photos, resubmittedBy }) => {
+    try {
+      const doc = (paymentDocuments || []).find(d => d.id === docId) || selectedPaymentDoc;
+      if (!doc) return;
+
+      const nowIso = new Date().toISOString();
+      const rejectingOfficer = doc.rejectedBy;
+      const isTvgsReject = rejectingOfficer?.role === 'SUPERVISOR';
+
+      const updatedTvgs = isTvgsReject ? {
+        ...doc.assignedTvgs,
+        status: 'PENDING',
+        note: ''
+      } : doc.assignedTvgs;
+
+      const updatedInvestor = !isTvgsReject ? {
+        ...doc.assignedInvestor,
+        status: 'PENDING',
+        note: ''
+      } : doc.assignedInvestor;
+
+      const updatedDoc = {
+        ...doc,
+        notes: notes !== undefined ? notes : doc.notes,
+        pdfFile: pdfFile !== undefined ? pdfFile : doc.pdfFile,
+        pdfFiles: Array.isArray(pdfFiles) ? pdfFiles : (doc.pdfFiles || (doc.pdfFile ? [doc.pdfFile] : [])),
+        photos: Array.isArray(photos) ? photos : doc.photos,
+        assignedTvgs: updatedTvgs,
+        assignedInvestor: updatedInvestor,
+        status: PAYMENT_STATUS.SENT,
+        rejectionReason: '',
+        history: [
+          ...(doc.history || []),
+          {
+            action: 'RESUBMITTED',
+            by: resubmittedBy?.fullName || currentUser?.fullName,
+            role: 'CONTRACTOR',
+            time: nowIso,
+            note: `Đã khắc phục chỉnh sửa và nộp lại trực tiếp cho ${rejectingOfficer?.fullName || 'cán bộ thẩm định'}. Nội dung: ${notes}`
+          }
+        ],
+        updatedAt: nowIso
+      };
+
+      await savePaymentDocument(updatedDoc);
+      setPaymentDocuments(prev => {
+        const next = prev.map(d => d.id === docId ? updatedDoc : d);
+        saveStoredPaymentDocuments(next);
+        return next;
+      });
+      setSelectedPaymentDoc(updatedDoc);
+
+      const targetOfficerName = rejectingOfficer?.fullName || 'Cán bộ thẩm định';
+      const notifTitle = `🔄 [Đã sửa & Gửi lại] Hồ sơ Thanh toán: ${updatedDoc.title}`;
+      const notifBody = `Nhà thầu (${resubmittedBy?.fullName || 'ĐVTC'}) đã chỉnh sửa và gửi lại hồ sơ "${updatedDoc.title}" trực tiếp cho bạn (${targetOfficerName}) kiểm tra lại. Nội dung: ${notes}`;
+
+      const notif = {
+        id: `notif_${Date.now()}`,
+        type: 'PAYMENT_DOCUMENT_RESUBMITTED',
+        title: notifTitle,
+        body: notifBody,
+        targetPaymentDocId: updatedDoc.id,
+        actionText: 'Xem hồ sơ & Đánh giá lại',
+        assignedRecipients: updatedDoc.assignedRecipients || [],
+        recipientUid: rejectingOfficer?.uid,
+        createdByUid: updatedDoc.createdByUid,
+        createdByName: updatedDoc.createdByName,
+        extraRecipientUids: [
+          rejectingOfficer?.uid,
+          updatedDoc.createdByUid
+        ].filter(Boolean),
+        targetRoles: [rejectingOfficer?.role || 'SUPERVISOR', 'CONTRACTOR', 'ADMIN'],
+        createdAt: nowIso,
+        time: 'Vừa xong',
+        isRead: false
+      };
+
+      setNotifications(prev => {
+        const nextNotifs = [notif, ...prev.filter(n => n.id !== notif.id)];
+        safeSaveLocalStorage(NOTIF_STORAGE_KEY, nextNotifs);
+        return nextNotifs;
+      });
+
+      if (checkNotificationRecipient(notif, currentUser)) {
+        setActivePushToast(notif);
+        showSystemNotification(notifTitle, notifBody);
+      }
+
+      saveSystemNotification(notif).catch(console.warn);
+      sendOneSignalPush({ title: notifTitle, message: notifBody, targetRoles: [rejectingOfficer?.role || 'SUPERVISOR', 'ADMIN'] }).catch(console.warn);
+
+      showAlert({
+        type: 'success',
+        title: 'Đã Gửi Lại Hồ Sơ! 🔄',
+        message: `Hồ sơ thanh toán "${updatedDoc.title}" đã được nộp lại trực tiếp cho cán bộ ${targetOfficerName} để kiểm tra lại.`
+      });
+    } catch (err) {
+      console.error('Lỗi nộp lại hồ sơ thanh toán:', err);
+      showAlert({ type: 'error', title: 'Lỗi', message: err.message || err });
+    }
+  };
+
+  // 6. Xóa hồ sơ thanh toán
+  const handleDeletePaymentDocument = async (docId) => {
+    try {
+      await deletePaymentDocument(docId);
+      setPaymentDocuments(prev => {
+        const next = prev.filter(d => d.id !== docId);
+        saveStoredPaymentDocuments(next);
+        return next;
+      });
+      setSelectedPaymentDoc(null);
+      showAlert({
+        type: 'success',
+        title: 'Đã Xóa',
+        message: 'Đã xóa hồ sơ thanh toán khỏi hệ thống.'
+      });
+    } catch (err) {
+      console.error('Lỗi xóa hồ sơ thanh toán:', err);
+      showAlert({ type: 'error', title: 'Lỗi', message: err.message || err });
+    }
+  };
+
+  // 7. KIỂM TRA ĐỊNH KỲ THÔNG BÁO QUÁ HẠN HỒ SƠ THANH TOÁN
+  const lastOverduePaymentCheckRef = useRef(0);
+  useEffect(() => {
+    if (!paymentDocuments || paymentDocuments.length === 0) return;
+
+    const checkOverduePaymentDocs = () => {
+      const now = Date.now();
+      if (now - lastOverduePaymentCheckRef.current < 45000) return;
+      lastOverduePaymentCheckRef.current = now;
+
+      let hasUpdates = false;
+      const updatedDocs = paymentDocuments.map(doc => {
+        let changed = false;
+        let d = { ...doc };
+
+        // 1. Kiểm tra chậm phân công (> 24h từ lúc tạo)
+        if (isPaymentAssignmentOverdue(d)) {
+          const isTvgsAssigned = Boolean(d.assignedTvgs?.assignee || d.assignedTvgs?.uid);
+          const isInvestorAssigned = Boolean(d.assignedInvestor?.assignee || d.assignedInvestor?.uid);
+          const leadSup = getPaymentLeadSupervisor(users);
+          const leadInv = getPaymentLeadInvestor(users);
+
+          if (!isTvgsAssigned && !d.assignmentTvgsOverdueNotified) {
+            d.assignmentTvgsOverdueNotified = true;
+            changed = true;
+
+            const notifTitle = `⏰ [Chậm phân công] Quá 24h chưa giao TVGS: ${d.title}`;
+            const notifBody = `Hồ sơ thanh toán "${d.title}" đã quá 24h kể từ khi tạo nhưng TVGS Trưởng (${leadSup.fullName}) chưa phân công cán bộ thụ lý.`;
+
+            const notif = {
+              id: `notif_overdue_assign_tvgs_${d.id}_${Date.now()}`,
+              type: 'PAYMENT_DOCUMENT_ASSIGNMENT_OVERDUE',
+              title: notifTitle,
+              body: notifBody,
+              targetPaymentDocId: d.id,
+              actionText: 'Phân công ngay',
+              recipientUid: leadSup.uid,
+              extraRecipientUids: [leadSup.uid, leadInv.uid].filter(Boolean),
+              targetRoles: ['LEAD_SUPERVISOR', 'LEAD_INVESTOR', 'ADMIN'],
+              createdAt: new Date().toISOString(),
+              time: 'Vừa xong',
+              isRead: false
+            };
+
+            setNotifications(prev => [notif, ...prev]);
+            saveSystemNotification(notif).catch(console.warn);
+            if (checkNotificationRecipient(notif, currentUser)) {
+              setActivePushToast(notif);
+              showSystemNotification(notifTitle, notifBody);
+            }
+          }
+
+          if (!isInvestorAssigned && !d.assignmentInvestorOverdueNotified) {
+            d.assignmentInvestorOverdueNotified = true;
+            changed = true;
+
+            const notifTitle = `⏰ [Chậm phân công] Quá 24h chưa giao Ban QLDA: ${d.title}`;
+            const notifBody = `Hồ sơ thanh toán "${d.title}" đã quá 24h kể từ khi tạo nhưng Trưởng Ban QLDA (${leadInv.fullName}) chưa phân công cán bộ thụ lý.`;
+
+            const notif = {
+              id: `notif_overdue_assign_inv_${d.id}_${Date.now()}`,
+              type: 'PAYMENT_DOCUMENT_ASSIGNMENT_OVERDUE',
+              title: notifTitle,
+              body: notifBody,
+              targetPaymentDocId: d.id,
+              actionText: 'Phân công ngay',
+              recipientUid: leadInv.uid,
+              extraRecipientUids: [leadInv.uid, leadSup.uid].filter(Boolean),
+              targetRoles: ['LEAD_INVESTOR', 'LEAD_SUPERVISOR', 'ADMIN'],
+              createdAt: new Date().toISOString(),
+              time: 'Vừa xong',
+              isRead: false
+            };
+
+            setNotifications(prev => [notif, ...prev]);
+            saveSystemNotification(notif).catch(console.warn);
+            if (checkNotificationRecipient(notif, currentUser)) {
+              setActivePushToast(notif);
+              showSystemNotification(notifTitle, notifBody);
+            }
+          }
+        }
+
+        // 2. Kiểm tra chậm phản hồi (Quá hạn SLA)
+        if (d.status !== PAYMENT_STATUS.APPROVED && d.status !== PAYMENT_STATUS.REJECTED) {
+          const leadSup = getPaymentLeadSupervisor(users);
+          const leadInv = getPaymentLeadInvestor(users);
+
+          // Kiểm tra TVGS quá hạn
+          const tvgsAssigned = d.assignedTvgs?.assignee || d.assignedTvgs?.uid;
+          if (tvgsAssigned && d.assignedTvgs?.status === 'PENDING') {
+            const tvgsDue = d.assignedTvgs?.dueDate ? new Date(d.assignedTvgs.dueDate).getTime() : (d.dueDate ? new Date(d.dueDate).getTime() : 0);
+            if (tvgsDue && now > tvgsDue && !d.tvgsReviewOverdueNotified) {
+              d.tvgsReviewOverdueNotified = true;
+              changed = true;
+
+              const tvgsName = d.assignedTvgs?.assignee?.fullName || d.assignedTvgs?.fullName || 'Kỹ sư TVGS';
+              const tvgsUid = d.assignedTvgs?.assignee?.uid || d.assignedTvgs?.uid;
+              const notifTitle = `⏰ [Chậm phản hồi] TVGS quá hạn thẩm định: ${d.title}`;
+              const notifBody = `Cán bộ TVGS (${tvgsName}) đã quá thời hạn phản hồi hồ sơ thanh toán "${d.title}". Cảnh báo gửi đến TVGS Trưởng (${leadSup.fullName}) và cán bộ chậm.`;
+
+              const notif = {
+                id: `notif_overdue_review_tvgs_${d.id}_${Date.now()}`,
+                type: 'PAYMENT_DOCUMENT_REVIEW_OVERDUE',
+                title: notifTitle,
+                body: notifBody,
+                targetPaymentDocId: d.id,
+                actionText: 'Xem hồ sơ & Xử lý gấp',
+                recipientUid: tvgsUid,
+                extraRecipientUids: [tvgsUid, leadSup.uid].filter(Boolean),
+                targetRoles: ['SUPERVISOR', 'LEAD_SUPERVISOR', 'LEAD_INVESTOR', 'ADMIN'],
+                createdAt: new Date().toISOString(),
+                time: 'Vừa xong',
+                isRead: false
+              };
+
+              setNotifications(prev => [notif, ...prev]);
+              saveSystemNotification(notif).catch(console.warn);
+              if (checkNotificationRecipient(notif, currentUser)) {
+                setActivePushToast(notif);
+                showSystemNotification(notifTitle, notifBody);
+              }
+            }
+          }
+
+          // Kiểm tra Ban QLDA quá hạn
+          const invAssigned = d.assignedInvestor?.assignee || d.assignedInvestor?.uid;
+          if (invAssigned && d.assignedInvestor?.status === 'PENDING') {
+            const invDue = d.assignedInvestor?.dueDate ? new Date(d.assignedInvestor.dueDate).getTime() : (d.dueDate ? new Date(d.dueDate).getTime() : 0);
+            if (invDue && now > invDue && !d.investorReviewOverdueNotified) {
+              d.investorReviewOverdueNotified = true;
+              changed = true;
+
+              const invName = d.assignedInvestor?.assignee?.fullName || d.assignedInvestor?.fullName || 'Cán bộ QLDA';
+              const invUid = d.assignedInvestor?.assignee?.uid || d.assignedInvestor?.uid;
+              const notifTitle = `⏰ [Chậm phản hồi] Ban QLDA quá hạn phê duyệt: ${d.title}`;
+              const notifBody = `Cán bộ Ban QLDA (${invName}) đã quá hạn phê duyệt hồ sơ thanh toán "${d.title}". Thông báo cảnh báo được gửi đến Trưởng Ban QLDA (${leadInv.fullName}), CĐT và cán bộ chậm.`;
+
+              const notif = {
+                id: `notif_overdue_review_inv_${d.id}_${Date.now()}`,
+                type: 'PAYMENT_DOCUMENT_REVIEW_OVERDUE',
+                title: notifTitle,
+                body: notifBody,
+                targetPaymentDocId: d.id,
+                actionText: 'Xem hồ sơ & Xử lý gấp',
+                recipientUid: invUid,
+                extraRecipientUids: [invUid, leadInv.uid].filter(Boolean),
+                targetRoles: ['INVESTOR', 'LEAD_INVESTOR', 'ADMIN'],
+                createdAt: new Date().toISOString(),
+                time: 'Vừa xong',
+                isRead: false
+              };
+
+              setNotifications(prev => [notif, ...prev]);
+              saveSystemNotification(notif).catch(console.warn);
+              if (checkNotificationRecipient(notif, currentUser)) {
+                setActivePushToast(notif);
+                showSystemNotification(notifTitle, notifBody);
+              }
+            }
+          }
+        }
+
+        if (changed) {
+          hasUpdates = true;
+          savePaymentDocument(d).catch(console.warn);
+        }
+        return d;
+      });
+
+      if (hasUpdates) {
+        setPaymentDocuments(updatedDocs);
+        saveStoredPaymentDocuments(updatedDocs);
+      }
+    };
+
+    checkOverduePaymentDocs();
+    const interval = setInterval(checkOverduePaymentDocs, 60000);
+    return () => clearInterval(interval);
+  }, [paymentDocuments, users]);
+
+  // ============================================================================
   // 4d. TỰ ĐỘNG ĐỒNG BỘ CẶP ĐÔI 1-1 (AUTO-HEAL PAIRS) - TỐI ƯU CHỐNG LOOP & LAG
   // ============================================================================
   const isAutoHealingRef = useRef(false);
@@ -2051,6 +3263,10 @@ export default function App() {
   // Modal Hồ Sơ Bộ Phận Shop
   const [isCreateShopModalOpen, setIsCreateShopModalOpen] = useState(false);
   const [selectedShopDoc, setSelectedShopDoc] = useState(null);
+
+  // Modal Hồ Sơ Thanh Toán
+  const [isCreatePaymentModalOpen, setIsCreatePaymentModalOpen] = useState(false);
+  const [selectedPaymentDoc, setSelectedPaymentDoc] = useState(null);
   const [reassignModalState, setReassignModalState] = useState({
     isOpen: false,
     request: null,
@@ -2081,7 +3297,9 @@ export default function App() {
     isCompletionDetailModalOpen ||
     Boolean(selectedCompletionReport) ||
     isCreateShopModalOpen ||
-    Boolean(selectedShopDoc)
+    Boolean(selectedShopDoc) ||
+    isCreatePaymentModalOpen ||
+    Boolean(selectedPaymentDoc)
   );
 
   useEffect(() => {
@@ -4481,174 +5699,79 @@ export default function App() {
       Boolean(currentUser?.isLead)
     ));
 
-  // Helper kiểm tra quyền xem thống nhất cho cả Phiếu yêu cầu & Biên bản nghiệm thu
-  // Đảm bảo tuyệt đối: Nếu xem được Phiếu thì xem được Biên bản, nếu xem được Biên bản thì xem được Phiếu
-  const canAccessInspection = (req, rep, user, allUsers) => {
-    if (!user) return false;
-    const role = user.role;
+  // 5. Hàm điều hướng khi click chọn thông báo trong trung tâm thông báo hoặc popup toast
+  const handleSelectNotification = (notif) => {
+    if (!notif) return;
+    setInitialOpenRectify(false);
 
-    // 1. Quản trị viên (ADMIN): luôn xem được tất cả
-    if (role === 'ADMIN') return true;
-
-    const curUid = user.uid;
-    const curEmail = (user.email || '').trim().toLowerCase();
-    const curName = (user.fullName || '').trim().toLowerCase();
-
-    // 2. Phân hệ Đơn Vị Thi Công (CONTRACTOR):
-    // "Ai xem được của người đó": Mỗi cán bộ ĐVTC chỉ xem phiếu/biên bản do chính mình tạo ra hoặc đứng tên ký
-    if (role === 'CONTRACTOR') {
-      const reqCreatedUid = req?.createdByUid;
-      const reqCreatedName = (req?.createdByName || '').trim().toLowerCase();
-      const repContractorPerson = (rep?.attendees?.contractor?.person || '').trim().toLowerCase();
-      const repContractorUid = rep?.attendees?.contractor?.uid;
-
-      const isMyInspection = Boolean(
-        (curUid && reqCreatedUid && curUid === reqCreatedUid) ||
-        (curName && reqCreatedName && (reqCreatedName === curName || reqCreatedName.includes(curName) || curName.includes(reqCreatedName))) ||
-        (curUid && repContractorUid && curUid === repContractorUid) ||
-        (curName && repContractorPerson && (repContractorPerson === curName || repContractorPerson.includes(curName) || curName.includes(repContractorPerson)))
-      );
-
-      return isMyInspection;
+    // 1. Biên bản nghiệm thu liên quan
+    const rep = reports.find(r => 
+      (notif.targetReportId && (r.id === notif.targetReportId || r.reportId === notif.targetReportId)) || 
+      (notif.targetRequestId && r.requestId === notif.targetRequestId)
+    );
+    if (rep) {
+      handleOpenReport(rep);
+      return;
+    }
+    if (notif.targetReportId) {
+      handleOpenOrCreateReport(notif.targetReportId);
+      return;
     }
 
-    // 3. Phân hệ Tư Vấn Giám Sát (SUPERVISOR & LEAD_SUPERVISOR):
-    const isSupervisorLead = role === 'LEAD_SUPERVISOR' || Boolean(user.isLead && role === 'SUPERVISOR') || (role === 'SUPERVISOR' && (user.position || '').toLowerCase().includes('trưởng'));
-    if (role === 'SUPERVISOR' || role === 'LEAD_SUPERVISOR') {
-      const recipients = req?.assignedRecipients || rep?.assignedRecipients || [];
-      const supPerson = (rep?.attendees?.supervisor?.person || '').trim().toLowerCase();
-      const supEmail = (rep?.attendees?.supervisor?.email || '').trim().toLowerCase();
-      const supUid = rep?.attendees?.supervisor?.uid;
-
-      // Kiểm tra chỉ định đích danh cho chính cán bộ này ("ai xem được của người đó")
-      const isDirectlyAssigned = recipients.some(rec => {
-        if (rec.role !== 'SUPERVISOR' && rec.role !== 'LEAD_SUPERVISOR') return false;
-        const rUid = rec.uid;
-        const rEmail = (rec.email || '').trim().toLowerCase();
-        const rName = (rec.fullName || '').trim().toLowerCase();
-        return (curUid && rUid === curUid) || 
-               (curEmail && rEmail && curEmail === rEmail) || 
-               (curName && rName && (curName === rName || curName.includes(rName) || rName.includes(curName)));
-      });
-
-      const isDirectAttendee = Boolean(
-        (curUid && supUid && curUid === supUid) ||
-        (curName && supPerson && (supPerson === curName || supPerson.includes(curName) || curName.includes(supPerson))) ||
-        (curEmail && supEmail && curEmail === supEmail)
-      );
-
-      // Nếu là cán bộ TVGS thường: CHỈ xem nếu được chỉ định đích danh cho chính mình
-      if (!isSupervisorLead) {
-        return Boolean(isDirectlyAssigned || isDirectAttendee);
+    // 2. Nhật ký thi công
+    if (notif.targetDailyLogId) {
+      const dl = dailyLogs.find(l => l.id === notif.targetDailyLogId);
+      if (dl) {
+        setSelectedDailyLog(dl);
+        setIsDailyLogDetailModalOpen(true);
+        return;
       }
-
-      // Nếu là TVGS Trưởng: xem nếu chỉ định cho mình HOẶC cho các cán bộ TVGS cấp dưới quyền
-      const subIds = Array.isArray(user.subordinateIds) ? user.subordinateIds : [];
-      const hasExplicitSubs = subIds.length > 0 || (allUsers || []).some(u => u.leaderId === curUid);
-      const mySubordinates = (allUsers || []).filter(u => {
-        if (u.uid === curUid) return false;
-        if (u.role !== 'SUPERVISOR') return false;
-        if ((u.position || '').toLowerCase().includes('trưởng')) return false;
-        if (hasExplicitSubs) {
-          return u.leaderId === curUid || subIds.includes(u.uid);
-        }
-        return true;
-      });
-      const subUids = mySubordinates.map(u => u.uid);
-      const subEmails = mySubordinates.map(u => (u.email || '').trim().toLowerCase()).filter(Boolean);
-      const subNames = mySubordinates.map(u => (u.fullName || '').trim().toLowerCase()).filter(Boolean);
-
-      const isAssignedToSub = recipients.some(rec => {
-        if (rec.role !== 'SUPERVISOR') return false;
-        const rUid = rec.uid;
-        const rEmail = (rec.email || '').trim().toLowerCase();
-        const rName = (rec.fullName || '').trim().toLowerCase();
-        const rLeader = rec.leaderId;
-
-        if (rLeader && rLeader === curUid) return true;
-        if (rUid && subUids.includes(rUid)) return true;
-        if (rEmail && subEmails.includes(rEmail)) return true;
-        if (rName && subNames.some(sn => sn === rName || sn.includes(rName) || rName.includes(sn))) return true;
-        return false;
-      });
-
-      const isSubAttendee = Boolean(
-        subNames.some(sn => sn === supPerson || sn.includes(supPerson) || supPerson.includes(sn)) ||
-        (supEmail && subEmails.includes(supEmail))
-      );
-
-      return Boolean(isDirectlyAssigned || isDirectAttendee || isAssignedToSub || isSubAttendee);
     }
 
-    // 4. Phân hệ Chủ Đầu Tư (INVESTOR & LEAD_INVESTOR):
-    const isInvestorLead = role === 'LEAD_INVESTOR' || Boolean(user.isLead && role === 'INVESTOR') || (role === 'INVESTOR' && ((user.position || '').toLowerCase().includes('trưởng') || (user.position || '').toLowerCase().includes('giám đốc')));
-    if (role === 'INVESTOR' || role === 'LEAD_INVESTOR') {
-      const recipients = req?.assignedRecipients || rep?.assignedRecipients || [];
-      const invPerson = (rep?.attendees?.investor?.person || '').trim().toLowerCase();
-      const invEmail = (rep?.attendees?.investor?.email || '').trim().toLowerCase();
-      const invUid = rep?.attendees?.investor?.uid;
-
-      // Kiểm tra chỉ định đích danh cho chính cán bộ này ("ai xem được của người đó")
-      const isDirectlyAssigned = recipients.some(rec => {
-        if (rec.role !== 'INVESTOR' && rec.role !== 'LEAD_INVESTOR') return false;
-        const rUid = rec.uid;
-        const rEmail = (rec.email || '').trim().toLowerCase();
-        const rName = (rec.fullName || '').trim().toLowerCase();
-        return (curUid && rUid === curUid) || 
-               (curEmail && rEmail && curEmail === rEmail) || 
-               (curName && rName && (curName === rName || curName.includes(rName) || rName.includes(curName)));
-      });
-
-      const isDirectAttendee = Boolean(
-        (curUid && invUid && curUid === invUid) ||
-        (curName && invPerson && (invPerson === curName || invPerson.includes(curName) || curName.includes(invPerson))) ||
-        (curEmail && invEmail && curEmail === invEmail)
-      );
-
-      // Nếu là cán bộ CĐT thường: CHỈ xem nếu được chỉ định đích danh cho chính mình
-      if (!isInvestorLead) {
-        return Boolean(isDirectlyAssigned || isDirectAttendee);
+    // 3. Biên bản hoàn thành
+    if (notif.targetCompletionReportId) {
+      const cr = completionReports.find(l => l.id === notif.targetCompletionReportId);
+      if (cr) {
+        setSelectedCompletionReport(cr);
+        setIsCompletionDetailModalOpen(true);
+        return;
       }
-
-      // Nếu là CĐT Trưởng: xem nếu chỉ định cho mình HOẶC cho các cán bộ CĐT cấp dưới quyền
-      const subIds = Array.isArray(user.subordinateIds) ? user.subordinateIds : [];
-      const hasExplicitSubs = subIds.length > 0 || (allUsers || []).some(u => u.leaderId === curUid);
-      const mySubordinates = (allUsers || []).filter(u => {
-        if (u.uid === curUid) return false;
-        if (u.role !== 'INVESTOR') return false;
-        if ((u.position || '').toLowerCase().includes('trưởng') || (u.position || '').toLowerCase().includes('giám đốc')) return false;
-        if (hasExplicitSubs) {
-          return u.leaderId === curUid || subIds.includes(u.uid);
-        }
-        return true;
-      });
-      const subUids = mySubordinates.map(u => u.uid);
-      const subEmails = mySubordinates.map(u => (u.email || '').trim().toLowerCase()).filter(Boolean);
-      const subNames = mySubordinates.map(u => (u.fullName || '').trim().toLowerCase()).filter(Boolean);
-
-      const isAssignedToSub = recipients.some(rec => {
-        if (rec.role !== 'INVESTOR') return false;
-        const rUid = rec.uid;
-        const rEmail = (rec.email || '').trim().toLowerCase();
-        const rName = (rec.fullName || '').trim().toLowerCase();
-        const rLeader = rec.leaderId;
-
-        if (rLeader && rLeader === curUid) return true;
-        if (rUid && subUids.includes(rUid)) return true;
-        if (rEmail && subEmails.includes(rEmail)) return true;
-        if (rName && subNames.some(sn => sn === rName || sn.includes(rName) || rName.includes(sn))) return true;
-        return false;
-      });
-
-      const isSubAttendee = Boolean(
-        subNames.some(sn => sn === invPerson || sn.includes(invPerson) || invPerson.includes(sn)) ||
-        (invEmail && subEmails.includes(invEmail))
-      );
-
-      return Boolean(isDirectlyAssigned || isDirectAttendee || isAssignedToSub || isSubAttendee);
     }
 
-    return false;
+    // 4. Hồ sơ shop
+    if (notif.targetShopDocId) {
+      const sDoc = shopDocuments.find(d => d.id === notif.targetShopDocId);
+      if (sDoc) {
+        setSelectedShopDoc(sDoc);
+        return;
+      }
+    }
+
+    // 5. Hồ sơ thanh toán
+    if (notif.targetPaymentDocId) {
+      const pDoc = paymentDocuments.find(d => d.id === notif.targetPaymentDocId);
+      if (pDoc) {
+        setSelectedPaymentDoc(pDoc);
+        return;
+      }
+    }
+
+    // 6. Phiếu yêu cầu nghiệm thu
+    if (notif.targetRequestId) {
+      const target = requests.find(r => r.id === notif.targetRequestId);
+      if (target) {
+        setSelectedRequest(target);
+        return;
+      }
+    }
+
+    if (showAlert) {
+      showAlert({
+        type: 'info',
+        title: 'Thông báo',
+        message: 'Hồ sơ hoặc biên bản này hiện không tồn tại hoặc bạn chưa được phân quyền truy cập.'
+      });
+    }
   };
 
   const accessibleRequests = useMemo(() => {
@@ -4691,7 +5814,7 @@ export default function App() {
 
   // Lọc thông báo phù hợp: CHỈ người được chọn + các Trưởng liên quan + Admin mới nhận được
   const userNotifications = notifications.filter(notif => 
-    checkNotificationRecipient(notif, currentUser, requests, reports)
+    checkNotificationRecipient(notif, currentUser, requests, reports, users)
   );
 
   const unreadCount = userNotifications.filter(n => !n.isRead).length;
@@ -4723,46 +5846,7 @@ export default function App() {
         onDeleteNotification={handleDeleteNotification}
         onClearAllNotifications={handleClearAllNotifications}
         onSelectNotification={(notif) => {
-          setInitialOpenRectify(false);
-          const rep = reports.find(r => 
-            (notif.targetReportId && (r.id === notif.targetReportId || r.reportId === notif.targetReportId)) || 
-            (notif.targetRequestId && r.requestId === notif.targetRequestId)
-          );
-          if (rep) {
-            handleOpenReport(rep);
-            return;
-          }
-          if (notif.targetReportId) {
-            handleOpenOrCreateReport(notif.targetReportId);
-            return;
-          }
-          if (notif.targetDailyLogId) {
-            const dl = dailyLogs.find(l => l.id === notif.targetDailyLogId);
-            if (dl) {
-              setSelectedDailyLog(dl);
-              setIsDailyLogDetailModalOpen(true);
-              return;
-            }
-          }
-          if (notif.targetCompletionReportId) {
-            const cr = completionReports.find(l => l.id === notif.targetCompletionReportId);
-            if (cr) {
-              setSelectedCompletionReport(cr);
-              setIsCompletionDetailModalOpen(true);
-              return;
-            }
-          }
-          if (notif.targetShopDocId) {
-            const sDoc = shopDocuments.find(d => d.id === notif.targetShopDocId);
-            if (sDoc) {
-              setSelectedShopDoc(sDoc);
-              return;
-            }
-          }
-          if (notif.targetRequestId) {
-            const target = requests.find(r => r.id === notif.targetRequestId);
-            if (target) setSelectedRequest(target);
-          }
+          handleSelectNotification(notif);
         }}
         pushPermissionGranted={pushPermissionGranted}
         onEnablePush={handleEnablePush}
@@ -4777,44 +5861,7 @@ export default function App() {
         onClose={() => setActivePushToast(null)}
         onAction={(notif) => {
           handleMarkNotificationAsRead(notif.id);
-          setInitialOpenRectify(false);
-          const rep = reports.find(r => 
-            (notif.targetReportId && (r.id === notif.targetReportId || r.reportId === notif.targetReportId)) || 
-            (notif.targetRequestId && r.requestId === notif.targetRequestId)
-          );
-          if (rep) {
-            handleOpenReport(rep);
-            return;
-          }
-          if (notif.targetReportId) {
-            handleOpenOrCreateReport(notif.targetReportId);
-            return;
-          }
-          if (notif.targetDailyLogId) {
-            const dl = dailyLogs.find(l => l.id === notif.targetDailyLogId);
-            if (dl) {
-              setSelectedDailyLog(dl);
-              setIsDailyLogDetailModalOpen(true);
-              return;
-            }
-          }
-          if (notif.targetCompletionReportId) {
-            const cr = completionReports.find(l => l.id === notif.targetCompletionReportId);
-            if (cr) {
-              setSelectedCompletionReport(cr);
-              setIsCompletionDetailModalOpen(true);
-              return;
-            }
-          }
-          if (notif.targetShopDocId) {
-            const sDoc = shopDocuments.find(d => d.id === notif.targetShopDocId);
-            if (sDoc) {
-              setSelectedShopDoc(sDoc);
-              return;
-            }
-          }
-          const target = requests.find(r => r.id === notif.targetRequestId);
-          if (target) setSelectedRequest(target);
+          handleSelectNotification(notif);
         }}
       />
 
@@ -4885,6 +5932,13 @@ export default function App() {
                   <span>Hồ Sơ Bộ Phận Shop ({shopDocuments.length})</span>
                 </li>
                 <li 
+                  className={`sidebar-nav-item ${activeTab === 'PAYMENT_DOCUMENTS' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('PAYMENT_DOCUMENTS')}
+                >
+                  <CreditCard size={18} />
+                  <span>Hồ Sơ Thanh Toán ({paymentDocuments.length})</span>
+                </li>
+                <li 
                   className={`sidebar-nav-item ${activeTab === 'PROFILE' ? 'active' : ''}`}
                   onClick={() => setActiveTab('PROFILE')}
                 >
@@ -4939,6 +5993,14 @@ export default function App() {
                 </li>
 
                 <li 
+                  className={`sidebar-nav-item ${activeTab === 'PAYMENT_DOCUMENTS' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('PAYMENT_DOCUMENTS')}
+                >
+                  <CreditCard size={18} />
+                  <span>Hồ Sơ Thanh Toán ({paymentDocuments.length})</span>
+                </li>
+
+                <li 
                   className={`sidebar-nav-item ${activeTab === 'PROFILE' ? 'active' : ''}`}
                   onClick={() => setActiveTab('PROFILE')}
                 >
@@ -4966,6 +6028,14 @@ export default function App() {
               currentRole={currentRole}
               onOpenCreateModal={() => setIsCreateShopModalOpen(true)}
               onOpenDetailModal={(doc) => setSelectedShopDoc(doc)}
+            />
+          ) : activeTab === 'PAYMENT_DOCUMENTS' ? (
+            <PaymentDocumentsView 
+              paymentDocuments={paymentDocuments}
+              currentUser={currentUser}
+              currentRole={currentRole}
+              onOpenCreateModal={() => setIsCreatePaymentModalOpen(true)}
+              onOpenDetailModal={(doc) => setSelectedPaymentDoc(doc)}
             />
           ) : activeTab === 'REPORTS' ? (
             <ReportsListView 
@@ -5859,6 +6929,33 @@ export default function App() {
         onAssign={handleAssignShopDocument}
         onResubmit={handleResubmitShopDocument}
         onDelete={handleDeleteShopDocument}
+        showAlert={showAlert}
+      />
+
+      {/* MODAL TẠO HỒ SƠ THANH TOÁN */}
+      <CreatePaymentDocumentModal 
+        isOpen={isCreatePaymentModalOpen}
+        onClose={() => setIsCreatePaymentModalOpen(false)}
+        users={users}
+        currentUser={currentUser}
+        slaConfigs={paymentSlaConfigs}
+        onSubmitPaymentDocument={handleCreatePaymentDocument}
+        showAlert={showAlert}
+      />
+
+      {/* MODAL XEM CHI TIẾT & THẨM ĐỊNH HỒ SƠ THANH TOÁN */}
+      <PaymentDocumentDetailModal 
+        isOpen={Boolean(selectedPaymentDoc)}
+        onClose={() => setSelectedPaymentDoc(null)}
+        document={selectedPaymentDoc}
+        currentUser={currentUser}
+        currentRole={currentRole}
+        users={users}
+        onApprove={handleApprovePaymentDocument}
+        onReject={handleRejectPaymentDocument}
+        onAssign={handleAssignPaymentDocument}
+        onResubmit={handleResubmitPaymentDocument}
+        onDelete={handleDeletePaymentDocument}
         showAlert={showAlert}
       />
 

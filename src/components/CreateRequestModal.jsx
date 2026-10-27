@@ -255,29 +255,31 @@ export default function CreateRequestModal({
   // BẬC 5: CÁC QUY CHUẨN LẤY THEO HẠNG MỤC CÔNG VIỆC
   // -------------------------------------------------------------
   const activeTaskForStandards = selectedTaskName === '__CUSTOM_TASK__' ? customTaskInput : selectedTaskName;
+  const activePackageForStandards = selectedPackageName === '__CUSTOM_PKG__' ? customPackageInput : selectedPackageName;
 
   const [suggestedStandardsList, setSuggestedStandardsList] = useState(() => {
-    return getSuggestedStandards(activeTaskForStandards || 'Cốt thép, ván khuôn, bê tông', 'WORK', activeWorks, activeMaterials, activeMandatory);
+    return getSuggestedStandards(activeTaskForStandards || 'Cốt thép, ván khuôn, bê tông', 'WORK', activeWorks, activeMaterials, activeMandatory, activePackageForStandards);
   });
   const [selectedStandards, setSelectedStandards] = useState(() => {
-    return getSuggestedStandards(activeTaskForStandards || 'Cốt thép, ván khuôn, bê tông', 'WORK', activeWorks, activeMaterials, activeMandatory);
+    return getSuggestedStandards(activeTaskForStandards || 'Cốt thép, ván khuôn, bê tông', 'WORK', activeWorks, activeMaterials, activeMandatory, activePackageForStandards);
   });
 
-  const updateStandards = (query, type) => {
-    const suggested = getSuggestedStandards(query, type, activeWorks, activeMaterials, activeMandatory);
+  const updateStandards = (query, type, pkg = '') => {
+    const suggested = getSuggestedStandards(query, type, activeWorks, activeMaterials, activeMandatory, pkg);
     setSuggestedStandardsList(suggested);
     setSelectedStandards(suggested);
   };
 
-  // Cập nhật tiêu chuẩn khi công việc thay đổi
+  // Cập nhật tiêu chuẩn khi công việc hoặc gói thầu thay đổi
   useEffect(() => {
     if (inspectionType === 'WORK') {
-      const query = selectedTaskName === '__CUSTOM_TASK__' ? customTaskInput : selectedTaskName;
-      if (query && query.trim()) {
-        updateStandards(query, 'WORK');
+      const taskQuery = selectedTaskName === '__CUSTOM_TASK__' ? customTaskInput : selectedTaskName;
+      const pkgQuery = selectedPackageName === '__CUSTOM_PKG__' ? customPackageInput : selectedPackageName;
+      if (taskQuery && taskQuery.trim()) {
+        updateStandards(taskQuery, 'WORK', pkgQuery);
       }
     }
-  }, [selectedTaskName, customTaskInput, inspectionType]);
+  }, [selectedTaskName, customTaskInput, selectedPackageName, customPackageInput, inspectionType]);
 
   // -------------------------------------------------------------
   // MÃ HẠNG MỤC CÔNG TRÌNH (PHIẾU YÊU CẦU NGHIỆM THU LUÔN LÀ IR):
@@ -376,6 +378,28 @@ export default function CreateRequestModal({
     setSelectedStandards(prev =>
       prev.includes(std) ? prev.filter(s => s !== std) : [...prev, std]
     );
+  };
+
+  // Tự nhập thêm tiêu chuẩn/quy chuẩn áp dụng
+  const [isAddingCustomStandard, setIsAddingCustomStandard] = useState(false);
+  const [customStandardInput, setCustomStandardInput] = useState('');
+
+  const handleAddCustomStandard = () => {
+    const trimmed = (customStandardInput || '').trim();
+    if (!trimmed) return;
+    
+    // Thêm vào danh sách gợi ý và tự động tích chọn
+    setSuggestedStandardsList(prev => {
+      if (prev.includes(trimmed)) return prev;
+      return [trimmed, ...prev];
+    });
+    setSelectedStandards(prev => {
+      if (prev.includes(trimmed)) return prev;
+      return [trimmed, ...prev];
+    });
+
+    setCustomStandardInput('');
+    setIsAddingCustomStandard(false);
   };
 
   // Giờ bắt đầu & kết thúc
@@ -958,15 +982,103 @@ export default function CreateRequestModal({
 
           {/* BƯỚC 5: TIÊU CHUẨN NGHIỆM THU TỰ ĐỘNG THEO HẠNG MỤC CÔNG VIỆC */}
           <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', marginBottom: '18px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#0f172a', fontWeight: 700, fontSize: '0.92rem' }}>
                 <CheckSquare size={18} color="#16a34a" />
                 <span>5. Quy Chuẩn & Tiêu Chuẩn Áp Dụng:</span>
               </div>
-              <span style={{ fontSize: '0.78rem', color: '#16a34a', fontWeight: 600 }}>
-                ✓ {selectedStandards.length} tiêu chuẩn được áp dụng
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '0.78rem', color: '#16a34a', fontWeight: 600 }}>
+                  ✓ {selectedStandards.length} tiêu chuẩn được áp dụng
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsAddingCustomStandard(prev => !prev)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    background: '#eff6ff',
+                    color: '#2563eb',
+                    border: '1px solid #bfdbfe',
+                    borderRadius: '6px',
+                    padding: '4px 9px',
+                    fontSize: '0.76rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    boxShadow: '0 1px 2px rgba(37,99,235,0.08)'
+                  }}
+                  title="Nhập thêm quy chuẩn / tiêu chuẩn áp dụng cho công việc này"
+                >
+                  <Plus size={13} /> Thêm tiêu chuẩn
+                </button>
+              </div>
             </div>
+
+            {/* FORM NHẬP THÊM TIÊU CHUẨN TỰ CHỌN */}
+            {isAddingCustomStandard && (
+              <div style={{
+                background: '#ffffff',
+                border: '1.5px solid #93c5fd',
+                borderRadius: '8px',
+                padding: '10px 12px',
+                marginBottom: '10px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                boxShadow: '0 2px 8px rgba(37, 99, 235, 0.08)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1e40af' }}>
+                    Nhập mã & tên quy chuẩn / tiêu chuẩn áp dụng:
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => { setIsAddingCustomStandard(false); setCustomStandardInput(''); }}
+                    style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', padding: '2px' }}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={customStandardInput}
+                    onChange={(e) => setCustomStandardInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddCustomStandard();
+                      }
+                    }}
+                    placeholder="Ví dụ: TCVN 3890:2023 Phương tiện PCCC cho nhà và công trình..."
+                    autoFocus
+                    style={{ flex: 1, padding: '7px 10px', fontSize: '0.82rem' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddCustomStandard}
+                    style={{
+                      background: '#2563eb',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '7px 14px',
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    Thêm
+                  </button>
+                </div>
+                <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                  💡 Tiêu chuẩn tự nhập sẽ tự động được tích chọn và đưa vào Phiếu yêu cầu & Biên bản nghiệm thu.
+                </span>
+              </div>
+            )}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
               {suggestedStandardsList.map((std, idx) => {

@@ -24,10 +24,10 @@ export default function CreateShopDocumentModal({
 }) {
   if (!isOpen) return null;
 
-  // Tìm Tư vấn giám sát trưởng (Ưu tiên tài khoản test muitvgsv)
+  // Tìm Tư vấn giám sát trưởng (Đinh Xuân Thám)
   const leadSupervisor = useMemo(() => getShopLeadSupervisor(users), [users]);
 
-  // Tìm Trưởng Ban Quản lý dự án (Ưu tiên tài khoản test muicdt)
+  // Tìm Trưởng Ban Quản lý dự án (Ngô Quý Linh)
   const leadInvestor = useMemo(() => getShopLeadInvestor(users), [users]);
 
   // Danh sách loại hồ sơ (lấy từ cấu hình SLA của admin hoặc mặc định)

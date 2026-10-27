@@ -70,30 +70,6 @@ export const MOCK_USERS = [
     "status": "ACTIVE"
   },
   {
-    "uid": "uid_muitvgsv",
-    "fullName": "Mùi TVGS (Tư vấn giám sát trưởng)",
-    "role": "LEAD_SUPERVISOR",
-    "company": "Công ty CP Tư vấn Xây dựng và Thương mại GELICON",
-    "position": "Tư vấn giám sát trưởng (Test)",
-    "avatar": "MT",
-    "phone": "0901.888.777",
-    "email": "muitvgsv",
-    "password": "123456",
-    "status": "ACTIVE"
-  },
-  {
-    "uid": "uid_muicdt",
-    "fullName": "Mùi CĐT (Trưởng Ban QLDA)",
-    "role": "LEAD_INVESTOR",
-    "company": "Ban Quản Lý Dự Án An Phú Eco City",
-    "position": "Trưởng Ban QLDA (Test)",
-    "avatar": "MC",
-    "phone": "0901.888.888",
-    "email": "muicdt",
-    "password": "123456",
-    "status": "ACTIVE"
-  },
-  {
     "uid": "uid_cdt_01",
     "fullName": "Ngô Quý Linh",
     "role": "LEAD_INVESTOR",

@@ -276,29 +276,9 @@ export const getShopStatusBadgeConfig = (status) => {
 };
 
 /**
- * Tìm Tư vấn giám sát trưởng tiếp nhận hồ sơ Shop (Ưu tiên tài khoản test muitvgs/muitvgsv)
+ * Tìm Tư vấn giám sát trưởng tiếp nhận hồ sơ Shop (Dữ liệu chính thức: Đinh Xuân Thám)
  */
 export const getShopLeadSupervisor = (users = []) => {
-  const testUser = (users || []).find(u => {
-    if (u.status === 'INACTIVE') return false;
-    const email = (u.email || '').toLowerCase();
-    const uid = (u.uid || '').toLowerCase();
-    return email.includes('muitvgs') || 
-           uid.includes('muitvgs') || 
-           uid === 'uid_custom_1792576174520' ||
-           email === 'muitvgs@apct.vn' ||
-           email === 'muitvgsv@apct.vn' ||
-           email === 'muitvgsv' ||
-           email === 'muitvgs';
-  });
-  if (testUser) {
-    return {
-      ...testUser,
-      role: 'LEAD_SUPERVISOR',
-      position: 'Tư vấn giám sát trưởng (Test)'
-    };
-  }
-
   return (users || []).find(u => {
     if (u.status === 'INACTIVE') return false;
     const roleStr = (u.role || '').toUpperCase();
@@ -306,37 +286,19 @@ export const getShopLeadSupervisor = (users = []) => {
     const pos = (u.position || '').toLowerCase();
     return pos.includes('giám sát trưởng') || (pos.includes('trưởng') && pos.includes('giám sát'));
   }) || {
-    uid: 'uid_custom_1792576174520',
-    fullName: 'Dvtc Mùi (TVGS Trưởng - Test)',
-    email: 'muitvgs@apct.vn',
+    uid: 'uid_tvgs_01',
+    fullName: 'Đinh Xuân Thám',
+    email: 'tham.dinhxuan@gelicon.vn',
     role: 'LEAD_SUPERVISOR',
-    position: 'Tư vấn giám sát trưởng (Test)',
+    position: 'Tư vấn giám sát trưởng',
     company: 'Công ty CP Tư vấn Xây dựng và Thương mại GELICON'
   };
 };
 
 /**
- * Tìm Trưởng Ban Quản lý dự án tiếp nhận hồ sơ Shop (Ưu tiên tài khoản test muicdt)
+ * Tìm Trưởng Ban Quản lý dự án tiếp nhận hồ sơ Shop (Dữ liệu chính thức: Ngô Quý Linh)
  */
 export const getShopLeadInvestor = (users = []) => {
-  const testUser = (users || []).find(u => {
-    if (u.status === 'INACTIVE') return false;
-    const email = (u.email || '').toLowerCase();
-    const uid = (u.uid || '').toLowerCase();
-    return email.includes('muicdt') || 
-           uid.includes('muicdt') || 
-           uid === 'uid_custom_1792576233247' ||
-           email === 'muicdt@apct.vn' ||
-           email === 'muicdt';
-  });
-  if (testUser) {
-    return {
-      ...testUser,
-      role: 'LEAD_INVESTOR',
-      position: 'Trưởng Ban QLDA (Test)'
-    };
-  }
-
   return (users || []).find(u => {
     if (u.status === 'INACTIVE') return false;
     const roleStr = (u.role || '').toUpperCase();
@@ -344,11 +306,12 @@ export const getShopLeadInvestor = (users = []) => {
     const pos = (u.position || '').toLowerCase();
     return pos.includes('trưởng ban') || (pos.includes('trưởng') && (pos.includes('dự án') || pos.includes('qlda')));
   }) || {
-    uid: 'uid_custom_1792576233247',
-    fullName: 'Cdt Mùi (Trưởng Ban QLDA - Test)',
-    email: 'muicdt@apct.vn',
+    uid: 'uid_cdt_01',
+    fullName: 'Ngô Quý Linh',
+    email: 'linh.ngoquy@cncmi.vn',
     role: 'LEAD_INVESTOR',
-    position: 'Trưởng Ban QLDA (Test)',
-    company: 'Ban Quản Lý Dự Án An Phú Eco City'
+    position: 'Trưởng Ban QLDA',
+    company: 'Công ty cổ phần CONINCO Máy xây dựng và Công trình công nghiệp (CONINCO-MI)'
   };
 };
+

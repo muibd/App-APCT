@@ -904,6 +904,159 @@ export const saveShopSlaConfigs = async (configsList) => {
   }
 };
 
+// ============================================================================
+// 9. HỒ SƠ THANH TOÁN (PAYMENT DOCUMENTS: TẠM ỨNG, THANH TOÁN, QUYẾT TOÁN)
+// ============================================================================
+const PAYMENT_DOCUMENTS_COLLECTION = 'payment_documents';
+const PAYMENT_SLA_COLLECTION = 'payment_sla_configs';
+const PAYMENT_SLA_DOC_ID = 'default_payment_sla_rules';
+
+/**
+ * Lắng nghe thời gian thực danh sách Hồ sơ Thanh Toán từ Firestore
+ */
+export const subscribeToPaymentDocuments = (callback) => {
+  if (!isFirebaseConfigured || !db) {
+    return () => {};
+  }
+
+  try {
+    const colRef = collection(db, PAYMENT_DOCUMENTS_COLLECTION);
+    const unsubscribe = onSnapshot(colRef, (snapshot) => {
+      const items = [];
+      snapshot.forEach(docSnap => {
+        items.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      items.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+      callback(items);
+    }, (error) => {
+      console.warn('[Firestore] Lỗi lắng nghe hồ sơ thanh toán:', error?.message || error);
+    });
+
+    return unsubscribe;
+  } catch (e) {
+    console.warn('[Firestore Payment Exception]', e);
+    return () => {};
+  }
+};
+
+/**
+ * Lưu hoặc cập nhật Hồ sơ Thanh Toán lên Firestore
+ */
+export const savePaymentDocument = async (paymentDocData) => {
+  const cleanData = sanitizeData({
+    ...paymentDocData,
+    updatedAt: new Date().toISOString()
+  });
+
+  if (!isFirebaseConfigured || !db) {
+    console.log('[Firestore Offline] Lưu hồ sơ thanh toán nội bộ:', cleanData?.title);
+    return cleanData;
+  }
+
+  try {
+    const docRef = doc(db, PAYMENT_DOCUMENTS_COLLECTION, cleanData.id);
+
+    let firestorePayload = cleanData;
+    if (cleanData.pdfFile && typeof cleanData.pdfFile.dataUrl === 'string' && cleanData.pdfFile.dataUrl.length > 700000) {
+      firestorePayload = {
+        ...cleanData,
+        pdfFile: {
+          name: cleanData.pdfFile.name,
+          size: cleanData.pdfFile.size,
+          isStoredLocally: true
+        }
+      };
+    }
+    if (Array.isArray(cleanData.pdfFiles)) {
+      firestorePayload = {
+        ...firestorePayload,
+        pdfFiles: cleanData.pdfFiles.map(f => {
+          if (f && typeof f.dataUrl === 'string' && f.dataUrl.length > 700000) {
+            return {
+              id: f.id,
+              name: f.name,
+              size: f.size,
+              isStoredLocally: true
+            };
+          }
+          return f;
+        })
+      };
+    }
+
+    await setDoc(docRef, firestorePayload);
+    console.log('[Firestore Cloud] Đã lưu hồ sơ thanh toán thành công:', cleanData?.title);
+    return cleanData;
+  } catch (error) {
+    console.warn('[Firestore Save Payment Document Warning] Lưu trữ nội bộ an toàn:', error?.message || error);
+    return cleanData;
+  }
+};
+
+/**
+ * Xóa một hồ sơ thanh toán trên Firestore
+ */
+export const deletePaymentDocument = async (paymentDocId) => {
+  if (!isFirebaseConfigured || !db) return;
+  try {
+    const docRef = doc(db, PAYMENT_DOCUMENTS_COLLECTION, paymentDocId);
+    await deleteDoc(docRef);
+    console.log('[Firestore Cloud] Đã xóa hồ sơ thanh toán:', paymentDocId);
+  } catch (error) {
+    console.error('[Firestore Delete Payment Document Error]', error);
+    throw error;
+  }
+};
+
+/**
+ * Lắng nghe cấu hình SLA thời hạn phản hồi hồ sơ thanh toán
+ */
+export const subscribeToPaymentSlaConfigs = (callback) => {
+  if (!isFirebaseConfigured || !db) {
+    return () => {};
+  }
+
+  try {
+    const docRef = doc(db, PAYMENT_SLA_COLLECTION, PAYMENT_SLA_DOC_ID);
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists() && Array.isArray(docSnap.data()?.configs)) {
+        callback(docSnap.data().configs);
+      }
+    }, (error) => {
+      console.warn('[Firestore] Lỗi lắng nghe cấu hình SLA thanh toán:', error);
+    });
+
+    return unsubscribe;
+  } catch (e) {
+    console.warn('[Firestore Payment SLA Exception]', e);
+    return () => {};
+  }
+};
+
+/**
+ * Lưu cấu hình SLA thời hạn phản hồi hồ sơ thanh toán
+ */
+export const savePaymentSlaConfigs = async (configsList) => {
+  const cleanData = sanitizeData({
+    configs: configsList,
+    updatedAt: new Date().toISOString()
+  });
+
+  if (!isFirebaseConfigured || !db) {
+    return cleanData;
+  }
+
+  try {
+    const docRef = doc(db, PAYMENT_SLA_COLLECTION, PAYMENT_SLA_DOC_ID);
+    await setDoc(docRef, cleanData);
+    console.log('[Firestore Cloud] Đã lưu cấu hình SLA hồ sơ thanh toán thành công');
+    return cleanData;
+  } catch (error) {
+    console.error('[Firestore Save Payment SLA Error]', error);
+    return cleanData;
+  }
+};
+
 /**
  * Dọn dẹp toàn bộ phiếu mời và biên bản nghiệm thu cũ trước ngày 26/10/2026
  * Tự động xóa vĩnh viễn trên Firestore

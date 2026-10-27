@@ -104,17 +104,13 @@ export default function ShopDocumentDetailModal({
 
   // Phân quyền người xem
   const isSuperAdmin = currentRole === 'ADMIN';
-  const curEmail = (currentUser?.email || '').toLowerCase();
-  const curUid = (currentUser?.uid || '').toLowerCase();
   const isLeadSupervisor = currentRole === 'LEAD_SUPERVISOR' || 
     Boolean(currentUser?.isLead && currentRole === 'SUPERVISOR') ||
-    (currentRole === 'SUPERVISOR' && (currentUser?.position || '').toLowerCase().includes('giám sát trưởng')) ||
-    curEmail.includes('muitvgs') || curUid.includes('muitvgs') || curUid === 'uid_custom_1792576174520';
+    (currentRole === 'SUPERVISOR' && (currentUser?.position || '').toLowerCase().includes('giám sát trưởng'));
   
   const isLeadInvestor = currentRole === 'LEAD_INVESTOR' || 
     Boolean(currentUser?.isLead && currentRole === 'INVESTOR') ||
-    (currentRole === 'INVESTOR' && (currentUser?.position || '').toLowerCase().includes('trưởng ban')) ||
-    curEmail.includes('muicdt') || curUid.includes('muicdt') || curUid === 'uid_custom_1792576233247';
+    (currentRole === 'INVESTOR' && (currentUser?.position || '').toLowerCase().includes('trưởng ban'));
 
   // Kiểm tra cán bộ đã được phân công chưa
   const tvgsAssignee = shopDoc.assignedTvgs?.assignee || (shopDoc.assignedTvgs?.uid ? shopDoc.assignedTvgs : null);

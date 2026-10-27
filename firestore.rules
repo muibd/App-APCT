@@ -25,10 +25,19 @@ service cloud.firestore {
     match /system_standards/{docId} {
       allow read, write: if true;
     }
+    match /inspection_standards/{docId} {
+      allow read, write: if true;
+    }
     match /shop_documents/{docId} {
       allow read, write: if true;
     }
     match /shop_sla_configs/{docId} {
+      allow read, write: if true;
+    }
+    match /payment_documents/{docId} {
+      allow read, write: if true;
+    }
+    match /payment_sla_configs/{docId} {
       allow read, write: if true;
     }
   }
