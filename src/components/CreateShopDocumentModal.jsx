@@ -201,7 +201,7 @@ export default function CreateShopDocumentModal({
         createdByUid: currentUser?.uid || 'contractor_uid',
         createdByName: currentUser?.fullName || 'Đơn Vị Thi Công',
         createdByRole: currentUser?.role || 'CONTRACTOR',
-        contractorCompany: currentUser?.company || 'Công ty CP Đầu Tư & Xây Dựng An Phú Gia',
+        contractorCompany: currentUser?.company || 'Công ty TNHH Gia Huy Vĩnh Phúc',
         
         // Mặc định gửi cho 2 Trưởng ban, mỗi người có 1 ngày để chọn cán bộ và ấn định thời hạn
         assignedTvgs: {

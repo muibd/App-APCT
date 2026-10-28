@@ -3,6 +3,7 @@ import {
   X, Printer, CheckCircle2, ShieldCheck, Sun, CloudRain, Clock, 
   Users, Wrench, AlertCircle, Camera, Check, FileSpreadsheet, Eye, PenTool
 } from 'lucide-react';
+import { getContractorChief } from '../data/mockData';
 
 export default function DailyLogDetailModal({
   isOpen,
@@ -356,7 +357,7 @@ export default function DailyLogDetailModal({
           {/* QUỐC HIỆU TIÊU NGỮ */}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '18px' }}>
             <div style={{ width: '45%', textAlign: 'center', fontSize: '0.88rem' }}>
-              <strong>{log.contractorName || 'CÔNG TY CP XÂY DỰNG AN PHÚ GIA'}</strong><br />
+              <strong>{(log.contractorName || log.contractorCompany || 'Công ty TNHH Gia Huy Vĩnh Phúc').toUpperCase()}</strong><br />
               Số: <strong>{log.logNumber}</strong><br />
               <em>{log.bookNumber || 'Quyển số: 01/2026'}</em>
             </div>
@@ -401,9 +402,9 @@ export default function DailyLogDetailModal({
                 </div>
               </div>
               <div>
-                <strong>7. Đơn vị thi công xây dựng:</strong> {log.contractorName || log.contractorCompany || log.representatives?.contractor?.company || 'Công ty CP Xây dựng An Phú Gia'}
+                <strong>7. Đơn vị thi công xây dựng:</strong> {log.contractorName || log.contractorCompany || log.representatives?.contractor?.company || 'Công ty TNHH Gia Huy Vĩnh Phúc'}
                 <div style={{ paddingLeft: '16px', fontStyle: 'italic' }}>
-                  - Chỉ huy trưởng công trường: {log.representatives?.contractor?.leader || 'Phạm Thanh Nhàn'}<br />
+                  - Chỉ huy trưởng công trường: {log.representatives?.contractor?.leader || getContractorChief(log.contractorName || log.contractorCompany || log.representatives?.contractor?.company).fullName}<br />
                   - Cán bộ KT thi công (Người tạo): {log.representatives?.contractor?.createdBy || log.createdByName || 'KS. Lê Văn Kỹ Thuật'}
                 </div>
               </div>

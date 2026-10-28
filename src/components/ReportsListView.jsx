@@ -618,13 +618,13 @@ export default function ReportsListView({
                               Đơn Vị Thi Công: {report.attendees?.contractor?.person || 'Phạm Thanh Nhàn'}
                             </div>
                             <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
-                              {report.attendees?.contractor?.company?.includes('Bình Hoà') ? 'Bình Hoà' : 'An Phú Gia'}
+                              {report.attendees?.contractor?.company?.includes('Phan Lê') ? 'Phan Lê' : report.attendees?.contractor?.company?.includes('Bình Hoà') ? 'Bình Hoà' : 'Gia Huy Vĩnh Phúc'}
                             </div>
                           </div>
                         </div>
                         <div>
                           {contractorSigned ? (
-                            <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700, background: '#ecfdf5', padding: '2px 8px', borderRadius: '4px' }}>✓ Đã xác nhận</span>
+                            <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700, background: '#ecfdf5', padding: '2px 8px', borderRadius: '4px' }}>✓ Đã ký</span>
                           ) : (
                             <span style={{ fontSize: '0.72rem', color: '#94a3b8', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px' }}>Chờ ký</span>
                           )}

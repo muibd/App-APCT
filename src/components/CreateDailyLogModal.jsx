@@ -3,7 +3,7 @@ import {
   X, NotebookPen, Sun, CloudRain, Users, Wrench, ShieldCheck, 
   Calendar, Camera, Trash2, Plus, Clock, Check, Sparkles, Eye
 } from 'lucide-react';
-import { MOCK_PROJECT, MOCK_USERS } from '../data/mockData';
+import { MOCK_PROJECT, MOCK_USERS, getContractorChief } from '../data/mockData';
 import { compressImageFile } from '../utils/storageHelper';
 
 const STORAGE_CUSTOM_BUILDING_ITEMS_KEY = 'apct_building_custom_items_v2';
@@ -86,10 +86,10 @@ export default function CreateDailyLogModal({
   const [logDate, setLogDate] = useState(todayStr);
   const [logNumber, setLogNumber] = useState(() => {
     const randomNum = Math.floor(Math.random() * 80) + 10;
-    return `${randomNum}/NKTC-APG`;
+    return `${randomNum}/NKTC`;
   });
   const [bookNumber, setBookNumber] = useState('Quyển số: 01/2026');
-  const [contractorCompany, setContractorCompany] = useState(() => currentUser?.company || 'Công ty CP Xây dựng An Phú Gia');
+  const [contractorCompany, setContractorCompany] = useState(() => currentUser?.company || 'Công ty TNHH Gia Huy Vĩnh Phúc');
 
   useEffect(() => {
     if (currentUser?.company) {
@@ -98,7 +98,8 @@ export default function CreateDailyLogModal({
   }, [currentUser?.company]);
 
   const availableContractorCompanies = Array.from(new Set([
-    'Công ty CP Xây dựng An Phú Gia',
+    'Công ty TNHH Gia Huy Vĩnh Phúc',
+    'Công ty TNHH Phát Triển Xây Dựng Phan Lê',
     'Công ty TNHH Tư vấn Thiết kế Bình Hoà',
     ...(users || []).filter(u => u.role === 'CONTRACTOR').map(u => u.company).filter(Boolean),
     currentUser?.company
@@ -310,7 +311,7 @@ export default function CreateDailyLogModal({
             uid: user.uid, 
             name: user.fullName, 
             position: user.position || 'Kỹ thuật hiện trường',
-            company: user.company || 'Công ty CP Xây dựng An Phú Gia'
+            company: user.company || 'Công ty TNHH Gia Huy Vĩnh Phúc'
           }
         ];
       }
@@ -405,7 +406,7 @@ export default function CreateDailyLogModal({
       location: selectedBuildingObj?.location || 'Phường Thường Thạnh - Quận Cái Răng – TP. Cần Thơ.',
       investorName: selectedBuildingObj?.investor || 'Công ty TNHH An Phú Cần Thơ',
       supervisorName: selectedBuildingObj?.supervisor || 'Công ty CP Tư vấn xây dựng và Thương mại Gelicon',
-      contractorName: contractorCompany.trim() || currentUser?.company || 'Công ty CP Xây dựng An Phú Gia',
+      contractorName: contractorCompany.trim() || currentUser?.company || 'Công ty TNHH Gia Huy Vĩnh Phúc',
       supervisorUid: selectedSupervisorUser?.uid,
       supervisorFullName: selectedSupervisorUser?.fullName,
       assignedSupervisor: {
@@ -432,8 +433,8 @@ export default function CreateDailyLogModal({
           phone: selectedSupervisorUser?.phone
         },
         contractor: {
-          company: contractorCompany.trim() || currentUser?.company || 'Công ty CP Xây dựng An Phú Gia',
-          leader: 'Phạm Thanh Nhàn',
+          company: contractorCompany.trim() || currentUser?.company || 'Công ty TNHH Gia Huy Vĩnh Phúc',
+          leader: getContractorChief(contractorCompany.trim() || currentUser?.company, users).fullName,
           leaderPosition: 'Chỉ huy trưởng công trường',
           createdBy: currentUser?.fullName || 'KS. Lê Văn Kỹ Thuật',
           createdPosition: currentUser?.position || 'Cán bộ KT thi công'
@@ -503,7 +504,7 @@ export default function CreateDailyLogModal({
       updatedAt: new Date().toISOString(),
       createdByUid: currentUser?.uid || 'uid_dvtc_01',
       createdByName: currentUser?.fullName || 'KS. Lê Văn Kỹ Thuật',
-      contractorCompany: contractorCompany.trim() || currentUser?.company || 'Công ty CP Xây dựng An Phú Gia'
+      contractorCompany: contractorCompany.trim() || currentUser?.company || 'Công ty TNHH Gia Huy Vĩnh Phúc'
     };
 
     onSubmitDailyLog(newDailyLog);
@@ -712,7 +713,7 @@ export default function CreateDailyLogModal({
             <div style={{ fontSize: '0.8rem', color: '#475569', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '6px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
               <div>🏢 <strong>Dự án:</strong> {selectedBuildingObj?.projectName || MOCK_PROJECT.projectName}</div>
               <div>📍 <strong>Địa điểm:</strong> {selectedBuildingObj?.location || 'Phường Thường Thạnh, Q. Cái Răng, TP. Cần Thơ'}</div>
-              <div>🏗️ <strong>ĐVTC:</strong> <span style={{ color: '#1d4ed8', fontWeight: 600 }}>{contractorCompany || 'Công ty CP Xây dựng An Phú Gia'}</span></div>
+              <div>🏗️ <strong>ĐVTC:</strong> <span style={{ color: '#1d4ed8', fontWeight: 600 }}>{contractorCompany || 'Công ty TNHH Gia Huy Vĩnh Phúc'}</span></div>
               <div>👁️ <strong>TVGS:</strong> {selectedBuildingObj?.supervisor || 'Công ty CP TVXD & TM Gelicon'}</div>
             </div>
           </div>

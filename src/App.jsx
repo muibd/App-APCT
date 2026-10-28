@@ -43,7 +43,8 @@ import {
   STANDARD_CRITERIA_LIST,
   INITIAL_NOTIFICATIONS,
   INITIAL_DAILY_LOGS,
-  INITIAL_COMPLETION_REPORTS
+  INITIAL_COMPLETION_REPORTS,
+  getContractorChief
 } from './data/mockData';
 import { getSuggestedStandards, loadStoredStandards, STANDARDS_STORAGE_KEY, INITIAL_STANDARDS_DATA } from './data/standardsRules';
 import { 
@@ -124,7 +125,11 @@ import {
   deletePaymentDocument,
   subscribeToPaymentSlaConfigs,
   savePaymentSlaConfigs,
-  cleanupOldRequestsAndReports
+  cleanupOldRequestsAndReports,
+  subscribeToProjectsCatalog,
+  saveSystemProjectsCatalog,
+  subscribeToDocTypes,
+  saveSystemDocTypes
 } from './services/firestoreService';
 import { 
   requestPushPermission, 
@@ -173,6 +178,40 @@ if (typeof window !== 'undefined' && window.localStorage) {
   }
 }
 
+// Hàm chuẩn hóa tên công ty ĐVTC: Lấy trực tiếp từ tên công ty đã lưu hoặc tra cứu trực tiếp tài khoản người tạo
+function resolveCleanContractorCompany(rawComp, personName, textContext, uid, customUsers) {
+  // 1. Ưu tiên cao nhất: Lấy trực tiếp từ tên công ty hợp lệ đã lưu (bỏ qua tên giả lập cũ An Phú Gia nếu có)
+  if (rawComp && !rawComp.includes('An Phú Gia') && rawComp.trim().length > 3) {
+    return rawComp.trim();
+  }
+
+  // 2. Tra cứu trực tiếp người tạo trong danh sách tài khoản người dùng
+  const userList = customUsers || (typeof users !== 'undefined' ? users : MOCK_USERS);
+  const foundUser = (userList || []).find(u => 
+    (uid && u.uid === uid) ||
+    (personName && (u.fullName || '').trim().toLowerCase() === (personName || '').trim().toLowerCase())
+  );
+  if (foundUser?.company && !foundUser.company.includes('An Phú Gia')) {
+    return foundUser.company;
+  }
+
+  return 'Công ty TNHH Gia Huy Vĩnh Phúc';
+}
+
+// Chuẩn hóa dữ liệu phiếu yêu cầu:
+function sanitizeRequestData(req) {
+  if (!req) return req;
+  const cleanComp = resolveCleanContractorCompany(
+    req.contractorCompany,
+    req.createdByName,
+    `${req.taskContent || ''} ${req.itemName || ''} ${req.packageName || ''}`
+  );
+  return {
+    ...req,
+    contractorCompany: cleanComp
+  };
+}
+
 // Chuẩn hóa dữ liệu biên bản: số biên bản là WA hoặc MI, mã căn cứ theo cấu trúc [Mã CT]/[WA|MI]/[ddMMyy]-[revStr].01
 function sanitizeReportData(r) {
   if (!r) return r;
@@ -206,8 +245,30 @@ function sanitizeReportData(r) {
     }
   }
 
+  const cleanContComp = resolveCleanContractorCompany(
+    r.attendees?.contractor?.company || r.contractorCompany,
+    r.attendees?.contractor?.person,
+    `${r.inspectionObject || ''} ${r.projectInfo?.itemName || ''} ${r.projectInfo?.packageName || ''}`
+  );
+  const contractorChief = getContractorChief(cleanContComp, MOCK_USERS);
+
+  const updatedAttendees = r.attendees ? {
+    ...r.attendees,
+    contractor: {
+      ...(r.attendees.contractor || {}),
+      company: cleanContComp,
+      person: r.attendees.contractor?.person || 'Trần Văn Trung',
+      position: r.attendees.contractor?.position || 'Kỹ thuật hiện trường',
+      leadPerson: contractorChief.fullName,
+      leadPosition: 'Chỉ huy trưởng',
+      signed: r.attendees.contractor?.signed !== false
+    }
+  } : r.attendees;
+
   return {
     ...r,
+    contractorCompany: cleanContComp,
+    attendees: updatedAttendees,
     revisionNumber: rev,
     reportNumber: repNum,
     projectCode: projCode,
@@ -218,7 +279,7 @@ function sanitizeReportData(r) {
 }
 
 export default function App() {
-  // Quản lý danh sách cán bộ: ưu tiên localStorage, tự chuẩn hóa password & status (lọc bỏ tài khoản test cũ)
+  // Quản lý danh sách cán bộ: ưu tiên dữ liệu mới nhất, tự động đồng bộ tài khoản thật
   const [users, setUsers] = useState(() => {
     try {
       const saved = localStorage.getItem(USERS_STORAGE_KEY);
@@ -232,7 +293,20 @@ export default function App() {
                      uid === 'uid_custom_1792576174520' || uid === 'uid_custom_1792576233247' ||
                      email.includes('muitvgs') || email.includes('muicdt'));
           });
-          const merged = [...filtered];
+          // Cập nhật thông tin chuẩn từ MOCK_USERS mới nếu trong cache vẫn còn thông tin giả lập cũ
+          const updatedCached = filtered.map(u => {
+            const mock = MOCK_USERS.find(m => m.uid === u.uid);
+            if (mock) {
+              const isOldMock = u.fullName === 'Phan Văn Lê' || u.fullName === 'Trần Kỹ Thuật PCCC' ||
+                                (u.company && u.company.includes('An Phú Gia')) ||
+                                (u.email && (u.email.includes('lephan.phanle') || u.email.includes('pccc.phanle')));
+              if (isOldMock) {
+                return { ...u, ...mock };
+              }
+            }
+            return u;
+          });
+          const merged = [...updatedCached];
           MOCK_USERS.forEach(m => {
             const existingIdx = merged.findIndex(u => u.uid === m.uid || ((u.email || '').toLowerCase() === (m.email || '').toLowerCase()));
             if (existingIdx === -1) {
@@ -267,10 +341,12 @@ export default function App() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          const filtered = parsed.filter(item => {
-            const c = item.createdAt || '';
-            return !c || c >= OLD_DATA_CUTOFF;
-          });
+          const filtered = parsed
+            .map(sanitizeRequestData)
+            .filter(item => {
+              const c = item.createdAt || '';
+              return !c || c >= OLD_DATA_CUTOFF;
+            });
           safeSaveLocalStorage(REQUESTS_STORAGE_KEY, filtered);
           return filtered;
         }
@@ -278,7 +354,7 @@ export default function App() {
     } catch (e) {
       console.warn('Lỗi đọc requests từ localStorage:', e);
     }
-    return INITIAL_REQUESTS;
+    return INITIAL_REQUESTS.map(sanitizeRequestData);
   });
 
   const [reports, setReports] = useState(() => {
@@ -342,14 +418,24 @@ export default function App() {
   const [projectsList, setProjectsList] = useState(loadStoredProjects);
   const [docTypesList, setDocTypesList] = useState(loadStoredDocTypes);
 
-  const handleSaveProjects = (newProjects) => {
+  const handleSaveProjects = async (newProjects) => {
     setProjectsList(newProjects);
     saveStoredProjects(newProjects);
+    try {
+      await saveSystemProjectsCatalog(newProjects);
+    } catch (e) {
+      console.warn('Lỗi đồng bộ danh mục công trình lên Cloud:', e);
+    }
   };
 
-  const handleSaveDocTypes = (newDocTypes) => {
+  const handleSaveDocTypes = async (newDocTypes) => {
     setDocTypesList(newDocTypes);
     saveStoredDocTypes(newDocTypes);
+    try {
+      await saveSystemDocTypes(newDocTypes);
+    } catch (e) {
+      console.warn('Lỗi đồng bộ loại văn bản lên Cloud:', e);
+    }
   };
 
   // User Authentication State: Lấy từ localStorage nếu có, mặc định là null để hiện màn hình Login
@@ -956,12 +1042,13 @@ export default function App() {
             // Bỏ qua các bản ghi trước ngày cutoff
             if (!key || (created && created < OLD_DATA_CUTOFF)) return;
             const existing = map.get(key);
+            const sanitizedIr = sanitizeRequestData(ir);
             if (!existing) {
-              map.set(key, ir);
+              map.set(key, sanitizedIr);
             } else if (existing.status === 'COMPLETED') {
-              map.set(key, { ...existing, ...ir, status: 'COMPLETED' });
-            } else if (ir.status === 'RECTIFIED' && existing.status !== 'RECTIFIED') {
-              map.set(key, { ...existing, ...ir });
+              map.set(key, { ...existing, ...sanitizedIr, status: 'COMPLETED' });
+            } else if (sanitizedIr.status === 'RECTIFIED' && existing.status !== 'RECTIFIED') {
+              map.set(key, { ...existing, ...sanitizedIr });
             }
           });
           const merged = Array.from(map.values());
@@ -1032,7 +1119,7 @@ export default function App() {
           const key = item.id;
           const created = item.createdAt || '';
           if (key && (!created || created >= OLD_DATA_CUTOFF)) {
-            map.set(key, item);
+            map.set(key, sanitizeRequestData(item));
           }
         });
 
@@ -1172,6 +1259,35 @@ export default function App() {
           return !isTest;
         });
 
+        // Chuẩn hóa chính xác thông tin 4 cán bộ Phan Lê theo đúng bảng phân công
+        cleanUsers.forEach(u => {
+          if (u.uid === 'uid_dvtc_phanle_01' || (u.email || '').toLowerCase() === 'daothanhthao@gmail.com') {
+            u.fullName = 'Đào Thanh Thảo';
+            u.position = 'Chỉ huy trưởng';
+            u.phone = '0917355318';
+            u.email = 'daothanhthao@gmail.com';
+            u.company = 'Công ty TNHH Phát Triển Xây Dựng Phan Lê';
+          } else if (u.uid === 'uid_dvtc_phanle_02' || (u.email || '').toLowerCase() === 'molam200297@gmail.com') {
+            u.fullName = 'Lâm Ước Mơ';
+            u.position = 'Chỉ huy phó kiêm QS,QC';
+            u.phone = '0379600330';
+            u.email = 'molam200297@gmail.com';
+            u.company = 'Công ty TNHH Phát Triển Xây Dựng Phan Lê';
+          } else if (u.uid === 'uid_custom_1792999445622' || (u.email || '').toLowerCase() === 'lothanhcao@gmail.com') {
+            u.fullName = 'Lo Thanh Cao';
+            u.position = 'Chỉ huy phó';
+            u.phone = '0909094864';
+            u.email = 'lothanhcao@gmail.com';
+            u.company = 'Công ty TNHH Phát Triển Xây Dựng Phan Lê';
+          } else if (u.uid === 'uid_custom_1792999632414' || (u.email || '').toLowerCase() === 'minhpham06081999@gmail.com') {
+            u.fullName = 'Phạm Duy Minh';
+            u.position = 'Cán bộ kỹ thuật';
+            u.phone = '0332268561';
+            u.email = 'minhpham06081999@gmail.com';
+            u.company = 'Công ty TNHH Phát Triển Xây Dựng Phan Lê';
+          }
+        });
+
         setUsers(cleanUsers);
         try {
           localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(cleanUsers));
@@ -1303,6 +1419,32 @@ export default function App() {
     };
   }, []);
 
+  // 6b. Đồng bộ Real-Time Danh mục Công trình, Nhà thầu & Hạng mục từ Cloud Firestore
+  useEffect(() => {
+    const unsubscribe = subscribeToProjectsCatalog((remoteProjects) => {
+      if (Array.isArray(remoteProjects) && remoteProjects.length > 0) {
+        setProjectsList(remoteProjects);
+        saveStoredProjects(remoteProjects);
+      }
+    });
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
+  // 6c. Đồng bộ Real-Time Danh mục Loại văn bản từ Cloud Firestore
+  useEffect(() => {
+    const unsubscribe = subscribeToDocTypes((remoteDocTypes) => {
+      if (Array.isArray(remoteDocTypes) && remoteDocTypes.length > 0) {
+        setDocTypesList(remoteDocTypes);
+        saveStoredDocTypes(remoteDocTypes);
+      }
+    });
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
   const handleSaveStandards = async (newStandards) => {
     setStandardsData(newStandards);
     try {
@@ -1328,37 +1470,30 @@ export default function App() {
     }
   };
 
-  // 4e. Đồng bộ Real-Time Hồ Sơ Bộ Phận Shop từ Firestore (Bảo toàn dữ liệu cục bộ)
+  // 4e. Đồng bộ Real-Time Hồ Sơ Bộ Phận Shop từ Firestore (Firestore là chuẩn chân thực)
   useEffect(() => {
     const unsubscribe = subscribeToShopDocuments((cloudDocs) => {
-      // Nếu Cloud chưa có dữ liệu hoặc lỗi kết nối, giữ nguyên toàn bộ hồ sơ đã tạo trên máy
-      if (!Array.isArray(cloudDocs) || cloudDocs.length === 0) {
-        return;
-      }
+      if (!Array.isArray(cloudDocs)) return;
 
       setShopDocuments(prev => {
-        const localStored = loadStoredShopDocuments();
-        const baseItems = Array.isArray(prev) && prev.length > 0 ? prev : localStored;
         const map = new Map();
 
-        // 1. Nạp tất cả hồ sơ hiện có ở local
-        baseItems.forEach(item => {
-          if (item?.id) map.set(item.id, item);
+        // 1. Nạp danh sách từ Cloud Firestore
+        cloudDocs.forEach(cloudItem => {
+          if (cloudItem?.id) {
+            map.set(cloudItem.id, cloudItem);
+          }
         });
 
-        // 2. Hợp nhất các hồ sơ từ Cloud Firestore
-        cloudDocs.forEach(cloudItem => {
-          if (!cloudItem?.id) return;
-          const existing = map.get(cloudItem.id);
-          if (!existing) {
-            map.set(cloudItem.id, cloudItem);
-          } else {
-            const cloudTime = new Date(cloudItem.updatedAt || cloudItem.createdAt || 0).getTime();
-            const localTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
-            if (cloudTime >= localTime) {
-              const finalPdf = existing.pdfFile?.dataUrl ? existing.pdfFile : (cloudItem.pdfFile || existing.pdfFile);
-              map.set(cloudItem.id, { ...existing, ...cloudItem, pdfFile: finalPdf });
-            }
+        // 2. Bảo toàn bản nháp offline và dữ liệu PDF cục bộ
+        (prev || []).forEach(localItem => {
+          if (!localItem?.id) return;
+          if (localItem._isOfflineDraft && !map.has(localItem.id)) {
+            map.set(localItem.id, localItem);
+          } else if (map.has(localItem.id)) {
+            const cloudItem = map.get(localItem.id);
+            const finalPdf = localItem.pdfFile?.dataUrl ? localItem.pdfFile : (cloudItem.pdfFile || localItem.pdfFile);
+            map.set(localItem.id, { ...cloudItem, pdfFile: finalPdf });
           }
         });
 
@@ -1382,34 +1517,30 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // 4g. Đồng bộ Real-Time Hồ Sơ Thanh Toán từ Firestore (Bảo toàn dữ liệu cục bộ)
+  // 4g. Đồng bộ Real-Time Hồ Sơ Thanh Toán từ Firestore (Firestore là chuẩn chân thực)
   useEffect(() => {
     const unsubscribe = subscribeToPaymentDocuments((cloudDocs) => {
-      if (!Array.isArray(cloudDocs) || cloudDocs.length === 0) {
-        return;
-      }
+      if (!Array.isArray(cloudDocs)) return;
 
       setPaymentDocuments(prev => {
-        const localStored = loadStoredPaymentDocuments();
-        const baseItems = Array.isArray(prev) && prev.length > 0 ? prev : localStored;
         const map = new Map();
 
-        baseItems.forEach(item => {
-          if (item?.id) map.set(item.id, item);
+        // 1. Nạp danh sách từ Cloud Firestore
+        cloudDocs.forEach(cloudItem => {
+          if (cloudItem?.id) {
+            map.set(cloudItem.id, cloudItem);
+          }
         });
 
-        cloudDocs.forEach(cloudItem => {
-          if (!cloudItem?.id) return;
-          const existing = map.get(cloudItem.id);
-          if (!existing) {
-            map.set(cloudItem.id, cloudItem);
-          } else {
-            const cloudTime = new Date(cloudItem.updatedAt || cloudItem.createdAt || 0).getTime();
-            const localTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
-            if (cloudTime >= localTime) {
-              const finalPdf = existing.pdfFile?.dataUrl ? existing.pdfFile : (cloudItem.pdfFile || existing.pdfFile);
-              map.set(cloudItem.id, { ...existing, ...cloudItem, pdfFile: finalPdf });
-            }
+        // 2. Bảo toàn bản nháp offline và dữ liệu PDF cục bộ
+        (prev || []).forEach(localItem => {
+          if (!localItem?.id) return;
+          if (localItem._isOfflineDraft && !map.has(localItem.id)) {
+            map.set(localItem.id, localItem);
+          } else if (map.has(localItem.id)) {
+            const cloudItem = map.get(localItem.id);
+            const finalPdf = localItem.pdfFile?.dataUrl ? localItem.pdfFile : (cloudItem.pdfFile || localItem.pdfFile);
+            map.set(localItem.id, { ...cloudItem, pdfFile: finalPdf });
           }
         });
 
@@ -3039,7 +3170,7 @@ export default function App() {
           buildingName: rep.projectInfo?.buildingName || 'Chung cư nhà ở xã hội 2',
           itemName: rep.projectInfo?.itemName || 'Thi công kết cấu – Tòa A và Tòa B',
           location: rep.projectInfo?.location || 'Cần Thơ',
-          contractorCompany: rep.attendees?.contractor?.company || 'Công ty CP Xây dựng An Phú Gia',
+          contractorCompany: resolveCleanContractorCompany(rep.attendees?.contractor?.company || rep.contractorCompany, rep.attendees?.contractor?.person),
           createdByUid: rep.createdByUid || 'uid_dvtc_01',
           createdByName: rep.attendees?.contractor?.person || 'Phạm Thanh Nhàn',
           createdByRole: rep.attendees?.contractor?.position || 'Chỉ huy trưởng',
@@ -3136,7 +3267,7 @@ export default function App() {
               signed: req.status === 'COMPLETED' || req.status === 'WAITING_INVESTOR'
             },
             contractor: {
-              company: req.contractorCompany || 'Công ty CP Xây dựng An Phú Gia',
+              company: resolveCleanContractorCompany(req.contractorCompany, req.createdByName),
               person: req.createdByName || 'Phạm Thanh Nhàn',
               position: req.createdByRole || 'Chỉ huy trưởng',
               signed: true
@@ -3249,6 +3380,7 @@ export default function App() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [selectedReport, setSelectedReport] = useState(null);
+  const [selectedReportRequest, setSelectedReportRequest] = useState(null);
   const [initialOpenRectify, setInitialOpenRectify] = useState(false);
   const [reportInitialTab, setReportInitialTab] = useState('INVITATION');
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
@@ -3667,9 +3799,13 @@ export default function App() {
           setNotifications([]);
           setDailyLogs([]);
           setCompletionReports([]);
+          setShopDocuments([]);
+          setPaymentDocuments([]);
           await clearAllAPCTStorage();
           try { localStorage.removeItem(DAILY_LOGS_STORAGE_KEY); } catch (e) {}
           try { localStorage.removeItem(COMPLETION_REPORTS_STORAGE_KEY); } catch (e) {}
+          try { localStorage.removeItem(SHOP_DOCUMENTS_STORAGE_KEY); } catch (e) {}
+          try { localStorage.removeItem(PAYMENT_DOCUMENTS_STORAGE_KEY); } catch (e) {}
           await clearAllCloudInspectionData();
           setTimeout(() => {
             isAutoHealingRef.current = false;
@@ -4070,7 +4206,11 @@ export default function App() {
           signed: false
         },
         contractor: {
-          company: newRequest.contractorCompany || currentUser?.company || 'Công ty CP Xây dựng An Phú Gia',
+          company: resolveCleanContractorCompany(
+            newRequest.contractorCompany || currentUser?.company, 
+            newRequest.createdByName || currentUser?.fullName,
+            `${newRequest.taskContent || ''} ${newRequest.itemName || ''} ${newRequest.packageName || ''}`
+          ),
           person: newRequest.createdByName || currentUser?.fullName || 'Phạm Thanh Nhàn',
           position: newRequest.createdByRole || currentUser?.position || 'Chỉ huy trưởng',
           uid: newRequest.createdByUid || currentUser?.uid || '',
@@ -4165,28 +4305,32 @@ export default function App() {
   };
 
   // Khởi tạo biên bản nghiệm thu mới hoặc mở biên bản hiện có
-  const handleOpenOrCreateReport = async (reportIdOrReqId, isCreateNew = false, defaultTab = 'INVITATION') => {
-    // 1. Kiểm tra xem đã có report nào khớp với reportIdOrReqId hay chưa
-    let rep = reports.find(r => r.id === reportIdOrReqId || r.requestId === reportIdOrReqId);
-    let targetReq = requests.find(r => r.id === reportIdOrReqId || r.reportId === reportIdOrReqId);
-    if (!rep) {
-      if (targetReq?.reportId) {
-        rep = reports.find(r => r.id === targetReq.reportId);
-      }
-      if (!rep && targetReq?.id) {
-        rep = reports.find(r => r.requestId === targetReq.id);
-      }
-      if (!rep && targetReq?.requestNumber) {
-        rep = reports.find(r => r.requestNumber === targetReq.requestNumber || r.reportNumber === targetReq.requestNumber.replace('PYC', 'BBNT'));
+  const handleOpenOrCreateReport = async (reportIdOrReqId, isCreateNew = false, defaultTab = 'INVITATION', directReq = null) => {
+    // 1. Xác định targetReq và rep một cách chính xác tuyệt đối:
+    let targetReq = directReq || requests.find(r => r.id === reportIdOrReqId || r.reportId === reportIdOrReqId);
+    let rep = null;
+
+    if (targetReq?.reportId) {
+      rep = reports.find(r => r.id === targetReq.reportId);
+    }
+    if (!rep && targetReq?.id) {
+      rep = reports.find(r => r.requestId === targetReq.id);
+    }
+    if (!rep && !targetReq && reportIdOrReqId) {
+      rep = reports.find(r => r.id === reportIdOrReqId || r.requestId === reportIdOrReqId);
+      if (rep) {
+        targetReq = requests.find(r => r.id === rep.requestId || r.reportId === rep.id);
       }
     }
-    if (!targetReq && rep) {
-      targetReq = requests.find(r => 
-        r.id === rep.requestId || 
-        r.reportId === rep.id ||
-        (rep.requestNumber && r.requestNumber === rep.requestNumber) ||
-        (rep.reportNumber && r.requestNumber === rep.reportNumber.replace('BBNT', 'PYC'))
-      );
+
+    // NGUYÊN TẮC: TUYỆT ĐỐI KHÔNG ghép theo requestNumber (tránh nhầm lẫn 01.01 của các phiếu khác cùng ngày)!
+    // Kiểm tra tính nhất quán: Nếu rep và targetReq có nội dung công việc khác nhau, KHÔNG DÙNG rep đó!
+    if (rep && targetReq) {
+      const repTask = (rep.inspectionObject || '').trim().toLowerCase();
+      const reqTask = (targetReq.taskContent || '').trim().toLowerCase();
+      if (repTask && reqTask && repTask !== reqTask && !repTask.includes(reqTask.slice(0, 15)) && !reqTask.includes(repTask.slice(0, 15))) {
+        rep = null;
+      }
     }
 
     // Nếu đã tìm thấy report hiện có -> Luôn luôn mở report đó, TUYỆT ĐỐI không khởi tạo đè lên làm mất dữ liệu!
@@ -4197,57 +4341,71 @@ export default function App() {
         const assignedInv = targetReq.assignedRecipients.find(r => r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR');
         const leadInv = users.find(u => u.role === 'LEAD_INVESTOR') || { fullName: 'Ngô Quý Linh', position: 'Trưởng Ban QLDA', company: 'Công ty TNHH An Phú Cần Thơ' };
         const leadSup = users.find(u => u.role === 'LEAD_SUPERVISOR') || { fullName: 'Đinh Xuân Thám', position: 'Tư vấn giám sát trưởng', company: 'Công ty CP TVXD và TM GELICON' };
-        const leadContractor = users.find(u => u.role === 'CONTRACTOR' && (((u.position || '').toLowerCase().includes('chỉ huy')) || (u.fullName || '').includes('Chỉ Huy'))) 
-          || { fullName: 'Trần Hữu Chỉ Huy', position: 'Chỉ huy trưởng', company: 'Công ty CP Xây dựng An Phú Gia' };
+        const effectiveContCompany = resolveCleanContractorCompany(
+          targetReq.contractorCompany || rep.attendees?.contractor?.company,
+          targetReq.createdByName || rep.attendees?.contractor?.person,
+          `${targetReq.taskContent || ''} ${targetReq.itemName || ''} ${targetReq.packageName || ''}`
+        );
+        const leadContractor = getContractorChief(effectiveContCompany, users);
+        if (targetReq && effectiveContCompany && targetReq.contractorCompany !== effectiveContCompany) {
+          targetReq.contractorCompany = effectiveContCompany;
+          setRequests(prev => {
+            const next = prev.map(r => r.id === targetReq.id ? { ...r, contractorCompany: effectiveContCompany } : r);
+            safeSaveLocalStorage(REQUESTS_STORAGE_KEY, next);
+            return next;
+          });
+          saveInspectionRequest({ ...targetReq, contractorCompany: effectiveContCompany }).catch(console.warn);
+        }
 
-            const effectiveContCompany = rep.attendees?.contractor?.company || targetReq.contractorCompany || 'Công ty CP Xây dựng An Phú Gia';
-            if (targetReq && rep.attendees?.contractor?.company && targetReq.contractorCompany !== rep.attendees.contractor.company) {
-              targetReq.contractorCompany = rep.attendees.contractor.company;
-              setRequests(prev => {
-                const next = prev.map(r => r.id === targetReq.id ? { ...r, contractorCompany: rep.attendees.contractor.company } : r);
-                safeSaveLocalStorage(REQUESTS_STORAGE_KEY, next);
-                return next;
-              });
-              saveInspectionRequest({ ...targetReq, contractorCompany: rep.attendees.contractor.company }).catch(console.warn);
+        rep = {
+          ...rep,
+          requestId: targetReq.id,
+          requestNumber: targetReq.requestNumber || rep.requestNumber,
+          projectInfo: {
+            ...rep.projectInfo,
+            projectName: targetReq.projectName || rep.projectInfo?.projectName || 'Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City',
+            buildingName: targetReq.buildingName || rep.projectInfo?.buildingName || 'Chung cư nhà ở xã hội 2',
+            itemName: targetReq.itemName || rep.projectInfo?.itemName || 'Thi công hệ thống PCCC trong và ngoài nhà',
+            packageName: targetReq.packageName || rep.projectInfo?.packageName,
+            location: targetReq.location || rep.projectInfo?.location
+          },
+          inspectionObject: targetReq.taskContent || rep.inspectionObject,
+          contractorCompany: effectiveContCompany,
+          assignedRecipients: targetReq.assignedRecipients,
+          attendees: {
+            ...rep.attendees,
+            supervisor: {
+              ...rep.attendees?.supervisor,
+              uid: assignedSup?.uid || rep.attendees?.supervisor?.uid,
+              person: rep.attendees?.supervisor?.signed 
+                ? rep.attendees.supervisor.person 
+                : (assignedSup?.fullName || rep.attendees?.supervisor?.person || leadSup.fullName),
+              position: assignedSup?.position || rep.attendees?.supervisor?.position || leadSup.position,
+              company: assignedSup?.company || rep.attendees?.supervisor?.company || leadSup.company,
+              leadPerson: rep.attendees?.supervisor?.leadPerson || leadSup.fullName,
+              leadPosition: rep.attendees?.supervisor?.leadPosition || leadSup.position
+            },
+            investor: {
+              ...rep.attendees?.investor,
+              uid: assignedInv?.uid || rep.attendees?.investor?.uid,
+              person: rep.attendees?.investor?.signed 
+                ? rep.attendees.investor.person 
+                : (assignedInv?.fullName || rep.attendees?.investor?.person || leadInv.fullName),
+              position: assignedInv?.position || rep.attendees?.investor?.position || leadInv.position,
+              company: assignedInv?.company || rep.attendees?.investor?.company || leadInv.company,
+              leadPerson: rep.attendees?.investor?.leadPerson || leadInv.fullName,
+              leadPosition: rep.attendees?.investor?.leadPosition || leadInv.position
+            },
+            contractor: {
+              ...rep.attendees?.contractor,
+              person: targetReq.createdByName || rep.attendees?.contractor?.person || 'KS. Lê Văn Kỹ Thuật',
+              position: targetReq.createdByRole || rep.attendees?.contractor?.position || 'Kỹ thuật hiện trường',
+              company: effectiveContCompany,
+              leadPerson: leadContractor.fullName,
+              leadPosition: 'Chỉ huy trưởng'
             }
-
-            rep = {
-              ...rep,
-              assignedRecipients: targetReq.assignedRecipients,
-              attendees: {
-                ...rep.attendees,
-                supervisor: {
-                  ...rep.attendees?.supervisor,
-                  uid: assignedSup?.uid || rep.attendees?.supervisor?.uid,
-                  person: rep.attendees?.supervisor?.signed 
-                    ? rep.attendees.supervisor.person 
-                    : (assignedSup?.fullName || rep.attendees?.supervisor?.person || leadSup.fullName),
-                  position: assignedSup?.position || rep.attendees?.supervisor?.position || leadSup.position,
-                  company: assignedSup?.company || rep.attendees?.supervisor?.company || leadSup.company,
-                  leadPerson: rep.attendees?.supervisor?.leadPerson || leadSup.fullName,
-                  leadPosition: rep.attendees?.supervisor?.leadPosition || leadSup.position
-                },
-                investor: {
-                  ...rep.attendees?.investor,
-                  uid: assignedInv?.uid || rep.attendees?.investor?.uid,
-                  person: rep.attendees?.investor?.signed 
-                    ? rep.attendees.investor.person 
-                    : (assignedInv?.fullName || rep.attendees?.investor?.person || leadInv.fullName),
-                  position: assignedInv?.position || rep.attendees?.investor?.position || leadInv.position,
-                  company: assignedInv?.company || rep.attendees?.investor?.company || leadInv.company,
-                  leadPerson: rep.attendees?.investor?.leadPerson || leadInv.fullName,
-                  leadPosition: rep.attendees?.investor?.leadPosition || leadInv.position
-                },
-                contractor: {
-                  ...rep.attendees?.contractor,
-                  person: targetReq.createdByName || rep.attendees?.contractor?.person || 'KS. Lê Văn Kỹ Thuật',
-                  position: targetReq.createdByRole || rep.attendees?.contractor?.position || 'Kỹ thuật hiện trường',
-                  company: effectiveContCompany,
-                  leadPerson: rep.attendees?.contractor?.leadPerson || leadContractor.fullName,
-                  leadPosition: rep.attendees?.contractor?.leadPosition || leadContractor.position
-                }
-              }
-            };
+          }
+        };
       }
 
       // ĐỒNG BỘ TRẠNG THÁI KHẮC PHỤC:
@@ -4272,7 +4430,7 @@ export default function App() {
                 name: targetReq?.createdByName || 'KS. Lê Văn Kỹ Thuật',
                 role: 'CONTRACTOR',
                 roleTitle: 'Kỹ Thuật Đơn Vị Thi Công',
-                company: 'Công ty CP Xây dựng An Phú Gia',
+                company: resolveCleanContractorCompany(targetReq?.contractorCompany, targetReq?.createdByName),
                 timestamp: targetReq?.updatedAt || new Date().toISOString()
               }
             },
@@ -4282,6 +4440,7 @@ export default function App() {
       }
 
       setSelectedReport(rep);
+      setSelectedReportRequest(targetReq || null);
       setReportInitialTab(defaultTab);
       return;
     }
@@ -4352,8 +4511,8 @@ export default function App() {
         const assignedInv = targetReq.assignedRecipients?.find(r => r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR');
         const leadInv = users.find(u => u.role === 'LEAD_INVESTOR') || { fullName: 'Ngô Quý Linh', position: 'Trưởng Ban QLDA', company: 'Công ty TNHH An Phú Cần Thơ' };
         const leadSup = users.find(u => u.role === 'LEAD_SUPERVISOR') || { fullName: 'Đinh Xuân Thám', position: 'Tư vấn giám sát trưởng', company: 'Công ty CP TVXD và TM GELICON' };
-        const leadContractor = users.find(u => u.role === 'CONTRACTOR' && (((u.position || '').toLowerCase().includes('chỉ huy')) || (u.fullName || '').includes('Chỉ Huy'))) 
-          || { fullName: 'Trần Hữu Chỉ Huy', position: 'Chỉ huy trưởng', company: 'Công ty CP Xây dựng An Phú Gia' };
+        const effectiveContComp = resolveCleanContractorCompany(targetReq.contractorCompany, targetReq.createdByName, `${targetReq.taskContent || ''} ${targetReq.itemName || ''}`);
+        const leadContractor = getContractorChief(effectiveContComp, users);
 
         return {
           investor: { 
@@ -4378,11 +4537,11 @@ export default function App() {
           },
           contractor: { 
             uid: targetReq.createdByUid,
-            company: targetReq.contractorCompany || 'Công ty CP Xây dựng An Phú Gia', 
+            company: effectiveContComp, 
             person: targetReq.createdByName || 'KS. Lê Văn Kỹ Thuật', 
             position: targetReq.createdByRole || 'Kỹ thuật hiện trường', 
             leadPerson: leadContractor.fullName,
-            leadPosition: leadContractor.position,
+            leadPosition: 'Chỉ huy trưởng',
             signed: true 
           }
         };
@@ -4427,6 +4586,7 @@ export default function App() {
     }
 
     setSelectedReport(newReport);
+    setSelectedReportRequest(updatedReq);
     setReportInitialTab(defaultTab);
   };
 
@@ -5584,7 +5744,7 @@ export default function App() {
     }
   };
 
-  const handleOpenReport = (report, options = {}) => {
+  const handleOpenReport = (report, options = {}, directReq = null) => {
     if (!report) return;
     let rep = reports.find(r => 
       r.id === report.id || 
@@ -5592,7 +5752,7 @@ export default function App() {
     ) || report;
 
     // Tìm request liên quan để đồng bộ
-    let targetReq = requests.find(r => 
+    let targetReq = directReq || requests.find(r => 
       r.id === rep.requestId || 
       r.reportId === rep.id || 
       r.id === report.requestId || 
@@ -5635,7 +5795,7 @@ export default function App() {
               name: targetReq?.createdByName || 'KS. Lê Văn Kỹ Thuật',
               role: 'CONTRACTOR',
               roleTitle: 'Kỹ Thuật Đơn Vị Thi Công',
-              company: 'Công ty CP Xây dựng An Phú Gia',
+              company: resolveCleanContractorCompany(targetReq?.contractorCompany, targetReq?.createdByName),
               timestamp: targetReq?.updatedAt || new Date().toISOString()
             }
           },
@@ -5655,15 +5815,53 @@ export default function App() {
       }
     }
 
+    // Kiểm tra tính nhất quán: Nếu rep không khớp nội dung công việc với targetReq/directReq -> mở hoặc tạo đúng report
+    if (targetReq && rep) {
+      const repTask = (rep.inspectionObject || '').trim().toLowerCase();
+      const reqTask = (targetReq.taskContent || '').trim().toLowerCase();
+      if (repTask && reqTask && repTask !== reqTask && !repTask.includes(reqTask.slice(0, 15)) && !reqTask.includes(repTask.slice(0, 15))) {
+        return handleOpenOrCreateReport(targetReq.id, false, options.initialTab || 'INVITATION', targetReq);
+      }
+    }
+
     if (!targetReq) {
       targetReq = requests.find(r => r.id === rep.requestId || r.reportId === rep.id);
     }
+
+    const effectiveContCompany = resolveCleanContractorCompany(
+      targetReq?.contractorCompany || rep.attendees?.contractor?.company,
+      targetReq?.createdByName || rep.attendees?.contractor?.person,
+      `${targetReq?.taskContent || rep.inspectionObject || ''} ${targetReq?.itemName || rep.projectInfo?.itemName || ''} ${targetReq?.packageName || ''}`
+    );
+
     const repWithRecipients = {
       ...rep,
-      assignedRecipients: rep.assignedRecipients || targetReq?.assignedRecipients || []
+      requestId: targetReq?.id || rep.requestId,
+      requestNumber: targetReq?.requestNumber || rep.requestNumber,
+      projectInfo: {
+        ...rep.projectInfo,
+        projectName: targetReq?.projectName || rep.projectInfo?.projectName || 'Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City',
+        buildingName: targetReq?.buildingName || rep.projectInfo?.buildingName || 'Chung cư nhà ở xã hội 2',
+        itemName: targetReq?.itemName || rep.projectInfo?.itemName || 'Thi công hệ thống PCCC trong và ngoài nhà',
+        packageName: targetReq?.packageName || rep.projectInfo?.packageName,
+        location: targetReq?.location || rep.projectInfo?.location
+      },
+      inspectionObject: targetReq?.taskContent || rep.inspectionObject,
+      contractorCompany: effectiveContCompany,
+      assignedRecipients: rep.assignedRecipients || targetReq?.assignedRecipients || [],
+      attendees: {
+        ...rep.attendees,
+        contractor: {
+          ...rep.attendees?.contractor,
+          company: effectiveContCompany,
+          person: targetReq?.createdByName || rep.attendees?.contractor?.person || 'KS. Lê Văn Kỹ Thuật',
+          position: targetReq?.createdByRole || rep.attendees?.contractor?.position || 'Kỹ thuật hiện trường'
+        }
+      }
     };
 
     setSelectedReport(repWithRecipients);
+    setSelectedReportRequest(targetReq || null);
     setInitialOpenRectify(Boolean(options.openRectify));
     setReportInitialTab(options.initialTab || (options.openRectify ? 'DEFECTS' : 'INVITATION'));
   };
@@ -6028,6 +6226,7 @@ export default function App() {
               currentRole={currentRole}
               onOpenCreateModal={() => setIsCreateShopModalOpen(true)}
               onOpenDetailModal={(doc) => setSelectedShopDoc(doc)}
+              onDeleteShopDocument={handleDeleteShopDocument}
             />
           ) : activeTab === 'PAYMENT_DOCUMENTS' ? (
             <PaymentDocumentsView 
@@ -6036,6 +6235,7 @@ export default function App() {
               currentRole={currentRole}
               onOpenCreateModal={() => setIsCreatePaymentModalOpen(true)}
               onOpenDetailModal={(doc) => setSelectedPaymentDoc(doc)}
+              onDeletePaymentDocument={handleDeletePaymentDocument}
             />
           ) : activeTab === 'REPORTS' ? (
             <ReportsListView 
@@ -6189,7 +6389,7 @@ export default function App() {
                         {currentRole === 'LEAD_INVESTOR' && '🏢 CĐT Trưởng'}
                         {currentRole === 'ADMIN' && '🛡️ Admin'}
                       </span>
-                      <span className="mobile-company-text">• {currentUser?.company || 'An Phú Gia'}</span>
+                      <span className="mobile-company-text">• {currentUser?.company || 'Gia Huy Vĩnh Phúc'}</span>
                     </div>
                   </div>
 
@@ -6387,7 +6587,16 @@ export default function App() {
                     const isCancelled = req.status === 'CANCELLED';
                     const isRejected = req.status === 'HAS_REJECTIONS';
                     const isRectified = req.status === 'RECTIFIED';
-                    const matchingRep = reports.find(r => r.id === req.reportId || r.requestId === req.id);
+                    const matchingRep = reports.find(r => {
+                      const isMatch = (req.reportId && r.id === req.reportId) || (req.id && r.requestId === req.id);
+                      if (!isMatch) return false;
+                      const repTask = (r.inspectionObject || '').trim().toLowerCase();
+                      const reqTask = (req.taskContent || '').trim().toLowerCase();
+                      if (repTask && reqTask && repTask !== reqTask && !repTask.includes(reqTask.slice(0, 15)) && !reqTask.includes(repTask.slice(0, 15))) {
+                        return false;
+                      }
+                      return true;
+                    });
 
                     const isSupervisorSigned = Boolean(
                       matchingRep?.signatures?.supervisor?.signed || 
@@ -6674,9 +6883,9 @@ export default function App() {
                               style={{ color: '#64748b', padding: '7px 18px', fontSize: '0.86rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                               onClick={() => {
                                 if (matchingRep) {
-                                  handleOpenReport(matchingRep, { initialTab: 'INVITATION' });
+                                  handleOpenReport(matchingRep, { initialTab: 'INVITATION' }, req);
                                 } else {
-                                  handleOpenOrCreateReport(req.reportId || req.id, false, 'INVITATION');
+                                  handleOpenOrCreateReport(req.reportId || req.id, false, 'INVITATION', req);
                                 }
                               }}
                             >
@@ -6690,9 +6899,9 @@ export default function App() {
                                 style={{ background: '#7c3aed', padding: '7px 18px', fontSize: '0.86rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                                 onClick={() => {
                                   if (matchingRep) {
-                                    handleOpenReport(matchingRep, { openRectify: true, initialTab: 'DEFECTS' });
+                                    handleOpenReport(matchingRep, { openRectify: true, initialTab: 'DEFECTS' }, req);
                                   } else {
-                                    handleOpenOrCreateReport(req.reportId || req.id, false, 'DEFECTS');
+                                    handleOpenOrCreateReport(req.reportId || req.id, false, 'DEFECTS', req);
                                   }
                                 }}
                               >
@@ -6703,7 +6912,7 @@ export default function App() {
                               <button 
                                 className="btn-secondary" 
                                 style={{ borderColor: '#fca5a5', color: '#b91c1c', background: '#fff', padding: '7px 18px', fontSize: '0.86rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                                onClick={() => handleOpenOrCreateReport(req.reportId || req.id, false, 'DEFECTS')}
+                                onClick={() => handleOpenOrCreateReport(req.reportId || req.id, false, 'DEFECTS', req)}
                               >
                                 <AlertTriangle size={16} color="#dc2626" />
                                 <span>Xem</span>
@@ -6713,7 +6922,7 @@ export default function App() {
                             <button 
                               className="btn-primary" 
                               style={{ background: '#7c3aed', padding: '7px 18px', fontSize: '0.86rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                              onClick={() => handleOpenOrCreateReport(req.reportId || req.id, false, 'RECTIFIED')}
+                              onClick={() => handleOpenOrCreateReport(req.reportId || req.id, false, 'RECTIFIED', req)}
                             >
                               <RotateCcw size={16} />
                               <span>Xem</span>
@@ -6722,7 +6931,13 @@ export default function App() {
                             <button 
                               className="btn-primary" 
                               style={{ background: '#059669', padding: '7px 20px', fontSize: '0.88rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                              onClick={() => handleOpenOrCreateReport(req.reportId || req.id, false, 'INVITATION')}
+                              onClick={() => {
+                                if (matchingRep) {
+                                  handleOpenReport(matchingRep, { initialTab: 'INVITATION' }, req);
+                                } else {
+                                  handleOpenOrCreateReport(req.reportId || req.id, false, 'INVITATION', req);
+                                }
+                              }}
                             >
                               <Eye size={16} />
                               <span>Xem</span>
@@ -6831,6 +7046,7 @@ export default function App() {
         reports={reports}
         currentRole={currentRole}
         currentUser={currentUser}
+        users={users}
         projects={projectsList}
         docTypes={docTypesList}
         onOpenReport={(reportId, isCreate) => {
@@ -6848,10 +7064,12 @@ export default function App() {
         isOpen={Boolean(selectedReport)}
         onClose={() => {
           setSelectedReport(null);
+          setSelectedReportRequest(null);
           setInitialOpenRectify(false);
           setReportInitialTab('INVITATION');
         }}
         report={selectedReport}
+        request={selectedReportRequest}
         currentRole={currentRole}
         currentUser={currentUser}
         users={users}

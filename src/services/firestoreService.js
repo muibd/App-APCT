@@ -31,6 +31,8 @@ const USERS_COLLECTION = 'system_users';
 const BUILDINGS_COLLECTION = 'system_buildings';
 const DAILY_LOGS_COLLECTION = 'construction_daily_logs';
 const COMPLETION_REPORTS_COLLECTION = 'completion_reports';
+const SHOP_DOCUMENTS_COLLECTION = 'shop_documents';
+const PAYMENT_DOCUMENTS_COLLECTION = 'payment_documents';
 
 // ============================================================================
 // 1. PHIẾU YÊU CẦU NGHIỆM THU (INSPECTION REQUESTS)
@@ -468,7 +470,15 @@ export const saveBuilding = async (buildingData) => {
 export const clearAllCloudInspectionData = async () => {
   if (!isFirebaseConfigured || !db) return true;
   try {
-    const collectionsToClear = [REQUESTS_COLLECTION, REPORTS_COLLECTION, NOTIFICATIONS_COLLECTION, DAILY_LOGS_COLLECTION, COMPLETION_REPORTS_COLLECTION];
+    const collectionsToClear = [
+      REQUESTS_COLLECTION, 
+      REPORTS_COLLECTION, 
+      NOTIFICATIONS_COLLECTION, 
+      DAILY_LOGS_COLLECTION, 
+      COMPLETION_REPORTS_COLLECTION,
+      SHOP_DOCUMENTS_COLLECTION,
+      PAYMENT_DOCUMENTS_COLLECTION
+    ];
     await Promise.all(collectionsToClear.map(async (colName) => {
       let snapshot = await getDocs(collection(db, colName));
       while (!snapshot.empty) {
@@ -750,7 +760,6 @@ export const saveInspectionStandards = async (standardsPayload) => {
 // ============================================================================
 // 8. HỒ SƠ BỘ PHẬN SHOP & BẢN VẼ KỸ THUẬT (SHOP DRAWINGS & DOCUMENTS)
 // ============================================================================
-const SHOP_DOCUMENTS_COLLECTION = 'shop_documents';
 const SHOP_SLA_COLLECTION = 'shop_sla_configs';
 const SHOP_SLA_DOC_ID = 'default_sla_rules';
 
@@ -907,7 +916,6 @@ export const saveShopSlaConfigs = async (configsList) => {
 // ============================================================================
 // 9. HỒ SƠ THANH TOÁN (PAYMENT DOCUMENTS: TẠM ỨNG, THANH TOÁN, QUYẾT TOÁN)
 // ============================================================================
-const PAYMENT_DOCUMENTS_COLLECTION = 'payment_documents';
 const PAYMENT_SLA_COLLECTION = 'payment_sla_configs';
 const PAYMENT_SLA_DOC_ID = 'default_payment_sla_rules';
 
@@ -1097,4 +1105,103 @@ export const cleanupOldRequestsAndReports = async (cutoffDate = '2026-10-25T17:0
 
   return { deletedRequests, deletedReports };
 };
+
+// ============================================================================
+// 10. DANH MỤC CÔNG TRÌNH, NHÀ THẦU, GÓI THẦU & HẠNG MỤC (PROJECT CATALOG)
+// ============================================================================
+const PROJECTS_CATALOG_COLLECTION = 'system_projects';
+const PROJECTS_CATALOG_DOC_ID = 'default_catalog';
+const DOC_TYPES_COLLECTION = 'system_doc_types';
+const DOC_TYPES_DOC_ID = 'default_doc_types';
+
+/**
+ * Lắng nghe thời gian thực Danh mục Công trình, Nhà thầu, Hạng mục từ Firestore
+ */
+export const subscribeToProjectsCatalog = (callback) => {
+  if (!isFirebaseConfigured || !db) {
+    return () => {};
+  }
+  try {
+    const docRef = doc(db, PROJECTS_CATALOG_COLLECTION, PROJECTS_CATALOG_DOC_ID);
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (Array.isArray(data?.projects) && data.projects.length > 0) {
+          callback(data.projects);
+        }
+      }
+    }, (error) => {
+      console.warn('[Firestore] Lỗi lắng nghe danh mục công trình:', error);
+    });
+    return unsubscribe;
+  } catch (e) {
+    console.warn('[Firestore Projects Exception]', e);
+    return () => {};
+  }
+};
+
+/**
+ * Lưu toàn bộ Danh mục Công trình, Nhà thầu, Gói thầu lên Cloud Firestore
+ */
+export const saveSystemProjectsCatalog = async (projects) => {
+  const cleanData = sanitizeData({
+    projects,
+    updatedAt: new Date().toISOString()
+  });
+  if (!isFirebaseConfigured || !db) return cleanData;
+  try {
+    const docRef = doc(db, PROJECTS_CATALOG_COLLECTION, PROJECTS_CATALOG_DOC_ID);
+    await setDoc(docRef, cleanData);
+    console.log('[Firestore Cloud] Đã lưu danh mục công trình và nhà thầu thành công!');
+    return cleanData;
+  } catch (error) {
+    console.error('[Firestore Save Projects Catalog Error]', error);
+    return cleanData;
+  }
+};
+
+/**
+ * Lắng nghe danh mục loại văn bản từ Firestore
+ */
+export const subscribeToDocTypes = (callback) => {
+  if (!isFirebaseConfigured || !db) return () => {};
+  try {
+    const docRef = doc(db, DOC_TYPES_COLLECTION, DOC_TYPES_DOC_ID);
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (Array.isArray(data?.docTypes) && data.docTypes.length > 0) {
+          callback(data.docTypes);
+        }
+      }
+    }, (error) => {
+      console.warn('[Firestore] Lỗi lắng nghe loại văn bản:', error);
+    });
+    return unsubscribe;
+  } catch (e) {
+    console.warn('[Firestore DocTypes Exception]', e);
+    return () => {};
+  }
+};
+
+/**
+ * Lưu danh mục loại văn bản lên Firestore
+ */
+export const saveSystemDocTypes = async (docTypes) => {
+  const cleanData = sanitizeData({
+    docTypes,
+    updatedAt: new Date().toISOString()
+  });
+  if (!isFirebaseConfigured || !db) return cleanData;
+  try {
+    const docRef = doc(db, DOC_TYPES_COLLECTION, DOC_TYPES_DOC_ID);
+    await setDoc(docRef, cleanData);
+    console.log('[Firestore Cloud] Đã lưu danh mục loại văn bản thành công!');
+    return cleanData;
+  } catch (error) {
+    console.error('[Firestore Save DocTypes Error]', error);
+    return cleanData;
+  }
+};
+
 

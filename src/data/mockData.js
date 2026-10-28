@@ -295,7 +295,7 @@ export const MOCK_USERS = [
     "uid": "uid_dvtc_apg_01",
     "fullName": "Phạm Thanh Nhàn",
     "role": "CONTRACTOR",
-    "company": "Công ty CP Xây dựng An Phú Gia",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
     "position": "Chỉ huy trưởng",
     "avatar": "TN",
     "phone": "0869266264",
@@ -307,7 +307,7 @@ export const MOCK_USERS = [
     "uid": "uid_dvtc_apg_02",
     "fullName": "Nguyễn Hoàng Bách",
     "role": "CONTRACTOR",
-    "company": "Công ty CP Xây dựng An Phú Gia",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
     "position": "Kỹ thuật hiện trường",
     "avatar": "HB",
     "phone": "0939343486",
@@ -319,7 +319,7 @@ export const MOCK_USERS = [
     "uid": "uid_dvtc_apg_03",
     "fullName": "Nguyễn Phạm Mạnh Duy",
     "role": "CONTRACTOR",
-    "company": "Công ty CP Xây dựng An Phú Gia",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
     "position": "Kỹ thuật hiện trường",
     "avatar": "MD",
     "phone": "0932093636",
@@ -331,7 +331,7 @@ export const MOCK_USERS = [
     "uid": "uid_dvtc_apg_04",
     "fullName": "Lê Bảo Khang",
     "role": "CONTRACTOR",
-    "company": "Công ty CP Xây dựng An Phú Gia",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
     "position": "Kỹ thuật hiện trường",
     "avatar": "BK",
     "phone": "0981256942",
@@ -343,7 +343,7 @@ export const MOCK_USERS = [
     "uid": "uid_dvtc_apg_05",
     "fullName": "Huỳnh Nguyên Khoa",
     "role": "CONTRACTOR",
-    "company": "Công ty CP Xây dựng An Phú Gia",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
     "position": "Kỹ thuật hiện trường",
     "avatar": "NK",
     "phone": "0838776638",
@@ -355,7 +355,7 @@ export const MOCK_USERS = [
     "uid": "uid_dvtc_apg_06",
     "fullName": "Trần Hoài Bảo",
     "role": "CONTRACTOR",
-    "company": "Công ty CP Xây dựng An Phú Gia",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
     "position": "Kỹ thuật hiện trường",
     "avatar": "HB",
     "phone": "0373992929",
@@ -367,7 +367,7 @@ export const MOCK_USERS = [
     "uid": "uid_dvtc_apg_07",
     "fullName": "Bùi Thanh Tiếng",
     "role": "CONTRACTOR",
-    "company": "Công ty CP Xây dựng An Phú Gia",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
     "position": "Kỹ thuật hiện trường",
     "avatar": "TT",
     "phone": "0907923822",
@@ -379,7 +379,7 @@ export const MOCK_USERS = [
     "uid": "uid_dvtc_apg_08",
     "fullName": "Phan Hoàng Huy",
     "role": "CONTRACTOR",
-    "company": "Công ty CP Xây dựng An Phú Gia",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
     "position": "Kỹ thuật hiện trường",
     "avatar": "HH",
     "phone": "0971734011",
@@ -391,7 +391,7 @@ export const MOCK_USERS = [
     "uid": "uid_dvtc_apg_09",
     "fullName": "Trần Gia Linh",
     "role": "CONTRACTOR",
-    "company": "Công ty CP Xây dựng An Phú Gia",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
     "position": "Kỹ thuật hiện trường",
     "avatar": "GL",
     "phone": "0366937078",
@@ -403,7 +403,7 @@ export const MOCK_USERS = [
     "uid": "uid_dvtc_apg_10",
     "fullName": "Trương Minh Hiếu",
     "role": "CONTRACTOR",
-    "company": "Công ty CP Xây dựng An Phú Gia",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
     "position": "Kỹ thuật hiện trường",
     "avatar": "MH",
     "phone": "0944144080",
@@ -415,7 +415,7 @@ export const MOCK_USERS = [
     "uid": "uid_dvtc_apg_11",
     "fullName": "Nguyễn Văn Đời",
     "role": "CONTRACTOR",
-    "company": "Công ty CP Xây dựng An Phú Gia",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
     "position": "Kỹ thuật hiện trường",
     "avatar": "VĐ",
     "phone": "0945625261",
@@ -427,7 +427,7 @@ export const MOCK_USERS = [
     "uid": "uid_dvtc_apg_12",
     "fullName": "Lâm Tự Hữu Duy",
     "role": "CONTRACTOR",
-    "company": "Công ty CP Xây dựng An Phú Gia",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
     "position": "Kỹ thuật hiện trường",
     "avatar": "HD",
     "phone": "0846602068",
@@ -439,7 +439,7 @@ export const MOCK_USERS = [
     "uid": "uid_dvtc_apg_13",
     "fullName": "Nguyễn Hoàng Kha",
     "role": "CONTRACTOR",
-    "company": "Công ty CP Xây dựng An Phú Gia",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
     "position": "Kỹ thuật hiện trường",
     "avatar": "HK",
     "phone": "0327429936",
@@ -451,7 +451,7 @@ export const MOCK_USERS = [
     "uid": "uid_dvtc_apg_14",
     "fullName": "Trần Thanh Huy",
     "role": "CONTRACTOR",
-    "company": "Công ty CP Xây dựng An Phú Gia",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
     "position": "Kỹ thuật hiện trường",
     "avatar": "TH",
     "phone": "0389662427",
@@ -463,7 +463,7 @@ export const MOCK_USERS = [
     "uid": "uid_dvtc_apg_15",
     "fullName": "Nguyễn Văn lĩnh",
     "role": "CONTRACTOR",
-    "company": "Công ty CP Xây dựng An Phú Gia",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
     "position": "Kỹ thuật hiện trường",
     "avatar": "VL",
     "phone": "0866831870",
@@ -475,7 +475,7 @@ export const MOCK_USERS = [
     "uid": "uid_dvtc_apg_16",
     "fullName": "Phan Nhật Hậu",
     "role": "CONTRACTOR",
-    "company": "Công ty CP Xây dựng An Phú Gia",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
     "position": "Kỹ thuật hiện trường",
     "avatar": "NH",
     "phone": "0366118014",
@@ -487,7 +487,7 @@ export const MOCK_USERS = [
     "uid": "uid_dvtc_apg_17",
     "fullName": "Nguyễn Văn Huy",
     "role": "CONTRACTOR",
-    "company": "Công ty CP Xây dựng An Phú Gia",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
     "position": "Kỹ thuật hiện trường",
     "avatar": "VH",
     "phone": "0765984259",
@@ -499,7 +499,7 @@ export const MOCK_USERS = [
     "uid": "uid_dvtc_apg_18",
     "fullName": "Dương Hoàng Khang",
     "role": "CONTRACTOR",
-    "company": "Công ty CP Xây dựng An Phú Gia",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
     "position": "Kỹ thuật hiện trường",
     "avatar": "HK",
     "phone": "0945195646",
@@ -511,7 +511,7 @@ export const MOCK_USERS = [
     "uid": "uid_dvtc_apg_19",
     "fullName": "Phan Trung Nghĩa",
     "role": "CONTRACTOR",
-    "company": "Công ty CP Xây dựng An Phú Gia",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
     "position": "Kỹ thuật hiện trường",
     "avatar": "TN",
     "phone": "0907001906",
@@ -523,7 +523,7 @@ export const MOCK_USERS = [
     "uid": "uid_dvtc_apg_20",
     "fullName": "Trà Hoàng Anh",
     "role": "CONTRACTOR",
-    "company": "Công ty CP Xây dựng An Phú Gia",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
     "position": "Kỹ thuật hiện trường",
     "avatar": "HA",
     "phone": "0842698168",
@@ -535,7 +535,7 @@ export const MOCK_USERS = [
     "uid": "uid_dvtc_apg_21",
     "fullName": "Trần Văn Trung",
     "role": "CONTRACTOR",
-    "company": "Công ty CP Xây dựng An Phú Gia",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
     "position": "Kỹ thuật hiện trường",
     "avatar": "VT",
     "phone": "0907135279",
@@ -547,7 +547,7 @@ export const MOCK_USERS = [
     "uid": "uid_dvtc_apg_22",
     "fullName": "Nguyễn Thanh Tuấn",
     "role": "CONTRACTOR",
-    "company": "Công ty CP Xây dựng An Phú Gia",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
     "position": "Kỹ thuật hiện trường",
     "avatar": "TT",
     "phone": "0961015448",
@@ -593,25 +593,97 @@ export const MOCK_USERS = [
   },
   {
     "uid": "uid_dvtc_phanle_01",
-    "fullName": "Phan Văn Lê",
+    "fullName": "Đào Thanh Thảo",
     "role": "CONTRACTOR",
-    "company": "Công ty TNHH Phát Triển và Xây Dựng Phan Lê",
+    "company": "Công ty TNHH Phát Triển Xây Dựng Phan Lê",
     "position": "Chỉ huy trưởng",
-    "avatar": "PL",
-    "phone": "0987654321",
-    "email": "lephan.phanle@gmail.com",
+    "avatar": "TT",
+    "phone": "0917355318",
+    "email": "daothanhthao@gmail.com",
     "password": "123456",
     "status": "ACTIVE"
   },
   {
     "uid": "uid_dvtc_phanle_02",
-    "fullName": "Trần Kỹ Thuật PCCC",
+    "fullName": "Lâm Ước Mơ",
     "role": "CONTRACTOR",
-    "company": "Công ty TNHH Phát Triển và Xây Dựng Phan Lê",
-    "position": "Kỹ thuật hiện trường PCCC",
-    "avatar": "PC",
-    "phone": "0987654322",
-    "email": "pccc.phanle@gmail.com",
+    "company": "Công ty TNHH Phát Triển Xây Dựng Phan Lê",
+    "position": "Chỉ huy phó kiêm QS,QC",
+    "avatar": "UM",
+    "phone": "0379600330",
+    "email": "molam200297@gmail.com",
+    "password": "123456",
+    "status": "ACTIVE"
+  },
+  {
+    "uid": "uid_custom_1792999445622",
+    "fullName": "Lo Thanh Cao",
+    "role": "CONTRACTOR",
+    "company": "Công ty TNHH Phát Triển Xây Dựng Phan Lê",
+    "position": "Chỉ huy phó",
+    "avatar": "TC",
+    "phone": "0909094864",
+    "email": "lothanhcao@gmail.com",
+    "password": "123456",
+    "status": "ACTIVE"
+  },
+  {
+    "uid": "uid_custom_1792999632414",
+    "fullName": "Phạm Duy Minh",
+    "role": "CONTRACTOR",
+    "company": "Công ty TNHH Phát Triển Xây Dựng Phan Lê",
+    "position": "Cán bộ kỹ thuật",
+    "avatar": "DM",
+    "phone": "0332268561",
+    "email": "minhpham06081999@gmail.com",
+    "password": "123456",
+    "status": "ACTIVE"
+  },
+  {
+    "uid": "uid_custom_1792725029651",
+    "fullName": "Minh Nhựt QC",
+    "role": "CONTRACTOR",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
+    "position": "Qc",
+    "avatar": "MN",
+    "phone": "0947016236",
+    "email": "minhnhutbl96@gmail.com",
+    "password": "123456",
+    "status": "ACTIVE"
+  },
+  {
+    "uid": "uid_custom_1792994756719",
+    "fullName": "Hà Văn Thủy",
+    "role": "CONTRACTOR",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
+    "position": "Kỹ thuật hiện trường",
+    "avatar": "VT",
+    "phone": "0968686868",
+    "email": "hathuyxd@gmail.com",
+    "password": "123456",
+    "status": "ACTIVE"
+  },
+  {
+    "uid": "uid_custom_1792995066959",
+    "fullName": "Trần Hậu Giang",
+    "role": "CONTRACTOR",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
+    "position": "Kỹ thuật hiện trường",
+    "avatar": "HG",
+    "phone": "0979797979",
+    "email": "haugiangkysuxd@gmail.com",
+    "password": "123456",
+    "status": "ACTIVE"
+  },
+  {
+    "uid": "uid_custom_1792573564813",
+    "fullName": "Admin Khánh",
+    "role": "ADMIN",
+    "company": "Công ty TNHH An Phú Cần Thơ",
+    "position": "Chủ Đầu Tư (CĐT)",
+    "avatar": "KH",
+    "phone": "0901888003",
+    "email": "khanhpm@apland.vn",
     "password": "123456",
     "status": "ACTIVE"
   }
@@ -749,6 +821,81 @@ export const INITIAL_DAILY_LOGS = [];
 export const INITIAL_COMPLETION_REPORTS = [];
 export const MOCK_COMPLETION_REPORTS = [];
 
+/**
+ * Lấy chuẩn xác Chỉ huy trưởng theo công ty nhà thầu (Đơn vị thi công)
+ * - Tuyệt đối không lấy nhầm sang Chỉ huy phó hoặc Kỹ thuật hiện trường
+ * - Luôn trả về position: 'Chỉ huy trưởng'
+ * - Tự động tra cứu danh sách cán bộ thật (users), nếu chưa có thì ánh xạ theo các nhà thầu chính thức của dự án:
+ *   + Công ty TNHH Gia Huy Vĩnh Phúc (hoặc An Phú Gia cũ): Phạm Thanh Nhàn (Chỉ huy trưởng)
+ *   + Công ty TNHH Phát Triển Xây Dựng Phan Lê: Đào Thanh Thảo (Chỉ huy trưởng)
+ *   + Công ty TNHH Tư vấn Thiết kế Bình Hoà: Phan Văn Khương (Chỉ huy trưởng)
+ */
+export function getContractorChief(companyName, usersList = []) {
+  const cleanComp = (companyName || '').toLowerCase().trim();
+  const pool = (Array.isArray(usersList) && usersList.length > 0) ? usersList : MOCK_USERS;
 
+  // Lọc các cán bộ thuộc Đơn vị thi công và thuộc công ty tương ứng
+  const contractorUsers = pool.filter(u => {
+    if (u.role !== 'CONTRACTOR') return false;
+    const uComp = (u.company || '').toLowerCase().trim();
+    if (!cleanComp) return true;
+    if (cleanComp.includes('gia huy') || cleanComp.includes('an phú gia')) {
+      return uComp.includes('gia huy') || uComp.includes('an phú gia');
+    }
+    if (cleanComp.includes('phan lê')) {
+      return uComp.includes('phan lê');
+    }
+    if (cleanComp.includes('bình hoà') || cleanComp.includes('bình hòa')) {
+      return uComp.includes('bình hoà') || uComp.includes('bình hòa');
+    }
+    return uComp.includes(cleanComp) || cleanComp.includes(uComp);
+  });
 
+  // Tìm cán bộ giữ chức vụ CHỈ HUY TRƯỞNG (loại trừ tuyệt đối bất kỳ chức danh 'phó' nào)
+  const chief = contractorUsers.find(u => {
+    const pos = (u.position || '').toLowerCase().trim();
+    if (pos.includes('phó')) return false;
+    return pos.includes('chỉ huy trưởng') || (pos.includes('chỉ huy') && !pos.includes('phó'));
+  });
 
+  if (chief) {
+    return {
+      fullName: chief.fullName,
+      position: 'Chỉ huy trưởng',
+      uid: chief.uid,
+      company: chief.company || companyName,
+      phone: chief.phone,
+      email: chief.email
+    };
+  }
+
+  // Fallback chuẩn theo từng đơn vị thi công chính thức của dự án
+  if (cleanComp.includes('phan lê')) {
+    return {
+      fullName: 'Đào Thanh Thảo',
+      position: 'Chỉ huy trưởng',
+      company: 'Công ty TNHH Phát Triển Xây Dựng Phan Lê',
+      phone: '0917355318',
+      email: 'daothanhthao@gmail.com'
+    };
+  }
+
+  if (cleanComp.includes('bình hoà') || cleanComp.includes('bình hòa')) {
+    return {
+      fullName: 'Phan Văn Khương',
+      position: 'Chỉ huy trưởng',
+      company: 'Công ty TNHH Tư vấn Thiết kế Bình Hoà',
+      phone: '0772728885',
+      email: 'pkhuong03@gmail.com'
+    };
+  }
+
+  // Mặc định là nhà thầu chính Gia Huy Vĩnh Phúc (hoặc các dự án thay thế An Phú Gia)
+  return {
+    fullName: 'Phạm Thanh Nhàn',
+    position: 'Chỉ huy trưởng',
+    company: 'Công ty TNHH Gia Huy Vĩnh Phúc',
+    phone: '0869266264',
+    email: 'phamnhanktxd2014@gmail.com'
+  };
+}

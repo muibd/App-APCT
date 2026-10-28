@@ -19,6 +19,7 @@ export default function UserManagementView({
   // Filter & Search states
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
+  const [companyFilter, setCompanyFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -72,6 +73,18 @@ export default function UserManagementView({
     }
   };
 
+  // Danh sách công ty / đơn vị duy nhất kèm số lượng tài khoản
+  const availableCompanies = useMemo(() => {
+    const map = new Map();
+    (users || []).forEach(u => {
+      const comp = (u.company || '').trim();
+      if (comp) {
+        map.set(comp, (map.get(comp) || 0) + 1);
+      }
+    });
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0], 'vi'));
+  }, [users]);
+
   // Filtered users list
   const filteredUsers = useMemo(() => {
     return users.filter(u => {
@@ -84,11 +97,12 @@ export default function UserManagementView({
         (u.position || '').toLowerCase().includes(q);
 
       const matchesRole = roleFilter === 'ALL' || u.role === roleFilter;
+      const matchesCompany = companyFilter === 'ALL' || (u.company || '').trim() === companyFilter;
       const matchesStatus = statusFilter === 'ALL' || (u.status || 'ACTIVE') === statusFilter;
 
-      return matchesSearch && matchesRole && matchesStatus;
+      return matchesSearch && matchesRole && matchesCompany && matchesStatus;
     });
-  }, [users, searchQuery, roleFilter, statusFilter]);
+  }, [users, searchQuery, roleFilter, companyFilter, statusFilter]);
 
   // Role stats
   const stats = useMemo(() => ({
@@ -183,32 +197,6 @@ export default function UserManagementView({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          {onSyncAllUsersToCloud && (
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={handleSyncCloud}
-              disabled={isSyncing}
-              style={{
-                background: '#faf5ff',
-                borderColor: '#c084fc',
-                color: '#7e22ce',
-                fontWeight: 700,
-                padding: '10px 18px',
-                fontSize: '0.88rem',
-                borderRadius: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                boxShadow: '0 2px 8px rgba(126, 34, 206, 0.1)'
-              }}
-              title="Đồng bộ danh sách 39 cán bộ chính thức lên Google Firestore Cloud"
-            >
-              <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
-              <span>{isSyncing ? 'Đang đồng bộ...' : '☁️ Đồng Bộ 39 Cán Bộ Lên Cloud'}</span>
-            </button>
-          )}
-
           {/* Nút Thêm Mới Cán Bộ */}
           <button
             type="button"
@@ -275,8 +263,27 @@ export default function UserManagementView({
           )}
         </div>
 
-        {/* Bộ lọc vai trò & Trạng thái */}
+        {/* Bộ lọc Công ty, Vai trò & Trạng thái */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {/* Bộ lọc theo Đơn vị / Công ty */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Building size={15} color="#64748b" />
+            <span style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 600 }}>Công ty:</span>
+          </div>
+          <select
+            className="form-select"
+            value={companyFilter}
+            onChange={(e) => setCompanyFilter(e.target.value)}
+            style={{ padding: '7px 12px', fontSize: '0.84rem', borderRadius: '10px', width: 'auto', maxWidth: '260px' }}
+          >
+            <option value="ALL">Tất cả công ty ({users.length})</option>
+            {availableCompanies.map(([comp, count]) => (
+              <option key={comp} value={comp}>
+                {comp} ({count})
+              </option>
+            ))}
+          </select>
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Filter size={15} color="#64748b" />
             <span style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 600 }}>Vai trò:</span>
@@ -718,7 +725,7 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
   const [password, setPassword] = useState('123456');
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState('CONTRACTOR');
-  const [company, setCompany] = useState('Công ty CP Xây dựng An Phú Gia');
+  const [company, setCompany] = useState('Công ty TNHH Gia Huy Vĩnh Phúc');
   const [position, setPosition] = useState('Kỹ thuật hiện trường');
   const [phone, setPhone] = useState('');
   const [status, setStatus] = useState('ACTIVE');
@@ -754,7 +761,7 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
     { label: 'TVGS: GELICON', name: 'CÔNG TY CỔ PHẦN TƯ VẤN XÂY DỰNG VÀ THƯƠNG MẠI GELICON', role: 'SUPERVISOR', pos: 'Cán bộ tư vấn giám sát' },
     { label: 'TVGS Trưởng: GELICON', name: 'CÔNG TY CỔ PHẦN TƯ VẤN XÂY DỰNG VÀ THƯƠNG MẠI GELICON', role: 'LEAD_SUPERVISOR', pos: 'Tư vấn giám sát trưởng' },
     { label: 'ĐVTC: Cty TNHH Gia Huy Vĩnh Phúc', name: 'Công ty TNHH Gia Huy Vĩnh Phúc', role: 'CONTRACTOR', pos: 'Kỹ thuật hiện trường' },
-    { label: 'ĐV PCCC (NOXH2): Phan Lê', name: 'CÔNG TY TNHH PHÁT TRIỂN XÂY DỰNG PHAN LÊ', role: 'CONTRACTOR', pos: 'Kỹ thuật thi công PCCC' },
+    { label: 'ĐV PCCC (NOXH2): Phan Lê', name: 'Công ty TNHH Phát Triển Xây Dựng Phan Lê', role: 'CONTRACTOR', pos: 'Kỹ thuật thi công PCCC' },
     { label: 'ĐV PCCC (NOTM): Bình Hoà', name: 'Cty tnhh tư vấn thiết kế Bình Hoà', role: 'CONTRACTOR', pos: 'Chỉ huy trưởng' }
   ];
 
@@ -1023,7 +1030,7 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="VD: Công ty CP Xây dựng An Phú Gia"
+                  placeholder="VD: Công ty TNHH Gia Huy Vĩnh Phúc"
                   value={company}
                   onChange={(e) => setCompany(e.target.value)}
                 />

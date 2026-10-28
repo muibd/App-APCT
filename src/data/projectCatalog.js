@@ -85,8 +85,8 @@ export const DEFAULT_PROJECTS = [
       },
       {
         id: "cont_phanle_2203",
-        name: "Công ty TNHH Phát Triển và Xây Dựng Phan Lê",
-        shortName: "Phát Triển và Xây Dựng Phan Lê",
+        name: "Công ty TNHH Phát Triển Xây Dựng Phan Lê",
+        shortName: "Phát Triển Xây Dựng Phan Lê",
         packages: [
           {
             id: "pkg_pccc_2203",
@@ -217,8 +217,8 @@ export const DEFAULT_PROJECTS = [
       },
       {
         id: "cont_phanle_2204",
-        name: "Công ty TNHH Phát Triển và Xây Dựng Phan Lê",
-        shortName: "Phát Triển và Xây Dựng Phan Lê",
+        name: "Công ty TNHH Phát Triển Xây Dựng Phan Lê",
+        shortName: "Phát Triển Xây Dựng Phan Lê",
         packages: [
           {
             id: "pkg_pccc_2204",

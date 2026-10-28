@@ -4,7 +4,7 @@ import {
   Building, Camera, ImagePlus, Trash2, Clock, ShieldCheck, FileText, CheckCircle2,
   FileCheck, BookOpen, Layers
 } from 'lucide-react';
-import { MOCK_PROJECT, MOCK_USERS } from '../data/mockData';
+import { MOCK_PROJECT, MOCK_USERS, getContractorChief } from '../data/mockData';
 import { compressImageFile } from '../utils/storageHelper';
 
 export default function CreateCompletionReportModal({ 
@@ -46,7 +46,7 @@ export default function CreateCompletionReportModal({
   // 'STAGE': Mẫu 2 (Ảnh 3-4): Nghiệm thu hoàn thành giai đoạn thi công (Ký 3 bên: CĐT, TVGS, ĐVTC)
   // 'DOSSIER': Mẫu 3 (Ảnh 5): Kiểm tra hồ sơ nghiệm thu chất lượng hoàn thành giai đoạn thi công (Ký 3 bên: CĐT, TVGS, ĐVTC)
   const [completionType, setCompletionType] = useState('STAGE');
-  const [contractorCompany, setContractorCompany] = useState(() => currentUser?.company || 'Công ty CP Xây dựng An Phú Gia');
+  const [contractorCompany, setContractorCompany] = useState(() => currentUser?.company || 'Công ty TNHH Gia Huy Vĩnh Phúc');
 
   useEffect(() => {
     if (currentUser?.company) {
@@ -55,7 +55,8 @@ export default function CreateCompletionReportModal({
   }, [currentUser?.company]);
 
   const availableContractorCompanies = Array.from(new Set([
-    'Công ty CP Xây dựng An Phú Gia',
+    'Công ty TNHH Gia Huy Vĩnh Phúc',
+    'Công ty TNHH Phát Triển Xây Dựng Phan Lê',
     'Công ty TNHH Tư vấn Thiết kế Bình Hoà',
     ...(users || []).filter(u => u.role === 'CONTRACTOR').map(u => u.company).filter(Boolean),
     currentUser?.company
@@ -203,11 +204,11 @@ export default function CreateCompletionReportModal({
           uid: leadSupervisor?.uid || 'uid_tvgs_01'
         },
         contractor: {
-          company: contractorCompany.trim() || currentUser?.company || 'Công ty CP Xây dựng An Phú Gia',
-          leadName: currentUser?.fullName || 'Phạm Thanh Nhàn',
-          leadPosition: currentUser?.position || 'Chỉ huy trưởng công trường',
-          officerName: 'Nguyễn Hoàng Bách',
-          officerPosition: 'Kỹ thuật hiện trường',
+          company: contractorCompany.trim() || currentUser?.company || 'Công ty TNHH Gia Huy Vĩnh Phúc',
+          leadName: getContractorChief(contractorCompany || currentUser?.company, users).fullName,
+          leadPosition: 'Chỉ huy trưởng',
+          officerName: currentUser?.fullName || 'Nguyễn Hoàng Bách',
+          officerPosition: currentUser?.position || 'Kỹ thuật hiện trường',
           uid: currentUser?.uid || 'uid_dvtc_apg_01'
         },
         ...(completionType === 'PROJECT_USE' ? {

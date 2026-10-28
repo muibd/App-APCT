@@ -3,6 +3,7 @@ import {
   X, Printer, CheckCircle2, Clock, AlertTriangle, ShieldCheck, 
   Award, FileText, Download, Building, MapPin, Calendar, CheckSquare
 } from 'lucide-react';
+import { getContractorChief } from '../data/mockData';
 
 export default function CompletionReportDetailModal({
   isOpen,
@@ -16,6 +17,10 @@ export default function CompletionReportDetailModal({
   const printRef = useRef(null);
 
   if (!isOpen || !report) return null;
+
+  const contChief = getContractorChief(report.representatives?.contractor?.company);
+  const contLeadName = report.representatives?.contractor?.leadName || contChief.fullName;
+  const contLeadPosition = 'Chỉ huy trưởng';
 
   const isCompleted = report.status === 'COMPLETED' || (
     report.signatures?.investor?.signed && 
@@ -322,7 +327,7 @@ export default function CompletionReportDetailModal({
 
                     <div style={{ marginTop: '4px' }}><strong>d) Đơn vị thi công:</strong> {report.representatives?.contractor?.company}</div>
                     <div style={{ paddingLeft: '16px' }}>
-                      <div>- Ông (bà) : {report.representatives?.contractor?.leadName} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.contractor?.leadPosition}</div>
+                      <div>- Ông (bà) : {contLeadName} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {contLeadPosition}</div>
                       <div>- Ông (bà) : {report.representatives?.contractor?.officerName || 'Nguyễn Hoàng Bách'} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.contractor?.officerPosition || 'Kỹ thuật hiện trường'}</div>
                     </div>
                   </div>
@@ -572,7 +577,7 @@ export default function CompletionReportDetailModal({
 
                     <div style={{ marginTop: '4px' }}><strong>c) Đại diện Đơn vị thi công:</strong> {report.representatives?.contractor?.company}</div>
                     <div style={{ paddingLeft: '16px' }}>
-                      <div>- Ông(bà): {report.representatives?.contractor?.leadName} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.contractor?.leadPosition}</div>
+                      <div>- Ông(bà): {contLeadName} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {contLeadPosition}</div>
                       <div>- Ông(bà): {report.representatives?.contractor?.officerName || 'Nguyễn Hoàng Bách'} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.contractor?.officerPosition || 'Kỹ thuật hiện trường'}</div>
                     </div>
                   </div>
@@ -807,7 +812,7 @@ export default function CompletionReportDetailModal({
 
                     <div style={{ marginTop: '4px' }}><strong>c) Đại diện Đơn vị thi công:</strong> {report.representatives?.contractor?.company}</div>
                     <div style={{ paddingLeft: '16px' }}>
-                      <div>- Ông(bà): {report.representatives?.contractor?.leadName} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.contractor?.leadPosition}</div>
+                      <div>- Ông(bà): {contLeadName} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {contLeadPosition}</div>
                       <div>- Ông(bà): {report.representatives?.contractor?.officerName || 'Nguyễn Hoàng Bách'} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.contractor?.officerPosition || 'Kỹ thuật hiện trường'}</div>
                     </div>
                   </div>

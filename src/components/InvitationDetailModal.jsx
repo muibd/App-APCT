@@ -13,6 +13,7 @@ export default function InvitationDetailModal({
   reports = [],
   currentRole,
   currentUser,
+  users = [],
   onOpenReport,
   onReassign,
   onUpdateTime,
@@ -46,11 +47,16 @@ export default function InvitationDetailModal({
     cleanReqNumber = `${cleanReqNumber}/${docCode}`;
   }
 
-  const relatedReport = (reports || []).find(r => 
-    (request.reportId && r.id === request.reportId) ||
-    r.requestId === request.id ||
-    (request.requestNumber && r.requestNumber === request.requestNumber)
-  );
+  const relatedReport = (reports || []).find(r => {
+    const isMatch = (request.reportId && r.id === request.reportId) || r.requestId === request.id;
+    if (!isMatch) return false;
+    const repTask = (r.inspectionObject || '').trim().toLowerCase();
+    const reqTask = (request.taskContent || '').trim().toLowerCase();
+    if (repTask && reqTask && repTask !== reqTask && !repTask.includes(reqTask.slice(0, 15)) && !reqTask.includes(repTask.slice(0, 15))) {
+      return false;
+    }
+    return true;
+  });
 
   const isSupervisorSigned = Boolean(
     relatedReport?.signatures?.supervisor?.signed || 
@@ -63,11 +69,50 @@ export default function InvitationDetailModal({
   const hasConfirmed = isSupervisorSigned || isInvestorSigned || request.status === 'COMPLETED' || request.status === 'WAITING_INVESTOR';
   const isCancelled = request.status === 'CANCELLED';
 
+  const effectiveContractorCompany = (() => {
+    // 1. Ưu tiên cao nhất: Lấy trực tiếp từ contractorCompany đã lưu trên phiếu
+    const raw = request.contractorCompany;
+    if (raw && !raw.includes('An Phú Gia') && raw.trim().length > 3) {
+      return raw.trim();
+    }
+
+    // 2. Tra cứu trực tiếp người tạo trong danh sách tài khoản người dùng (users)
+    const creatorUser = (users || []).find(u => 
+      (request.createdByUid && u.uid === request.createdByUid) ||
+      (request.createdByName && (u.fullName || '').trim().toLowerCase() === (request.createdByName || '').trim().toLowerCase())
+    );
+    if (creatorUser?.company && !creatorUser.company.includes('An Phú Gia')) {
+      return creatorUser.company;
+    }
+
+    // 3. Nếu người đang đăng nhập chính là người tạo hoặc có thông tin công ty
+    if (currentUser?.company && !currentUser.company.includes('An Phú Gia') && (currentUser.uid === request.createdByUid || currentRole === 'CONTRACTOR')) {
+      return currentUser.company;
+    }
+
+    return 'Công ty TNHH Gia Huy Vĩnh Phúc';
+  })();
+
+  const assignedSupRecipients = (request.assignedRecipients || []).filter(
+    r => r.role === 'SUPERVISOR' || r.role === 'LEAD_SUPERVISOR'
+  );
+  const assignedInvRecipients = (request.assignedRecipients || []).filter(
+    r => r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR'
+  );
+
+  const assignedSupPerson = assignedSupRecipients.length > 0
+    ? assignedSupRecipients.map(r => r.fullName).filter(Boolean).join(', ')
+    : 'Cán bộ TVGS';
+
+  const assignedInvPerson = assignedInvRecipients.length > 0
+    ? assignedInvRecipients.map(r => r.fullName).filter(Boolean).join(', ')
+    : 'Cán bộ Ban QLDA';
+
   const isCreator = Boolean(
     (currentUser?.uid && request.createdByUid === currentUser.uid) ||
     currentRole === 'CONTRACTOR' ||
     currentRole === 'ADMIN' ||
-    (currentUser?.company && request.contractorCompany === currentUser.company)
+    (currentUser?.company && (request.contractorCompany === currentUser.company || effectiveContractorCompany === currentUser.company))
   );
 
   // Người tạo phiếu được quyền sửa thời gian, đổi người xác nhận, hủy phiếu khi TVGS hoặc Ban QLDA chưa xác nhận nghiệm thu
@@ -374,7 +419,7 @@ export default function InvitationDetailModal({
               <div><strong>Công trình:</strong> {request.buildingName}</div>
               <div><strong>Hạng mục:</strong> {request.itemName || request.packageName}</div>
               <div><strong>Địa điểm xây dựng:</strong> {request.location || 'Phường Thường Thạnh - Quận Cái Răng - Thành phố Cần Thơ'}</div>
-              <div><strong>Đơn vị yêu cầu nghiệm thu:</strong> {request.contractorCompany}</div>
+              <div><strong>Đơn vị yêu cầu nghiệm thu:</strong> {effectiveContractorCompany}</div>
 
               <div style={{
                 background: request.inspectionType === 'MATERIAL' ? '#f0fdf4' : '#f1f5f9',
@@ -467,16 +512,16 @@ export default function InvitationDetailModal({
 
               <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px dashed #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem', color: '#64748b' }}>
                 <div>Đại diện đơn vị thi công: <strong>{request.createdByName || 'KS. Lê Văn Kỹ Thuật'}</strong> ({request.createdByRole || 'Kỹ thuật hiện trường'})</div>
-                <span style={{ color: '#059669', fontWeight: 600 }}>✓ ĐVTC đã ký xác nhận gửi</span>
+                <span style={{ color: '#059669', fontWeight: 600 }}>✓ ĐVTC đã ký</span>
               </div>
 
               {/* Nơi nhận theo mẫu 03 */}
               <div style={{ marginTop: '14px', paddingTop: '10px', borderTop: '1px solid #e2e8f0', fontSize: '0.82rem', color: '#475569' }}>
                 <strong>Nơi nhận:</strong>
                 <div style={{ paddingLeft: '14px', marginTop: '3px', lineHeight: 1.5 }}>
-                  - TVGS: Công ty CP Tư vấn Xây dựng và Thương mại GELICON<br />
-                  - CĐT: Ban QLDA - Công ty TNHH An Phú Cần Thơ<br />
-                  - Lưu: {request.contractorCompany || 'Đơn vị thi công'}
+                  - TVGS: {assignedSupPerson}<br />
+                  - CĐT – Ban QLDA: {assignedInvPerson}<br />
+                  - Lưu: {effectiveContractorCompany || 'Đơn vị thi công'}
                 </div>
               </div>
             </div>

@@ -40,5 +40,11 @@ service cloud.firestore {
     match /payment_sla_configs/{docId} {
       allow read, write: if true;
     }
+    match /system_projects/{docId} {
+      allow read, write: if true;
+    }
+    match /system_doc_types/{docId} {
+      allow read, write: if true;
+    }
   }
 }

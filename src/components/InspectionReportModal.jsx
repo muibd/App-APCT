@@ -5,7 +5,7 @@ import {
   Zap, RotateCcw, FileWarning, Eye, User, Wrench, Send, ChevronRight, XCircle,
   ArrowLeftRight, Calendar, ArrowRight, Ban, UserCheck, FileText, Check
 } from 'lucide-react';
-import { STANDARD_CRITERIA_LIST } from '../data/mockData';
+import { STANDARD_CRITERIA_LIST, getContractorChief } from '../data/mockData';
 import { getSuggestedStandards, GENERAL_MANDATORY_STANDARDS } from '../data/standardsRules';
 import { triggerSafeConfetti } from '../utils/confettiHelper';
 import { compressImageFile } from '../utils/storageHelper';
@@ -34,6 +34,7 @@ export default function InspectionReportModal({
   isOpen, 
   onClose, 
   report, 
+  request = null,
   currentRole, 
   currentUser,
   users = [],
@@ -383,10 +384,10 @@ export default function InspectionReportModal({
   const isInvestorRole = currentRole === 'INVESTOR' || currentRole === 'LEAD_INVESTOR';
 
   // Lấy yêu cầu nghiệm thu tương ứng (nếu có) để truy xuất danh sách cán bộ được chọn
-  const relatedRequest = (requests || []).find(r => 
+  const relatedRequest = request || (requests || []).find(r => 
     (reportState.requestId && r.id === reportState.requestId) || 
     (reportState.id && (r.reportId === reportState.id || r.id === reportState.id)) ||
-    (reportState.requestNumber && r.requestNumber === reportState.requestNumber)
+    (reportState.inspectionObject && r.taskContent && reportState.inspectionObject.trim() === r.taskContent.trim())
   );
 
   const isCancelled = reportState?.status === 'CANCELLED' || relatedRequest?.status === 'CANCELLED';
@@ -503,24 +504,56 @@ export default function InspectionReportModal({
   const assignedInv = effectiveAssignedRecipients.find(r => r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR') || reportState.attendees?.investor;
   const assignedSup = effectiveAssignedRecipients.find(r => r.role === 'SUPERVISOR' || r.role === 'LEAD_SUPERVISOR') || reportState.attendees?.supervisor;
 
-  const effectiveRequest = relatedRequest || {
-    id: reportState.requestId || reportState.id,
+  const cleanContractorCompany = (rawComp, personName, uid) => {
+    // 1. Ưu tiên cao nhất: Lấy trực tiếp từ tên công ty đã lưu trên phiếu/biên bản
+    if (rawComp && !rawComp.includes('An Phú Gia') && rawComp.trim().length > 3) {
+      return rawComp.trim();
+    }
+
+    // 2. Tra cứu trực tiếp người tạo trong danh sách tài khoản người dùng (users)
+    const effectiveUid = uid || relatedRequest?.createdByUid || reportState.createdByUid;
+    const effectiveName = personName || relatedRequest?.createdByName || reportState.attendees?.contractor?.person;
+    const foundUser = (users || []).find(u => 
+      (effectiveUid && u.uid === effectiveUid) || 
+      (effectiveName && (u.fullName || '').trim().toLowerCase() === (effectiveName || '').trim().toLowerCase())
+    );
+    if (foundUser?.company && !foundUser.company.includes('An Phú Gia')) {
+      return foundUser.company;
+    }
+
+    // 3. Nếu người dùng đang đăng nhập có thông tin công ty ĐVTC
+    if (currentUser?.company && !currentUser.company.includes('An Phú Gia') && (currentUser.uid === effectiveUid || currentRole === 'CONTRACTOR')) {
+      return currentUser.company;
+    }
+
+    return 'Công ty TNHH Gia Huy Vĩnh Phúc';
+  };
+
+  const effectiveRequestContCompany = cleanContractorCompany(
+    relatedRequest?.contractorCompany || reportState.contractorCompany || reportState.attendees?.contractor?.company,
+    relatedRequest?.createdByName || reportState.attendees?.contractor?.person,
+    relatedRequest?.createdByUid || reportState.createdByUid
+  );
+
+  const effectiveRequest = {
+    ...(relatedRequest || {}),
+    id: relatedRequest?.id || reportState.requestId || reportState.id,
     requestNumber: cleanReqCode,
-    projectName: reportState.projectInfo?.projectName || 'Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City',
-    buildingName: reportState.projectInfo?.buildingName || 'Chung cư nhà ở xã hội 2',
-    itemName: reportState.projectInfo?.itemName || reportState.projectInfo?.packageName || 'Thi công phần hoàn thiện Tòa A và Tòa B',
-    packageName: reportState.projectInfo?.packageName,
-    location: reportState.location || 'Phường Thường Thạnh - Quận Cái Răng - Thành phố Cần Thơ',
-    contractorCompany: reportState.contractorCompany || 'Công ty CP Xây dựng An Phú Gia',
-    taskContent: reportState.inspectionObject || 'Nghiệm thu công việc xây dựng',
-    inspectionType: isMaterialReport ? 'MATERIAL' : 'WORK',
-    materials: rawMaterialsList,
-    scheduledTime: reportState.time ? `${reportState.time} ${reportState.date || ''}`.trim() : (reportState.date || 'Theo thông báo'),
-    scheduledDate: reportState.date,
-    inspectionPlace: reportState.location || 'Tại hiện trường công trình',
-    createdByName: reportState.attendees?.contractor?.person || 'KS. Lê Văn Kỹ Thuật',
-    createdByRole: reportState.attendees?.contractor?.position || 'Kỹ thuật hiện trường',
-    createdAt: reportState.createdAt || new Date(),
+    projectName: relatedRequest?.projectName || reportState.projectInfo?.projectName || 'Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City',
+    buildingName: relatedRequest?.buildingName || reportState.projectInfo?.buildingName || 'Chung cư nhà ở xã hội 2',
+    itemName: relatedRequest?.itemName || reportState.projectInfo?.itemName || reportState.projectInfo?.packageName || 'Thi công hệ thống PCCC trong và ngoài nhà',
+    packageName: relatedRequest?.packageName || reportState.projectInfo?.packageName,
+    location: relatedRequest?.location || reportState.projectInfo?.location || reportState.location || 'Phường Thường Thạnh - Quận Cái Răng – Thành phố Cần Thơ',
+    contractorCompany: effectiveRequestContCompany,
+    taskContent: relatedRequest?.taskContent || reportState.inspectionObject || 'Nghiệm thu công việc xây dựng',
+    inspectionType: (relatedRequest?.inspectionType || reportState.inspectionType) === 'MATERIAL' ? 'MATERIAL' : 'WORK',
+    materials: relatedRequest?.materials || rawMaterialsList,
+    scheduledTime: relatedRequest?.scheduledTime || (reportState.time ? `${reportState.time} ${reportState.date || ''}`.trim() : (reportState.date || 'Theo thông báo')),
+    scheduledDate: relatedRequest?.scheduledDate || reportState.date,
+    inspectionPlace: relatedRequest?.inspectionPlace || reportState.location || 'Dự án Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City',
+    createdByName: relatedRequest?.createdByName || reportState.attendees?.contractor?.person || 'KS. Trần Văn Trung',
+    createdByRole: relatedRequest?.createdByRole || reportState.attendees?.contractor?.position || 'Kỹ thuật hiện trường',
+    createdAt: relatedRequest?.createdAt || reportState.createdAt || new Date(),
     assignedRecipients: effectiveAssignedRecipients,
     evidencePhotos: evidencePhotos
   };
@@ -537,14 +570,45 @@ export default function InspectionReportModal({
     }
   })();
 
+  const invitationCityDate = (() => {
+    try {
+      const dt = new Date(effectiveRequest.createdAt || reportState.createdAt || Date.now());
+      if (isNaN(dt.getTime())) return 'Cần Thơ, ngày 27 tháng 10 năm 2026';
+      return `Cần Thơ, ngày ${String(dt.getDate()).padStart(2, '0')} tháng ${String(dt.getMonth() + 1).padStart(2, '0')} năm ${dt.getFullYear()}`;
+    } catch {
+      return 'Cần Thơ, ngày 27 tháng 10 năm 2026';
+    }
+  })();
+
+  const invitationScheduledTimeFormatted = (() => {
+    const raw = (effectiveRequest.scheduledTime || '').trim();
+    if (!raw) return '........ giờ ........ ngày ........ tháng ........ năm 20...';
+    const m = raw.match(/(\d{1,2})[:h](\d{2})\s*(?:ngày|,)?\s*(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/i);
+    if (m) {
+      const hh = m[1];
+      const mm = m[2];
+      const dd = m[3];
+      const MM = m[4];
+      const yyyy = m[5];
+      return `${hh} giờ ${mm} ngày ${dd} tháng ${MM} năm ${yyyy}`;
+    }
+    const mt = raw.match(/(\d{1,2})[:h](\d{2})/);
+    const md = raw.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (mt && md) {
+      return `${mt[1]} giờ ${mt[2]} ngày ${md[1]} tháng ${md[2]} năm ${md[3]}`;
+    }
+    if (raw.includes('giờ') && raw.includes('ngày')) {
+      return raw;
+    }
+    return raw;
+  })();
+
   const assignedSupCompany = assignedSup?.company || 'Công ty CP Tư vấn Xây dựng và Thương mại GELICON';
   const assignedInvCompany = assignedInv?.company || 'Ban QLDA - Công ty TNHH An Phú Cần Thơ';
 
   // Lãnh đạo các bên từ danh sách users
   const leadInvUser = (users || []).find(u => u.role === 'LEAD_INVESTOR') || { fullName: 'Ngô Quý Linh', position: 'Trưởng Ban QLDA', company: 'Công ty TNHH An Phú Cần Thơ' };
   const leadSupUser = (users || []).find(u => u.role === 'LEAD_SUPERVISOR') || { fullName: 'Đinh Xuân Thám', position: 'Tư vấn giám sát trưởng', company: 'Công ty CP TVXD và TM GELICON' };
-  const leadContractorUser = (users || []).find(u => u.role === 'CONTRACTOR' && (((u.position || '').toLowerCase().includes('chỉ huy')) || (u.fullName || '').includes('Chỉ Huy'))) 
-    || { fullName: 'Trần Hữu Chỉ Huy', position: 'Chỉ huy trưởng', company: 'Công ty CP Xây dựng An Phú Gia' };
 
   // a) Đại diện Chủ đầu tư
   const invCompany = assignedInv?.company || reportState.attendees?.investor?.company || leadInvUser.company || 'Công ty TNHH An Phú Cần Thơ';
@@ -560,45 +624,16 @@ export default function InspectionReportModal({
   const supOfficerName = assignedSup?.fullName || reportState.attendees?.supervisor?.person || 'Võ Văn Tón';
   const supOfficerPosition = assignedSup?.position || reportState.attendees?.supervisor?.position || 'Cán bộ tư vấn giám sát';
 
-  // c) Đơn vị thi công
-  const contCompany = reportState.attendees?.contractor?.company || reportState.contractorCompany || relatedRequest?.contractorCompany || 'Công ty CP Xây dựng An Phú Gia';
-  const [isEditingContCompany, setIsEditingContCompany] = useState(false);
-  const [contCompanyVal, setContCompanyVal] = useState(contCompany);
+  // c) Đơn vị thi công: Luôn lấy chuẩn xác Chỉ huy trưởng theo công ty nhà thầu, không lấy Chỉ huy phó
+  const contCompany = cleanContractorCompany(
+    reportState.attendees?.contractor?.company || reportState.contractorCompany || relatedRequest?.contractorCompany,
+    reportState.attendees?.contractor?.person || relatedRequest?.createdByName,
+    reportState.createdByUid || relatedRequest?.createdByUid
+  );
 
-  useEffect(() => {
-    if (!isEditingContCompany) {
-      setContCompanyVal(contCompany);
-    }
-  }, [contCompany, isEditingContCompany]);
-
-  const handleSaveContCompany = () => {
-    const newComp = contCompanyVal.trim() || contCompany;
-    setIsEditingContCompany(false);
-    setContCompanyVal(newComp);
-    const updated = {
-      ...reportState,
-      contractorCompany: newComp,
-      attendees: {
-        ...reportState.attendees,
-        contractor: {
-          ...reportState.attendees?.contractor,
-          company: newComp
-        }
-      }
-    };
-    setReportState(updated);
-    if (onSaveReport) onSaveReport(updated);
-    if (showAlert) {
-      showAlert({
-        type: 'success',
-        title: 'Đã Cập Nhật Đơn Vị Thi Công',
-        message: `Đã lưu đơn vị thi công: "${newComp}" thành công!`
-      });
-    }
-  };
-
-  const contLeadName = reportState.attendees?.contractor?.leadPerson || leadContractorUser.fullName;
-  const contLeadPosition = reportState.attendees?.contractor?.leadPosition || leadContractorUser.position;
+  const contractorChief = getContractorChief(contCompany, users);
+  const contLeadName = contractorChief.fullName;
+  const contLeadPosition = 'Chỉ huy trưởng';
   const contOfficerName = reportState.attendees?.contractor?.person || relatedRequest?.createdByName || 'KS. Lê Văn Kỹ Thuật';
   const contOfficerPosition = reportState.attendees?.contractor?.position || relatedRequest?.createdByRole || 'Kỹ thuật hiện trường';
 
@@ -614,6 +649,15 @@ export default function InspectionReportModal({
   );
   const assignedInvRecipients = effectiveAssignedRecipients.filter(
     r => r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR'
+  );
+
+  const assignedSupPerson = (assignedSupRecipients.length > 0
+    ? assignedSupRecipients.map(r => r.fullName).filter(Boolean).join(', ')
+    : (assignedSup?.fullName || assignedSup?.person || supOfficerName || 'Cán bộ TVGS')
+  );
+  const assignedInvPerson = (assignedInvRecipients.length > 0
+    ? assignedInvRecipients.map(r => r.fullName).filter(Boolean).join(', ')
+    : (assignedInv?.fullName || assignedInv?.person || invOfficerName || 'Cán bộ Ban QLDA')
   );
 
   // Người dùng có phải là người duyệt TVGS được chỉ định trên phiếu này không (Admin chỉ xem, không duyệt):
@@ -951,7 +995,7 @@ export default function InspectionReportModal({
         caption: file.name ? `Ảnh sửa chữa: ${file.name.replace(/\.[^/.]+$/, '')}` : 'Hiện trường sau khi khắc phục xong',
         gps: '10.0076° N, 105.7823° E (P. Thường Thạnh, TP. Cần Thơ)',
         time: timeStr,
-        photographer: `${currentUser?.fullName || 'KS. Lê Văn Kỹ Thuật'} (ĐVTC An Phú Gia)`
+        photographer: `${currentUser?.fullName || 'KS. Lê Văn Kỹ Thuật'} (ĐVTC ${contCompany.includes('Phan Lê') ? 'Phan Lê' : contCompany.includes('Bình Hoà') ? 'Bình Hoà' : 'Gia Huy Vĩnh Phúc'})`
       });
     }
 
@@ -1215,7 +1259,7 @@ export default function InspectionReportModal({
         name: currentUser?.fullName || 'KS. Lê Văn Kỹ Thuật',
         role: currentRole,
         roleTitle: 'Kỹ Thuật Đơn Vị Thi Công',
-        company: currentUser?.company || 'Công ty CP Xây dựng An Phú Gia',
+        company: currentUser?.company || contCompany || 'Công ty TNHH Gia Huy Vĩnh Phúc',
         timestamp: timeStr
       }
     };
@@ -1841,137 +1885,159 @@ export default function InspectionReportModal({
                 </div>
               )}
 
-              {/* VĂN BẢN NỘI DUNG PHIẾU YÊU CẦU THEO CHUẨN MẪU 03 */}
-              <div style={{
-                background: '#ffffff',
-                border: '1px solid #e2e8f0',
-                borderRadius: '8px',
-                padding: '24px 20px',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-                fontFamily: '"Times New Roman", Times, serif',
-                lineHeight: 1.5
-              }}>
+              {/* VĂN BẢN NỘI DUNG PHIẾU YÊU CẦU THEO ĐÚNG CHUẨN MẪU SỐ 6 */}
+              <div 
+                className="invitation-sheet"
+                style={{
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  padding: '36px 40px',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                  fontFamily: '"Times New Roman", Times, serif',
+                  lineHeight: 1.5,
+                  color: '#000000',
+                  boxSizing: 'border-box'
+                }}
+              >
                 {/* Header Quốc hiệu tiêu ngữ */}
                 <div style={{ textAlign: 'center', marginBottom: '14px' }}>
-                  <div style={{ fontWeight: 'bold', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                  <div style={{ fontWeight: 'bold', fontSize: '12pt', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
                     CỘNG HOÀ XÃ HỘI CHỦ NGHĨA VIỆT NAM
                   </div>
-                  <div style={{ fontWeight: 'bold', fontSize: '0.94rem', marginTop: '2px' }}>
-                    <u>Độc lập - Tự do - Hạnh phúc</u>
+                  <div style={{ fontWeight: 'bold', fontSize: '11.5pt', marginTop: '2px' }}>
+                    Độc lập - Tự do - Hạnh phúc
                   </div>
-                  <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '1px' }}>
-                    ----------***---------
+                  <div style={{ fontSize: '0.85rem', color: '#000000', marginTop: '1px' }}>
+                    ---------***---------
                   </div>
-                  <div style={{ textAlign: 'right', fontSize: '0.85rem', fontStyle: 'italic', marginTop: '6px' }}>
-                    {reportState?.cityDate || `Cần Thơ, ngày ${new Date(effectiveRequest.createdAt || Date.now()).getDate()} tháng ${new Date(effectiveRequest.createdAt || Date.now()).getMonth() + 1} năm ${new Date(effectiveRequest.createdAt || Date.now()).getFullYear()}`}
+                  <div style={{ textAlign: 'right', fontSize: '11pt', fontStyle: 'italic', marginTop: '10px' }}>
+                    {invitationCityDate}
                   </div>
                 </div>
 
                 {/* Tiêu đề & Mã số */}
                 <div style={{
                   textAlign: 'center',
-                  margin: '12px 0 16px 0',
-                  padding: '8px 12px'
+                  margin: '14px 0 18px 0'
                 }}>
-                  <h2 style={{ fontSize: '1.25rem', color: '#0f172a', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.02em', fontWeight: 800 }}>
+                  <h2 style={{ fontSize: '14pt', color: '#000000', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.02em', fontWeight: 'bold' }}>
                     PHIẾU YÊU CẦU NGHIỆM THU
                   </h2>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', fontSize: '0.9rem' }}>
-                    <div>
-                      <strong>Số:</strong> <strong style={{ color: '#0f172a' }}>{cleanReqCode}</strong>
+                  <div style={{ fontSize: '12pt', fontWeight: 'bold' }}>
+                    Số: {cleanReqCode}
+                  </div>
+                </div>
+
+                {/* Bảng thông tin dự án, công trình, hạng mục - căn chuẩn dấu 2 chấm : */}
+                <table style={{ width: '100%', borderCollapse: 'collapse', margin: '14px 0 10px 0', fontSize: '12pt' }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ width: '215px', verticalAlign: 'top', fontWeight: 'bold', padding: '4px 0' }}>Dự án</td>
+                      <td style={{ width: '16px', verticalAlign: 'top', fontWeight: 'bold', padding: '4px 0' }}>:</td>
+                      <td style={{ verticalAlign: 'top', padding: '4px 0' }}>{effectiveRequest.projectName || 'Đầu tư xây dựng nhà ở Phường Thường Thạnh- An Phú Eco City'}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ width: '215px', verticalAlign: 'top', fontWeight: 'bold', padding: '4px 0' }}>Công trình</td>
+                      <td style={{ width: '16px', verticalAlign: 'top', fontWeight: 'bold', padding: '4px 0' }}>:</td>
+                      <td style={{ verticalAlign: 'top', padding: '4px 0' }}>{effectiveRequest.buildingName || 'Chung cư nhà ở xã hội 2'}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ width: '215px', verticalAlign: 'top', fontWeight: 'bold', padding: '4px 0' }}>Hạng mục</td>
+                      <td style={{ width: '16px', verticalAlign: 'top', fontWeight: 'bold', padding: '4px 0' }}>:</td>
+                      <td style={{ verticalAlign: 'top', padding: '4px 0' }}>{effectiveRequest.itemName || effectiveRequest.packageName || 'Thi công hệ thống PCCC trong và ngoài nhà'}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ width: '215px', verticalAlign: 'top', fontWeight: 'bold', padding: '4px 0' }}>Địa điểm xây dựng</td>
+                      <td style={{ width: '16px', verticalAlign: 'top', fontWeight: 'bold', padding: '4px 0' }}>:</td>
+                      <td style={{ verticalAlign: 'top', padding: '4px 0' }}>{effectiveRequest.location || 'Phường Thường Thạnh - Quận Cái Răng – Thành phố Cần Thơ'}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ width: '215px', verticalAlign: 'top', fontWeight: 'bold', padding: '4px 0' }}>Đơn vị yêu cầu nghiệm thu</td>
+                      <td style={{ width: '16px', verticalAlign: 'top', fontWeight: 'bold', padding: '4px 0' }}>:</td>
+                      <td style={{ verticalAlign: 'top', padding: '4px 0' }}>{effectiveRequest.contractorCompany || effectiveRequestContCompany}</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                {/* Công tác xây dựng yêu cầu nghiệm thu */}
+                <div style={{ marginTop: '12px', fontSize: '12pt' }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: '6px' }}>
+                    Công tác xây dựng yêu cầu nghiệm thu:
+                  </div>
+
+                  <div style={{ fontWeight: 'bold', fontSize: '12pt', margin: '6px 0 6px 0', lineHeight: 1.5 }}>
+                    {effectiveRequest.taskContent || (effectiveRequest.materials && effectiveRequest.materials.length > 0 ? effectiveRequest.materials.map(m => m.name || m.materialName).filter(Boolean).join(', ') : '') || reportState.inspectionObject || 'Nghiệm thu công việc xây dựng'}
+                  </div>
+
+
+                </div>
+
+                {/* Câu cam kết pháp lý đúng chuẩn quy định trong ảnh 3 */}
+                <div style={{ marginTop: '14px', fontSize: '12pt', lineHeight: 1.55, textAlign: 'justify' }}>
+                  Sau khi kiểm tra chất lượng, đối chiếu với bản vẽ thiết kế và các tiêu chuẩn kỹ thuật được áp dụng, chúng tôi đã nghiệm thu nội bộ. Vậy nhà thầu thi công đề nghị Chủ đầu tư và Tư vấn giám sát nghiệm thu.
+                </div>
+
+                {/* Thời gian & Địa điểm */}
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '14px', fontSize: '12pt' }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ width: '190px', verticalAlign: 'top', fontWeight: 'bold', padding: '4px 0' }}>Thời gian nghiệm thu</td>
+                      <td style={{ width: '16px', verticalAlign: 'top', fontWeight: 'bold', padding: '4px 0' }}>:</td>
+                      <td style={{ verticalAlign: 'top', padding: '4px 0' }}>{invitationScheduledTimeFormatted}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ width: '190px', verticalAlign: 'top', fontWeight: 'bold', padding: '4px 0' }}>Tại</td>
+                      <td style={{ width: '16px', verticalAlign: 'top', fontWeight: 'bold', padding: '4px 0' }}>:</td>
+                      <td style={{ verticalAlign: 'top', padding: '4px 0' }}>{effectiveRequest.inspectionPlace || effectiveRequest.location || 'Dự án Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City'}</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                {/* Ký tên Đơn vị thi công bên phải */}
+                <div style={{ marginTop: '22px', display: 'flex', justifyContent: 'flex-end', fontSize: '12pt' }}>
+                  <div style={{ textAlign: 'center', width: '280px' }}>
+                    <div style={{ fontWeight: 'bold' }}>Đại diện đơn vị thi công</div>
+                    <div style={{ fontStyle: 'italic', fontSize: '11pt', marginTop: '2px' }}>(Ký, ghi rõ họ tên)</div>
+                    <div style={{ height: '70px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                      <div style={{ fontFamily: 'Dancing Script, cursive, serif', fontSize: '1.4rem', color: '#0f172a' }}>
+                        {effectiveRequest.createdByName || 'Trần Văn Trung'}
+                      </div>
+                      <div className="no-print" style={{ fontSize: '0.74rem', color: '#059669', fontWeight: 600 }}>✓ ĐVTC đã ký</div>
+                    </div>
+                    <div style={{ fontWeight: 'bold', fontSize: '12pt' }}>
+                      {effectiveRequest.createdByName || 'Trần Văn Trung'}
+                    </div>
+                    <div className="no-print" style={{ fontSize: '10.5pt', color: '#475569' }}>
+                      ({effectiveRequest.createdByRole || 'Kỹ thuật hiện trường'})
                     </div>
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.9rem', lineHeight: 1.6 }}>
-                  <div><strong>Dự án:</strong> {effectiveRequest.projectName || 'Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City'}</div>
-                  <div><strong>Công trình:</strong> {effectiveRequest.buildingName || 'Chung cư nhà ở xã hội 2'}</div>
-                  <div><strong>Hạng mục:</strong> {effectiveRequest.itemName || effectiveRequest.packageName || 'Thi công phần hoàn thiện Tòa A và Tòa B'}</div>
-                  <div><strong>Địa điểm xây dựng:</strong> {effectiveRequest.location || 'Phường Thường Thạnh - Quận Cái Răng - Thành phố Cần Thơ'}</div>
-                  <div><strong>Đơn vị yêu cầu nghiệm thu:</strong> {effectiveRequest.contractorCompany || 'Công ty CP Xây dựng An Phú Gia'}</div>
-
-                  <div style={{
-                    background: (isMaterialReport || (effectiveRequest.materials && effectiveRequest.materials.length > 0)) ? '#f0fdf4' : '#f1f5f9',
-                    padding: '12px',
-                    borderRadius: '8px',
-                    margin: '8px 0',
-                    borderLeft: (isMaterialReport || (effectiveRequest.materials && effectiveRequest.materials.length > 0)) ? '4px solid #059669' : '4px solid #2563eb'
-                  }}>
-                    <strong style={{ color: (isMaterialReport || (effectiveRequest.materials && effectiveRequest.materials.length > 0)) ? '#065f46' : '#1e40af' }}>
-                      {(isMaterialReport || (effectiveRequest.materials && effectiveRequest.materials.length > 0))
-                        ? 'Vật liệu đầu vào yêu cầu nghiệm thu (Mẫu số 12):'
-                        : 'Công tác xây dựng yêu cầu nghiệm thu:'}
-                    </strong>
-
-                    {effectiveRequest.materials && effectiveRequest.materials.length > 0 ? (
-                      <div style={{ marginTop: '8px', overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', background: '#ffffff', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
-                          <thead>
-                            <tr style={{ background: '#ecfdf5', color: '#065f46', borderBottom: '1px solid #a7f3d0' }}>
-                              <th style={{ padding: '6px 8px', textAlign: 'center', width: '32px' }}>#</th>
-                              <th style={{ padding: '6px 8px', textAlign: 'left' }}>Tên / Chủng loại vật liệu</th>
-                              <th style={{ padding: '6px 8px', textAlign: 'left' }}>Xuất xứ</th>
-                              <th style={{ padding: '6px 8px', textAlign: 'center', width: '55px' }}>ĐVT</th>
-                              <th style={{ padding: '6px 8px', textAlign: 'right', width: '75px' }}>K.Lượng</th>
-                              <th style={{ padding: '6px 8px', textAlign: 'left' }}>Số CCXX</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {effectiveRequest.materials.map((mat, idx) => (
-                              <tr key={idx} style={{ borderBottom: idx < effectiveRequest.materials.length - 1 ? '1px solid #f0fdf4' : 'none' }}>
-                                <td style={{ padding: '6px 8px', textAlign: 'center', color: '#059669', fontWeight: 600 }}>{idx + 1}</td>
-                                <td style={{ padding: '6px 8px', fontWeight: 600, color: '#0f172a' }}>{mat.name || mat.materialName}</td>
-                                <td style={{ padding: '6px 8px', color: '#334155' }}>{mat.origin || 'Việt Nam'}</td>
-                                <td style={{ padding: '6px 8px', textAlign: 'center', color: '#475569' }}>{mat.unit || '—'}</td>
-                                <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, color: '#059669' }}>{mat.quantity || '—'}</td>
-                                <td style={{ padding: '6px 8px', color: '#64748b', fontSize: '0.78rem' }}>{mat.certificateNumber || '—'}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: '1rem', fontWeight: '700', color: '#0f172a', marginTop: '4px' }}>
-                        {effectiveRequest.taskContent}
-                      </div>
-                    )}
-
-                    <p style={{ fontSize: '0.83rem', color: '#475569', margin: '6px 0 0 0', fontStyle: 'italic' }}>
-                      Sau khi kiểm tra chất lượng, đối chiếu với bản vẽ thiết kế và các tiêu chuẩn kỹ thuật được áp dụng, chúng tôi đã nghiệm thu nội bộ. Đơn vị thi công kính mời Chủ đầu tư và Tư vấn giám sát tiến hành nghiệm thu.
-                    </p>
+                {/* Nơi nhận theo đúng chuẩn Mẫu số 6 từ Ảnh 3 */}
+                <div style={{ marginTop: '24px', fontSize: '11pt', lineHeight: 1.5 }}>
+                  <div>
+                    <strong>Nơi nhận:</strong> <span style={{ fontStyle: 'italic' }}>(Thời gian nhận.......giờ.......ngày.....tháng..... năm 20...)</span>
                   </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '10px 16px', marginTop: '6px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Calendar size={16} color="#2563eb" style={{ flexShrink: 0 }} />
-                        <strong>Thời gian nghiệm thu: {effectiveRequest.scheduledTime}</strong>
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Clock size={16} color="#64748b" style={{ flexShrink: 0 }} />
-                      <span style={{ color: '#334155' }}>Thời gian tạo phiếu: {createdTimeFormatted}</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', gridColumn: '1 / -1' }}>
-                      <MapPin size={16} color="#2563eb" style={{ flexShrink: 0 }} />
-                      <span><strong>Tại:</strong> {effectiveRequest.inspectionPlace || effectiveRequest.location}</span>
-                    </div>
-                  </div>
-
-                  <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px dashed #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem', color: '#64748b' }}>
-                    <div>Đại diện đơn vị thi công: <strong>{effectiveRequest.createdByName || 'KS. Lê Văn Kỹ Thuật'}</strong> ({effectiveRequest.createdByRole || 'Kỹ thuật hiện trường'})</div>
-                    <span style={{ color: '#059669', fontWeight: 600 }}>✓ ĐVTC đã ký xác nhận gửi</span>
-                  </div>
-
-                  {/* Nơi nhận theo mẫu 03 */}
-                  <div style={{ marginTop: '14px', paddingTop: '10px', borderTop: '1px solid #e2e8f0', fontSize: '0.82rem', color: '#475569' }}>
-                    <strong>Nơi nhận:</strong>
-                    <div style={{ paddingLeft: '14px', marginTop: '3px', lineHeight: 1.5 }}>
-                      - TVGS: {assignedSupCompany}<br />
-                      - CĐT: {assignedInvCompany}<br />
-                      - Lưu: {effectiveRequest.contractorCompany || 'Đơn vị thi công'}
-                    </div>
-                  </div>
+                  <table style={{ borderCollapse: 'collapse', marginLeft: '12px', marginTop: '4px' }}>
+                    <tbody>
+                      <tr>
+                        <td style={{ width: '150px', verticalAlign: 'top' }}>- TVGS</td>
+                        <td style={{ width: '16px', verticalAlign: 'top' }}>:</td>
+                        <td style={{ verticalAlign: 'top' }}>{assignedSupPerson}</td>
+                      </tr>
+                      <tr>
+                        <td style={{ width: '150px', verticalAlign: 'top' }}>- CĐT – Ban QLDA</td>
+                        <td style={{ width: '16px', verticalAlign: 'top' }}>:</td>
+                        <td style={{ verticalAlign: 'top' }}>{assignedInvPerson}</td>
+                      </tr>
+                      <tr>
+                        <td style={{ width: '150px', verticalAlign: 'top' }}>- Lưu</td>
+                        <td style={{ width: '16px', verticalAlign: 'top' }}>:</td>
+                        <td style={{ verticalAlign: 'top' }}>{effectiveRequest.contractorCompany || effectiveRequestContCompany}</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
 
@@ -2289,10 +2355,10 @@ export default function InspectionReportModal({
 
               {/* Thông tin dự án */}
               <div style={{ marginBottom: '14px', lineHeight: 1.6 }}>
-                <div><strong>Dự án:</strong> {reportState.projectInfo?.projectName || 'Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City'}</div>
-                <div><strong>Công trình:</strong> {reportState.projectInfo?.buildingName || 'Chung cư nhà ở xã hội 2'}</div>
-                <div><strong>Hạng mục:</strong> {reportState.projectInfo?.itemName || 'Thi công phần hoàn thiện Tòa A & Tòa B'}</div>
-                <div><strong>Địa điểm xây dựng:</strong> {reportState.projectInfo?.location || 'Phường Thường Thạnh - Quận Cái Răng - Thành phố Cần Thơ'}</div>
+                <div><strong>Dự án:</strong> {effectiveRequest.projectName || reportState.projectInfo?.projectName || 'Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City'}</div>
+                <div><strong>Công trình:</strong> {effectiveRequest.buildingName || reportState.projectInfo?.buildingName || 'Chung cư nhà ở xã hội 2'}</div>
+                <div><strong>Hạng mục:</strong> {effectiveRequest.itemName || reportState.projectInfo?.itemName || 'Thi công hệ thống PCCC trong và ngoài nhà'}</div>
+                <div><strong>Địa điểm xây dựng:</strong> {effectiveRequest.location || reportState.projectInfo?.location || 'Phường Thường Thạnh - Quận Cái Răng – Thành phố Cần Thơ'}</div>
               </div>
 
               {/* 1. Đối tượng nghiệm thu */}
@@ -2315,7 +2381,7 @@ export default function InspectionReportModal({
                       </div>
                     )
                   ) : (
-                    <div>- {reportState.inspectionObject || 'Nghiệm thu công việc xây dựng'}</div>
+                    <div>- {effectiveRequest.taskContent || reportState.inspectionObject || 'Nghiệm thu công việc xây dựng'}</div>
                   )}
                 </div>
               </div>
@@ -2352,61 +2418,9 @@ export default function InspectionReportModal({
                     )}
                   </div>
 
-                  {/* c) Đơn vị thi công */}
-                  <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <strong>c) Đơn vị thi công:</strong>
-                    {isEditingContCompany ? (
-                      <div className="no-print" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                        <input
-                          type="text"
-                          className="form-input"
-                          style={{ padding: '2px 8px', fontSize: '0.88rem', width: '280px', fontWeight: 600, color: '#0f172a' }}
-                          value={contCompanyVal}
-                          onChange={(e) => setContCompanyVal(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter') handleSaveContCompany(); }}
-                          autoFocus
-                        />
-                        <button 
-                          type="button" 
-                          onClick={handleSaveContCompany}
-                          style={{ padding: '3px 8px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}
-                        >
-                          Lưu
-                        </button>
-                        <button 
-                          type="button" 
-                          onClick={() => { setIsEditingContCompany(false); setContCompanyVal(contCompany); }}
-                          style={{ padding: '3px 8px', background: '#e2e8f0', color: '#334155', border: 'none', borderRadius: '4px', fontSize: '0.75rem', cursor: 'pointer' }}
-                        >
-                          Hủy
-                        </button>
-                      </div>
-                    ) : (
-                      <span>
-                        {contCompanyVal || contCompany}
-                        <button
-                          type="button"
-                          className="no-print"
-                          onClick={() => setIsEditingContCompany(true)}
-                          style={{
-                            marginLeft: '8px',
-                            background: 'none',
-                            border: '1px dashed #94a3b8',
-                            borderRadius: '4px',
-                            padding: '1px 6px',
-                            fontSize: '0.72rem',
-                            color: '#2563eb',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '3px'
-                          }}
-                          title="Sửa đơn vị thi công"
-                        >
-                          ✏️ Sửa
-                        </button>
-                      </span>
-                    )}
+                  {/* c) Đơn vị thi công (Cố định chuẩn xác theo phiếu yêu cầu, không được sửa thủ công) */}
+                  <div style={{ marginTop: '4px' }}>
+                    <strong>c) Đơn vị thi công:</strong> <span>{contCompany}</span>
                   </div>
                   <div style={{ paddingLeft: '16px' }}>
                     {contOfficerName.trim().toLowerCase() === contLeadName.trim().toLowerCase() ? (
@@ -3003,7 +3017,7 @@ export default function InspectionReportModal({
                   <div style={{ textAlign: 'center', marginBottom: '20px', borderBottom: '2px solid #000', paddingBottom: '12px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
                       <div style={{ width: '45%', textAlign: 'center', fontSize: '0.82rem' }}>
-                        <strong>{reportState.attendees?.contractor?.company || 'CÔNG TY CP XÂY DỰNG AN PHÚ GIA'}</strong><br />
+                        <strong>{(contCompany || reportState.attendees?.contractor?.company || 'Công ty TNHH Gia Huy Vĩnh Phúc').toUpperCase()}</strong><br />
                         Số: {cleanReportNum}
                       </div>
                       <div style={{ width: '50%', textAlign: 'center', fontSize: '0.82rem' }}>
@@ -3635,7 +3649,7 @@ export default function InspectionReportModal({
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
                             <Clock size={12} color="#34d399" />
-                            <span>{photo.time} • {photo.photographer || 'ĐVTC An Phú Gia'}</span>
+                            <span>{photo.time} • {photo.photographer || `ĐVTC ${contCompany.includes('Phan Lê') ? 'Phan Lê' : contCompany.includes('Bình Hoà') ? 'Bình Hoà' : 'Gia Huy Vĩnh Phúc'}`}</span>
                           </div>
                         </div>
                       </div>
@@ -4088,7 +4102,7 @@ export default function InspectionReportModal({
                 {currentRole === 'CONTRACTOR' && !isContractorSigned && (
                   <button className="btn-primary" onClick={() => handleSign('contractor')}>
                     <PenTool size={16} />
-                    <span>Đơn Vị Thi Công Ký Xác Nhận</span>
+                    <span>Đơn Vị Thi Công Ký</span>
                   </button>
                 )}
 

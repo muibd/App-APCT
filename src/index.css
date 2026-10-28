@@ -2218,9 +2218,10 @@ html.modal-open {
     overflow: visible !important;
   }
 
-  /* 6. Trình bày trang văn bản Biên bản A4 & Nhật ký thi công (.document-paper, .invitation-paper, .a4-document-print, .report-print-sheet, .daily-log-paper) */
+  /* 6. Trình bày trang văn bản Biên bản A4 & Nhật ký thi công (.document-paper, .invitation-paper, .invitation-sheet, .a4-document-print, .report-print-sheet, .daily-log-paper) */
   .document-paper,
   .invitation-paper,
+  .invitation-sheet,
   .a4-document-print,
   .report-print-sheet,
   .daily-log-paper {
@@ -2245,6 +2246,7 @@ html.modal-open {
 
   .document-paper *,
   .invitation-paper *,
+  .invitation-sheet *,
   .a4-document-print *,
   .report-print-sheet *,
   .daily-log-paper * {
@@ -2253,7 +2255,11 @@ html.modal-open {
   }
 
   .document-paper strong,
-  .document-paper b {
+  .document-paper b,
+  .invitation-paper strong,
+  .invitation-paper b,
+  .invitation-sheet strong,
+  .invitation-sheet b {
     color: #000000 !important;
   }
 

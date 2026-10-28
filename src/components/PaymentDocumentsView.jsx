@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import {
   Search, Plus, Calendar, Filter, Clock, FileText, CheckCircle2,
   AlertTriangle, XCircle, Eye, Download, UserCheck, ShieldAlert,
-  ArrowUpDown, RefreshCw, Layers, FileSpreadsheet, Paperclip, CreditCard
+  ArrowUpDown, RefreshCw, Layers, FileSpreadsheet, Paperclip, CreditCard, Trash2
 } from 'lucide-react';
 import {
   getEffectivePaymentStatus,
@@ -15,7 +15,8 @@ export default function PaymentDocumentsView({
   currentUser,
   currentRole,
   onOpenCreateModal,
-  onOpenDetailModal
+  onOpenDetailModal,
+  onDeletePaymentDocument
 }) {
   // State tìm kiếm & bộ lọc
   const [searchTerm, setSearchTerm] = useState('');
@@ -694,29 +695,59 @@ export default function PaymentDocumentsView({
 
                       {/* THAO TÁC */}
                       <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onOpenDetailModal(doc);
-                          }}
-                          style={{
-                            padding: '6px 12px',
-                            background: '#eff6ff',
-                            border: '1px solid #bfdbfe',
-                            borderRadius: '6px',
-                            color: '#1d4ed8',
-                            fontSize: '0.76rem',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            transition: 'all 0.15s ease'
-                          }}
-                        >
-                          <Eye size={13} /> Xem
-                        </button>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenDetailModal(doc);
+                            }}
+                            style={{
+                              padding: '6px 12px',
+                              background: '#eff6ff',
+                              border: '1px solid #bfdbfe',
+                              borderRadius: '6px',
+                              color: '#1d4ed8',
+                              fontSize: '0.76rem',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            <Eye size={13} /> Xem
+                          </button>
+
+                          {(currentUser?.role === 'ADMIN' || currentUser?.isSuperAdmin || currentRole === 'ADMIN' || doc.createdByUid === currentUser?.uid) && onDeletePaymentDocument && (
+                            <button
+                              type="button"
+                              title="Xóa hồ sơ này"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (window.confirm(`Bạn có chắc chắn muốn xóa vĩnh viễn hồ sơ "${doc.title}" (${doc.docCode}) không?`)) {
+                                  onDeletePaymentDocument(doc.id);
+                                }
+                              }}
+                              style={{
+                                padding: '6px 8px',
+                                background: '#fef2f2',
+                                border: '1px solid #fecaca',
+                                borderRadius: '6px',
+                                color: '#dc2626',
+                                fontSize: '0.76rem',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                transition: 'all 0.15s ease'
+                              }}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
                       </td>
 
                     </tr>
