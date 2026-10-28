@@ -288,7 +288,7 @@ export default function CompletionReportDetailModal({
               </div>
               <div style={{ marginBottom: '4px' }}>
                 <strong>Địa điểm xây dựng: </strong>
-                <span style={{ color: '#dc2626' }}>{report.location}</span>
+                <span style={{ color: '#dc2626' }}>{report.location && !report.location.includes('Thường Thạnh') && !report.location.includes('Quận Cái Răng') ? report.location : 'Phường Cái Răng - TP. Cần Thơ'}</span>
               </div>
               <div>
                 <strong>{completionType === 'DOSSIER' ? 'Đối tượng kiểm tra:' : 'Đối tượng nghiệm thu:'} </strong>
@@ -309,26 +309,50 @@ export default function CompletionReportDetailModal({
                   <div className="screen-only" style={{ paddingLeft: '14px', marginTop: '4px' }}>
                     <div><strong>a) Chủ đầu tư – Ban QLDA:</strong> {report.representatives?.investor?.company}</div>
                     <div style={{ paddingLeft: '16px' }}>
-                      <div>- Ông (bà) : {report.representatives?.investor?.leadName} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.investor?.leadPosition}</div>
-                      <div>- Ông (bà) : {report.representatives?.investor?.officerName || 'Nguyễn Thành Trung'} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.investor?.officerPosition || 'Cán bộ Ban QLDA'}</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông (bà): {report.representatives?.investor?.leadName}</span>
+                        <span>Chức vụ: {report.representatives?.investor?.leadPosition}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông (bà): {report.representatives?.investor?.officerName || 'Nguyễn Thành Trung'}</span>
+                        <span>Chức vụ: {report.representatives?.investor?.officerPosition || 'Cán bộ Ban QLDA'}</span>
+                      </div>
                     </div>
 
                     <div style={{ marginTop: '4px' }}><strong>b) Tư vấn thiết kế:</strong> {report.representatives?.designer?.company || 'Công ty CP Tư vấn Thiết kế Xây dựng APCT'}</div>
                     <div style={{ paddingLeft: '16px' }}>
-                      <div>- Ông (bà) : {report.representatives?.designer?.leadName || 'KTS. Lê Quang Thiết Kế'} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.designer?.leadPosition || 'Giám đốc thiết kế'}</div>
-                      <div>- Ông (bà) : {report.representatives?.designer?.officerName || 'KTS. Trần Văn Vẽ'} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.designer?.officerPosition || 'Chủ trì kiến trúc'}</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông (bà): {report.representatives?.designer?.leadName || 'KTS. Lê Quang Thiết Kế'}</span>
+                        <span>Chức vụ: {report.representatives?.designer?.leadPosition || 'Giám đốc thiết kế'}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông (bà): {report.representatives?.designer?.officerName || 'KTS. Trần Văn Vẽ'}</span>
+                        <span>Chức vụ: {report.representatives?.designer?.officerPosition || 'Chủ trì kiến trúc'}</span>
+                      </div>
                     </div>
 
                     <div style={{ marginTop: '4px' }}><strong>c) Tư vấn giám sát:</strong> {report.representatives?.supervisor?.company}</div>
                     <div style={{ paddingLeft: '16px' }}>
-                      <div>- Ông (bà) : {report.representatives?.supervisor?.leadName} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.supervisor?.leadPosition}</div>
-                      <div>- Ông (bà) : {report.representatives?.supervisor?.officerName || 'Đỗ Văn Trường'} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.supervisor?.officerPosition || 'Cán bộ TVGS'}</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông (bà): {report.representatives?.supervisor?.leadName}</span>
+                        <span>Chức vụ: {report.representatives?.supervisor?.leadPosition}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông (bà): {report.representatives?.supervisor?.officerName || 'Đỗ Văn Trường'}</span>
+                        <span>Chức vụ: {report.representatives?.supervisor?.officerPosition || 'Cán bộ TVGS'}</span>
+                      </div>
                     </div>
 
                     <div style={{ marginTop: '4px' }}><strong>d) Đơn vị thi công:</strong> {report.representatives?.contractor?.company}</div>
                     <div style={{ paddingLeft: '16px' }}>
-                      <div>- Ông (bà) : {contLeadName} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {contLeadPosition}</div>
-                      <div>- Ông (bà) : {report.representatives?.contractor?.officerName || 'Nguyễn Hoàng Bách'} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.contractor?.officerPosition || 'Kỹ thuật hiện trường'}</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông (bà): {contLeadName}</span>
+                        <span>Chức vụ: {contLeadPosition}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông (bà): {report.representatives?.contractor?.officerName || 'Nguyễn Hoàng Bách'}</span>
+                        <span>Chức vụ: {report.representatives?.contractor?.officerPosition || 'Kỹ thuật hiện trường'}</span>
+                      </div>
                     </div>
                   </div>
 
@@ -565,20 +589,38 @@ export default function CompletionReportDetailModal({
                   <div className="screen-only" style={{ paddingLeft: '14px', marginTop: '4px' }}>
                     <div><strong>a) Đại diện Chủ đầu tư – Ban QLDA:</strong> {report.representatives?.investor?.company}</div>
                     <div style={{ paddingLeft: '16px' }}>
-                      <div>- Ông(bà): {report.representatives?.investor?.leadName} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.investor?.leadPosition}</div>
-                      <div>- Ông(bà): {report.representatives?.investor?.officerName || 'Nguyễn Thành Trung'} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.investor?.officerPosition || 'Cán bộ Ban QLDA'}</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông(bà): {report.representatives?.investor?.leadName}</span>
+                        <span>Chức vụ: {report.representatives?.investor?.leadPosition}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông(bà): {report.representatives?.investor?.officerName || 'Nguyễn Thành Trung'}</span>
+                        <span>Chức vụ: {report.representatives?.investor?.officerPosition || 'Cán bộ Ban QLDA'}</span>
+                      </div>
                     </div>
 
                     <div style={{ marginTop: '4px' }}><strong>b) Đại diện Tư vấn giám sát:</strong> {report.representatives?.supervisor?.company}</div>
                     <div style={{ paddingLeft: '16px' }}>
-                      <div>- Ông(bà): {report.representatives?.supervisor?.leadName} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.supervisor?.leadPosition}</div>
-                      <div>- Ông(bà): {report.representatives?.supervisor?.officerName || 'Đỗ Văn Trường'} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.supervisor?.officerPosition || 'Cán bộ TVGS'}</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông(bà): {report.representatives?.supervisor?.leadName}</span>
+                        <span>Chức vụ: {report.representatives?.supervisor?.leadPosition}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông(bà): {report.representatives?.supervisor?.officerName || 'Đỗ Văn Trường'}</span>
+                        <span>Chức vụ: {report.representatives?.supervisor?.officerPosition || 'Cán bộ TVGS'}</span>
+                      </div>
                     </div>
 
                     <div style={{ marginTop: '4px' }}><strong>c) Đại diện Đơn vị thi công:</strong> {report.representatives?.contractor?.company}</div>
                     <div style={{ paddingLeft: '16px' }}>
-                      <div>- Ông(bà): {contLeadName} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {contLeadPosition}</div>
-                      <div>- Ông(bà): {report.representatives?.contractor?.officerName || 'Nguyễn Hoàng Bách'} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.contractor?.officerPosition || 'Kỹ thuật hiện trường'}</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông(bà): {contLeadName}</span>
+                        <span>Chức vụ: {contLeadPosition}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông(bà): {report.representatives?.contractor?.officerName || 'Nguyễn Hoàng Bách'}</span>
+                        <span>Chức vụ: {report.representatives?.contractor?.officerPosition || 'Kỹ thuật hiện trường'}</span>
+                      </div>
                     </div>
                   </div>
 
@@ -801,19 +843,34 @@ export default function CompletionReportDetailModal({
                   <div className="screen-only" style={{ paddingLeft: '14px', marginTop: '4px' }}>
                     <div><strong>a) Đại diện Chủ đầu tư – Ban QLDA:</strong> {report.representatives?.investor?.company}</div>
                     <div style={{ paddingLeft: '16px' }}>
-                      <div>- Ông(bà): {report.representatives?.investor?.leadName} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.investor?.leadPosition}</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông(bà): {report.representatives?.investor?.leadName}</span>
+                        <span>Chức vụ: {report.representatives?.investor?.leadPosition}</span>
+                      </div>
                     </div>
 
                     <div style={{ marginTop: '4px' }}><strong>b) Đại diện Tư vấn giám sát:</strong> {report.representatives?.supervisor?.company}</div>
                     <div style={{ paddingLeft: '16px' }}>
-                      <div>- Ông(bà): {report.representatives?.supervisor?.leadName} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.supervisor?.leadPosition}</div>
-                      <div>- Ông(bà): {report.representatives?.supervisor?.officerName || 'Đỗ Văn Trường'} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.supervisor?.officerPosition || 'Cán bộ TVGS'}</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông(bà): {report.representatives?.supervisor?.leadName}</span>
+                        <span>Chức vụ: {report.representatives?.supervisor?.leadPosition}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông(bà): {report.representatives?.supervisor?.officerName || 'Đỗ Văn Trường'}</span>
+                        <span>Chức vụ: {report.representatives?.supervisor?.officerPosition || 'Cán bộ TVGS'}</span>
+                      </div>
                     </div>
 
                     <div style={{ marginTop: '4px' }}><strong>c) Đại diện Đơn vị thi công:</strong> {report.representatives?.contractor?.company}</div>
                     <div style={{ paddingLeft: '16px' }}>
-                      <div>- Ông(bà): {contLeadName} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {contLeadPosition}</div>
-                      <div>- Ông(bà): {report.representatives?.contractor?.officerName || 'Nguyễn Hoàng Bách'} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {report.representatives?.contractor?.officerPosition || 'Kỹ thuật hiện trường'}</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông(bà): {contLeadName}</span>
+                        <span>Chức vụ: {contLeadPosition}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông(bà): {report.representatives?.contractor?.officerName || 'Nguyễn Hoàng Bách'}</span>
+                        <span>Chức vụ: {report.representatives?.contractor?.officerPosition || 'Kỹ thuật hiện trường'}</span>
+                      </div>
                     </div>
                   </div>
 

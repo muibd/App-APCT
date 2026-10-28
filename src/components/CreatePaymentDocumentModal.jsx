@@ -1,14 +1,14 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   X, Send, Users, Calendar, Clock, FileText, UploadCloud,
-  Camera, ImagePlus, Trash2, CheckCircle2, AlertCircle, File, Eye, ChevronRight, CreditCard
+  Camera, ImagePlus, Trash2, CheckCircle2, AlertCircle, File, Eye, ChevronRight, CreditCard, FileArchive, Download
 } from 'lucide-react';
 import { compressImageFile } from '../utils/storageHelper';
-import { 
-  DEFAULT_PAYMENT_SLA_CONFIGS, 
+import {
+  DEFAULT_PAYMENT_SLA_CONFIGS,
   calculateDueDate,
   getPaymentLeadSupervisor,
-  getPaymentLeadInvestor 
+  getPaymentLeadInvestor
 } from '../data/paymentDocumentConstants';
 import { uploadPdfDocument } from '../services/storageService';
 import { openPdfInNewTab } from '../utils/pdfHelper';
@@ -39,7 +39,7 @@ export default function CreatePaymentDocumentModal({
   const [title, setTitle] = useState('');
   const [selectedTypeCode, setSelectedTypeCode] = useState(typeOptions[0]?.typeCode || 'TAM_UNG');
   const [notes, setNotes] = useState('');
-  
+
   // Tự động lấy ngày giờ hiện tại
   const [createdAtState] = useState(() => new Date());
   const formattedDateTime = useMemo(() => {
@@ -69,40 +69,61 @@ export default function CreatePaymentDocumentModal({
     return typeOptions.find(t => t.typeCode === selectedTypeCode) || typeOptions[0];
   }, [typeOptions, selectedTypeCode]);
 
-  // Xử lý upload file PDF
+  const formatFileSize = (bytes) => {
+    if (!bytes || isNaN(bytes)) return '0 B';
+    const num = Number(bytes);
+    if (num < 1024) return num + ' B';
+    if (num < 1024 * 1024) return (num / 1024).toFixed(1) + ' KB';
+    if (num < 1024 * 1024 * 1024) return (num / (1024 * 1024)).toFixed(2) + ' MB';
+    return (num / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+  };
+
+  // Xử lý upload file đính kèm (hỗ trợ PDF, tệp nén ZIP, RAR, 7Z... không giới hạn dung lượng)
   const handlePdfUpload = (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
 
     for (const file of files) {
-      if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-        if (showAlert) showAlert({ type: 'warning', title: 'Định dạng file', message: `Tệp "${file.name}" không phải định dạng PDF!` });
+      const ext = (file.name || '').split('.').pop()?.toLowerCase();
+      const allowedExts = ['pdf', 'zip', 'rar', '7z', 'tar', 'gz', 'doc', 'docx', 'xls', 'xlsx'];
+      if (!allowedExts.includes(ext)) {
+        if (showAlert) showAlert({
+          type: 'warning',
+          title: 'Định dạng tệp không hỗ trợ',
+          message: `Tệp "${file.name}" không hợp lệ. Vui lòng chọn tệp PDF hoặc tệp nén ZIP, RAR, 7Z!`
+        });
         continue;
       }
 
-      if (file.size > 25 * 1024 * 1024) {
-        if (showAlert) showAlert({ type: 'warning', title: 'Kích thước tệp', message: `Tệp "${file.name}" không được vượt quá 25MB!` });
-        continue;
-      }
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        let dataUrl = reader.result;
-        if (typeof dataUrl === 'string' && dataUrl.startsWith('data:') && !dataUrl.startsWith('data:application/pdf')) {
-          dataUrl = dataUrl.replace(/^data:[^;]*/, 'data:application/pdf');
-        }
+      // Đối với tệp nhỏ (<= 8MB), đọc dataUrl dự phòng
+      if (file.size <= 8 * 1024 * 1024) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          setPdfFiles(prev => [
+            ...prev,
+            {
+              id: `file_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+              name: file.name,
+              size: formatFileSize(file.size),
+              dataUrl: reader.result,
+              rawFile: file
+            }
+          ]);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        // Tệp lớn: không nạp base64 vào RAM/localStorage, upload thẳng Firebase Cloud Storage
         setPdfFiles(prev => [
           ...prev,
           {
-            id: `pdf_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            id: `file_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
             name: file.name,
-            size: (file.size / (1024 * 1024)).toFixed(2) + ' MB',
-            dataUrl,
+            size: formatFileSize(file.size),
+            dataUrl: null,
             rawFile: file
           }
         ]);
-      };
-      reader.readAsDataURL(file);
+      }
     }
     e.target.value = '';
   };
@@ -202,7 +223,7 @@ export default function CreatePaymentDocumentModal({
         createdByName: currentUser?.fullName || 'Đơn Vị Thi Công',
         createdByRole: currentUser?.role || 'CONTRACTOR',
         contractorCompany: currentUser?.company || 'Công ty TNHH Gia Huy Vĩnh Phúc',
-        
+
         // Mặc định gửi cho 2 Trưởng ban, mỗi người có 1 ngày để chọn cán bộ và ấn định thời hạn
         assignedTvgs: {
           assignee: null,
@@ -364,10 +385,10 @@ export default function CreatePaymentDocumentModal({
           gap: '20px'
         }}>
           <form id="create-payment-doc-form" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            
+
             {/* THÔNG TIN CHUNG: TÊN HỒ SƠ & THỜI ĐIỂM */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
-              
+
               {/* TÊN HỒ SƠ */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#1e293b', marginBottom: '6px' }}>
@@ -445,8 +466,8 @@ export default function CreatePaymentDocumentModal({
 
             {/* TỆP ĐÍNH KÈM: PDF & HÌNH ẢNH */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
-              
-              {/* 1. TỆP PDF HỒ SƠ (CHỌN NHIỀU FILE) */}
+
+              {/* 1. TỆP ĐÍNH KÈM: PDF, ZIP, RAR (CHỌN NHIỀU FILE) */}
               <div style={{
                 background: '#f8fafc',
                 border: '1.5px dashed #cbd5e1',
@@ -459,7 +480,7 @@ export default function CreatePaymentDocumentModal({
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ fontWeight: 700, fontSize: '0.86rem', color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <FileText size={16} color="#dc2626" />
-                    <span>Tệp PDF Hồ Sơ ({pdfFiles.length})</span>
+                    <span>Tệp Đính Kèm ({pdfFiles.length})</span>
                   </div>
                   <button
                     type="button"
@@ -478,12 +499,12 @@ export default function CreatePaymentDocumentModal({
                       gap: '4px'
                     }}
                   >
-                    <UploadCloud size={14} /> + Thêm PDF
+                    <UploadCloud size={14} /> Thêm tệp (PDF, ZIP, RAR)
                   </button>
                   <input
                     ref={pdfInputRef}
                     type="file"
-                    accept="application/pdf,.pdf"
+                    accept=".pdf,.zip,.rar,.7z,.tar,.gz,.doc,.docx,.xls,.xlsx,application/pdf,application/zip,application/x-zip-compressed,application/x-rar-compressed,application/vnd.rar"
                     multiple
                     style={{ display: 'none' }}
                     onChange={handlePdfUpload}
@@ -504,54 +525,49 @@ export default function CreatePaymentDocumentModal({
                   >
                     <UploadCloud size={24} color="#0284c7" style={{ margin: '0 auto 6px auto' }} />
                     <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155' }}>
-                      Tải lên file PDF (có thể chọn nhiều tệp)
+                      Tải lên tệp PDF, tệp nén ZIP, RAR (nhiều tệp)
                     </div>
-                    <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Dung lượng tối đa 25MB</div>
+                    <div style={{ fontSize: '0.72rem', color: '#16a34a', fontWeight: 600 }}>Không giới hạn dung lượng</div>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto' }}>
-                    {pdfFiles.map((pdf, idx) => (
-                      <div
-                        key={pdf.id || idx}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          background: '#ffffff',
-                          padding: '8px 12px',
-                          borderRadius: '6px',
-                          border: '1px solid #e2e8f0'
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
-                          <FileText size={16} color="#dc2626" style={{ flexShrink: 0 }} />
-                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                              {pdf.name}
+                    {pdfFiles.map((pdf, idx) => {
+                      const isArchive = pdf.name?.toLowerCase().endsWith('.zip') || pdf.name?.toLowerCase().endsWith('.rar') || pdf.name?.toLowerCase().endsWith('.7z');
+                      return (
+                        <div
+                          key={pdf.id || idx}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            background: isArchive ? '#eff6ff' : '#ffffff',
+                            padding: '8px 12px',
+                            borderRadius: '6px',
+                            border: `1px solid ${isArchive ? '#bfdbfe' : '#e2e8f0'}`
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                            {isArchive ? <FileArchive size={16} color="#2563eb" style={{ flexShrink: 0 }} /> : <FileText size={16} color="#dc2626" style={{ flexShrink: 0 }} />}
+                            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <div style={{ fontSize: '0.82rem', fontWeight: 600, color: isArchive ? '#1e40af' : '#1e293b', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                                {pdf.name}
+                              </div>
+                              <div style={{ fontSize: '0.7rem', color: isArchive ? '#3b82f6' : '#64748b' }}>{pdf.size}</div>
                             </div>
-                            <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{pdf.size}</div>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleDeletePdf(pdf.id)}
+                              title="Xóa tệp"
+                              style={{ border: 'none', background: 'transparent', color: '#ef4444', cursor: 'pointer', padding: '4px' }}
+                            >
+                              <Trash2 size={15} />
+                            </button>
                           </div>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <button
-                            type="button"
-                            onClick={() => openPdfInNewTab(pdf.dataUrl, pdf.name)}
-                            title="Xem trước PDF"
-                            style={{ border: 'none', background: 'transparent', color: '#0284c7', cursor: 'pointer', padding: '4px' }}
-                          >
-                            <Eye size={15} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeletePdf(pdf.id)}
-                            title="Xóa tệp PDF"
-                            style={{ border: 'none', background: 'transparent', color: '#ef4444', cursor: 'pointer', padding: '4px' }}
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -666,68 +682,7 @@ export default function CreatePaymentDocumentModal({
 
             </div>
 
-            {/* QUY TRÌNH TIẾP NHẬN & PHÂN CÔNG TỰ ĐỘNG (1 NGÀY ĐỂ 2 TRƯỞNG BAN CHỌN CÁN BỘ) */}
-            <div style={{
-              background: '#f0fdf4',
-              border: '1.5px solid #bbf7d0',
-              borderRadius: '10px',
-              padding: '16px'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#166534', fontWeight: 700, fontSize: '0.9rem', marginBottom: '8px' }}>
-                <Users size={18} />
-                <span>Quy trình tiếp nhận & phân công tự động (Hạn xử lý: 1 ngày)</span>
-              </div>
-              <p style={{ margin: '0 0 12px 0', fontSize: '0.82rem', color: '#15803d', lineHeight: 1.4 }}>
-                Hồ sơ thanh toán sau khi tạo sẽ được <strong>gửi mặc định</strong> đến 2 vị trí Trưởng ban để xem xét và giao nhiệm vụ cho cán bộ chuyên môn trực tiếp thụ lý:
-              </p>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px' }}>
-                
-                {/* TVGS TRƯỞNG */}
-                <div style={{ background: '#ffffff', border: '1px solid #dcfce7', borderRadius: '8px', padding: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', background: '#dcfce7', padding: '2px 8px', borderRadius: '4px' }}>
-                      TƯ VẤN GIÁM SÁT
-                    </span>
-                    <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 600 }}>Hạn giao: 1 ngày</span>
-                  </div>
-                  <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.88rem' }}>
-                    {leadSupervisor.fullName}
-                  </div>
-                  <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
-                    {leadSupervisor.position} • {leadSupervisor.company}
-                  </div>
-                  <div style={{ marginTop: '6px', fontSize: '0.72rem', color: '#0284c7', fontStyle: 'italic' }}>
-                    👉 Sẽ chọn kỹ sư TVGS và ấn định thời hạn phản hồi
-                  </div>
-                </div>
-
-                {/* TRƯỞNG BAN QLDA */}
-                <div style={{ background: '#ffffff', border: '1px solid #ffedd5', borderRadius: '8px', padding: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#c2410c', background: '#ffedd5', padding: '2px 8px', borderRadius: '4px' }}>
-                      BAN QUẢN LÝ DỰ ÁN
-                    </span>
-                    <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 600 }}>Hạn giao: 1 ngày</span>
-                  </div>
-                  <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.88rem' }}>
-                    {leadInvestor.fullName}
-                  </div>
-                  <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
-                    {leadInvestor.position} • {leadInvestor.company}
-                  </div>
-                  <div style={{ marginTop: '6px', fontSize: '0.72rem', color: '#c2410c', fontStyle: 'italic' }}>
-                    👉 Sẽ chọn cán bộ QLDA và ấn định thời hạn phê duyệt
-                  </div>
-                </div>
-
-              </div>
-
-              <div style={{ marginTop: '10px', fontSize: '0.76rem', color: '#b45309', background: '#fffbeb', border: '1px solid #fef3c7', padding: '8px 12px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Clock size={14} />
-                <span>Nếu sau 1 ngày (24h) chưa chọn cán bộ, hệ thống sẽ tự động gửi thông báo chậm đến Chủ Đầu Tư và Trưởng ban chưa giao việc.</span>
-              </div>
-            </div>
 
             {/* NỘI DUNG / GHI CHÚ KỸ THUẬT */}
             <div>

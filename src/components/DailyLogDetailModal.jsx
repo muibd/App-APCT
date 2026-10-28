@@ -393,7 +393,7 @@ export default function DailyLogDetailModal({
               <div><strong>1. Tên dự án:</strong> {log.projectName || 'Đầu tư xây dựng nhà ở Phường Thường Thạnh- An Phú Eco City'}</div>
               <div><strong>2. Tên công trình:</strong> {log.buildingName || 'Chung cư nhà ở xã hội 2'}</div>
               <div><strong>3. Tên hạng mục, gói thầu:</strong> {log.itemName || 'Thi công phần kết cấu – Tòa A và Tòa B (Gói thầu số 02)'}</div>
-              <div><strong>4. Địa điểm xây dựng:</strong> {log.location || 'Phường Thường Thạnh - Quận Cái Răng – TP. Cần Thơ.'}</div>
+              <div><strong>4. Địa điểm xây dựng:</strong> {log.location && !log.location.includes('Thường Thạnh') && !log.location.includes('Quận Cái Răng') ? log.location : 'Phường Cái Răng - TP. Cần Thơ'}</div>
               <div><strong>5. Chủ đầu tư – Ban QLDA:</strong> {log.investorName || 'Công ty TNHH An Phú Cần Thơ'}</div>
               <div>
                 <strong>6. Đơn vị giám sát thi công:</strong> {log.supervisorName || 'Công ty CP Tư vấn xây dựng và Thương mại Gelicon'}

@@ -529,6 +529,13 @@ export default function InspectionReportModal({
     return 'Công ty TNHH Gia Huy Vĩnh Phúc';
   };
 
+  const formatReportLocation = (loc) => {
+    if (!loc || loc.includes('Thường Thạnh') || loc.includes('Quận Cái Răng')) {
+      return 'Phường Cái Răng - TP. Cần Thơ';
+    }
+    return loc;
+  };
+
   const effectiveRequestContCompany = cleanContractorCompany(
     relatedRequest?.contractorCompany || reportState.contractorCompany || reportState.attendees?.contractor?.company,
     relatedRequest?.createdByName || reportState.attendees?.contractor?.person,
@@ -543,7 +550,7 @@ export default function InspectionReportModal({
     buildingName: relatedRequest?.buildingName || reportState.projectInfo?.buildingName || 'Chung cư nhà ở xã hội 2',
     itemName: relatedRequest?.itemName || reportState.projectInfo?.itemName || reportState.projectInfo?.packageName || 'Thi công hệ thống PCCC trong và ngoài nhà',
     packageName: relatedRequest?.packageName || reportState.projectInfo?.packageName,
-    location: relatedRequest?.location || reportState.projectInfo?.location || reportState.location || 'Phường Thường Thạnh - Quận Cái Răng – Thành phố Cần Thơ',
+    location: formatReportLocation(relatedRequest?.location || reportState.projectInfo?.location || reportState.location),
     contractorCompany: effectiveRequestContCompany,
     taskContent: relatedRequest?.taskContent || reportState.inspectionObject || 'Nghiệm thu công việc xây dựng',
     inspectionType: (relatedRequest?.inspectionType || reportState.inspectionType) === 'MATERIAL' ? 'MATERIAL' : 'WORK',
@@ -1950,7 +1957,7 @@ export default function InspectionReportModal({
                     <tr>
                       <td style={{ width: '215px', verticalAlign: 'top', fontWeight: 'bold', padding: '4px 0' }}>Địa điểm xây dựng</td>
                       <td style={{ width: '16px', verticalAlign: 'top', fontWeight: 'bold', padding: '4px 0' }}>:</td>
-                      <td style={{ verticalAlign: 'top', padding: '4px 0' }}>{effectiveRequest.location || 'Phường Thường Thạnh - Quận Cái Răng – Thành phố Cần Thơ'}</td>
+                      <td style={{ verticalAlign: 'top', padding: '4px 0' }}>{formatReportLocation(effectiveRequest.location)}</td>
                     </tr>
                     <tr>
                       <td style={{ width: '215px', verticalAlign: 'top', fontWeight: 'bold', padding: '4px 0' }}>Đơn vị yêu cầu nghiệm thu</td>
@@ -2358,7 +2365,7 @@ export default function InspectionReportModal({
                 <div><strong>Dự án:</strong> {effectiveRequest.projectName || reportState.projectInfo?.projectName || 'Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City'}</div>
                 <div><strong>Công trình:</strong> {effectiveRequest.buildingName || reportState.projectInfo?.buildingName || 'Chung cư nhà ở xã hội 2'}</div>
                 <div><strong>Hạng mục:</strong> {effectiveRequest.itemName || reportState.projectInfo?.itemName || 'Thi công hệ thống PCCC trong và ngoài nhà'}</div>
-                <div><strong>Địa điểm xây dựng:</strong> {effectiveRequest.location || reportState.projectInfo?.location || 'Phường Thường Thạnh - Quận Cái Răng – Thành phố Cần Thơ'}</div>
+                <div><strong>Địa điểm xây dựng:</strong> {formatReportLocation(effectiveRequest.location || reportState.projectInfo?.location)}</div>
               </div>
 
               {/* 1. Đối tượng nghiệm thu */}
@@ -2386,21 +2393,29 @@ export default function InspectionReportModal({
                 </div>
               </div>
 
-              {/* 2. Thành phần trực tiếp nghiệm thu (Động theo cán bộ được chọn khi lập phiếu) */}
+              {/* 2. Thành phần trực tiếp nghiệm thu (Căn thẳng hàng chức vụ chuẩn theo yêu cầu) */}
               <div style={{ marginBottom: '14px' }}>
                 <strong>2. Thành phần trực tiếp nghiệm thu:</strong>
                 
-                {/* HIỂN THỊ TRÊN MÀN HÌNH APP */}
-                <div className="screen-only" style={{ paddingLeft: '16px', marginTop: '4px' }}>
+                <div style={{ paddingLeft: '16px', marginTop: '4px' }}>
                   {/* a) Đại diện Chủ đầu tư */}
                   <div><strong>a) Đại diện Chủ đầu tư:</strong> {invCompany}</div>
                   <div style={{ paddingLeft: '16px' }}>
                     {invOfficerName.trim().toLowerCase() === invLeadName.trim().toLowerCase() || assignedInv?.role === 'LEAD_INVESTOR' ? (
-                      <div>- Ông: <strong>{invLeadName}</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {invLeadPosition}</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông: <strong>{invLeadName}</strong></span>
+                        <span>Chức vụ: {invLeadPosition}</span>
+                      </div>
                     ) : (
                       <>
-                        <div>- Ông: <strong>{invLeadName}</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {invLeadPosition}</div>
-                        <div>- Ông: <strong>{invOfficerName}</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {invOfficerPosition}</div>
+                        <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: <strong>{invLeadName}</strong></span>
+                          <span>Chức vụ: {invLeadPosition}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: <strong>{invOfficerName}</strong></span>
+                          <span>Chức vụ: {invOfficerPosition}</span>
+                        </div>
                       </>
                     )}
                   </div>
@@ -2409,121 +2424,46 @@ export default function InspectionReportModal({
                   <div style={{ marginTop: '4px' }}><strong>b) Tư vấn giám sát:</strong> {supCompany}</div>
                   <div style={{ paddingLeft: '16px' }}>
                     {supOfficerName.trim().toLowerCase() === supLeadName.trim().toLowerCase() || assignedSup?.role === 'LEAD_SUPERVISOR' ? (
-                      <div>- Ông: <strong>{supLeadName}</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {supLeadPosition}</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông: <strong>{supLeadName}</strong></span>
+                        <span>Chức vụ: {supLeadPosition}</span>
+                      </div>
                     ) : (
                       <>
-                        <div>- Ông: <strong>{supLeadName}</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {supLeadPosition}</div>
-                        <div>- Ông: <strong>{supOfficerName}</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {supOfficerPosition}</div>
+                        <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: <strong>{supLeadName}</strong></span>
+                          <span>Chức vụ: {supLeadPosition}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: <strong>{supOfficerName}</strong></span>
+                          <span>Chức vụ: {supOfficerPosition}</span>
+                        </div>
                       </>
                     )}
                   </div>
 
-                  {/* c) Đơn vị thi công (Cố định chuẩn xác theo phiếu yêu cầu, không được sửa thủ công) */}
+                  {/* c) Đơn vị thi công */}
                   <div style={{ marginTop: '4px' }}>
                     <strong>c) Đơn vị thi công:</strong> <span>{contCompany}</span>
                   </div>
                   <div style={{ paddingLeft: '16px' }}>
                     {contOfficerName.trim().toLowerCase() === contLeadName.trim().toLowerCase() ? (
-                      <div>- Ông: <strong>{contLeadName}</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {contLeadPosition}</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông: <strong>{contLeadName}</strong></span>
+                        <span>Chức vụ: {contLeadPosition}</span>
+                      </div>
                     ) : (
                       <>
-                        <div>- Ông: <strong>{contLeadName}</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {contLeadPosition}</div>
-                        <div>- Ông: <strong>{contOfficerName}</strong> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: {contOfficerPosition}</div>
+                        <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: <strong>{contLeadName}</strong></span>
+                          <span>Chức vụ: {contLeadPosition}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: <strong>{contOfficerName}</strong></span>
+                          <span>Chức vụ: {contOfficerPosition}</span>
+                        </div>
                       </>
                     )}
-                  </div>
-                </div>
-
-                {/* KHI IN RA GIẤY: DẠNG DẤU CHẤM .... HẾT THEO YÊU CẦU */}
-                <div className="print-only" style={{ paddingLeft: '16px', marginTop: '4px' }}>
-                  {/* a) Đại diện Chủ đầu tư */}
-                  <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden' }}>
-                    <strong style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>a) Đại diện Chủ đầu tư:</strong>
-                    <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
-                      ................................................................................................................................................................
-                    </span>
-                  </div>
-                  <div style={{ paddingLeft: '16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden' }}>
-                      <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông:</span>
-                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
-                        ................................................................................................................................
-                      </span>
-                      <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
-                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
-                        ................................................................................................................................
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '2px' }}>
-                      <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông:</span>
-                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
-                        ................................................................................................................................
-                      </span>
-                      <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
-                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
-                        ................................................................................................................................
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* b) Tư vấn giám sát */}
-                  <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '4px' }}>
-                    <strong style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>b) Tư vấn giám sát:</strong>
-                    <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
-                      ................................................................................................................................................................
-                    </span>
-                  </div>
-                  <div style={{ paddingLeft: '16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden' }}>
-                      <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông:</span>
-                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
-                        ................................................................................................................................
-                      </span>
-                      <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
-                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
-                        ................................................................................................................................
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '2px' }}>
-                      <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông:</span>
-                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
-                        ................................................................................................................................
-                      </span>
-                      <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
-                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
-                        ................................................................................................................................
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* c) Đơn vị thi công */}
-                  <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '4px' }}>
-                    <strong style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>c) Đơn vị thi công:</strong>
-                    <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
-                      ................................................................................................................................................................
-                    </span>
-                  </div>
-                  <div style={{ paddingLeft: '16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden' }}>
-                      <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông:</span>
-                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
-                        ................................................................................................................................
-                      </span>
-                      <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
-                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
-                        ................................................................................................................................
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'baseline', width: '100%', overflow: 'hidden', marginTop: '2px' }}>
-                      <span style={{ whiteSpace: 'nowrap', marginRight: '4px' }}>- Ông:</span>
-                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
-                        ................................................................................................................................
-                      </span>
-                      <span style={{ whiteSpace: 'nowrap', margin: '0 6px 0 16px' }}>Chức vụ:</span>
-                      <span style={{ letterSpacing: '2px', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
-                        ................................................................................................................................
-                      </span>
-                    </div>
                   </div>
                 </div>
               </div>

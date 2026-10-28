@@ -62,12 +62,29 @@ export const uploadEvidenceImage = async (file, metadata = {}) => {
 };
 
 /**
- * Tải tệp PDF Hồ sơ Shop lên Google Cloud Firebase Storage
- * @param {File|Blob} file - File PDF từ thẻ input
- * @param {string} docCode - Mã hồ sơ (VD: HSS-123456)
+ * Xác định ContentType phù hợp cho các loại tệp (PDF, nén ZIP, RAR, 7Z, văn bản)
+ */
+export const getFileContentType = (fileName = '') => {
+  const ext = fileName.split('.').pop()?.toLowerCase();
+  if (ext === 'pdf') return 'application/pdf';
+  if (ext === 'zip') return 'application/zip';
+  if (ext === 'rar') return 'application/x-rar-compressed';
+  if (ext === '7z') return 'application/x-7z-compressed';
+  if (ext === 'doc') return 'application/msword';
+  if (ext === 'docx') return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  if (ext === 'xls') return 'application/vnd.ms-excel';
+  if (ext === 'xlsx') return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  return 'application/octet-stream';
+};
+
+/**
+ * Tải tệp hồ sơ (PDF, nén ZIP, RAR, 7Z...) lên Google Cloud Firebase Storage
+ * Không giới hạn dung lượng tệp
+ * @param {File|Blob} file - File tải lên từ thẻ input
+ * @param {string} docCode - Mã hồ sơ (VD: HSS-123456 hoặc HSTT-123456)
  * @returns {Promise<string|null>} - Download URL trực tiếp trên Firebase Cloud Storage
  */
-export const uploadPdfDocument = async (file, docCode = 'shop_doc') => {
+export const uploadPdfDocument = async (file, docCode = 'doc_attachment') => {
   if (!isFirebaseConfigured || !storage) {
     console.log('[Firebase Storage Demo] Chưa bật Firebase Storage, lưu fallback dataUrl');
     return null;
@@ -75,30 +92,31 @@ export const uploadPdfDocument = async (file, docCode = 'shop_doc') => {
 
   try {
     const timestamp = Date.now();
-    const cleanFileName = file.name ? file.name.replace(/[^a-zA-Z0-9._-]/g, '_') : `doc_${timestamp}.pdf`;
-    const folderPath = `shop_documents/${docCode}/${timestamp}_${cleanFileName}`;
+    const cleanFileName = file.name ? file.name.replace(/[^a-zA-Z0-9._-]/g, '_') : `file_${timestamp}`;
+    const folderPath = `attachments/${docCode}/${timestamp}_${cleanFileName}`;
     const storageRef = ref(storage, folderPath);
 
+    const contentType = file.type || getFileContentType(file.name);
     const customMetadata = {
-      contentType: 'application/pdf',
+      contentType,
       customMetadata: {
-        originalName: file.name || 'document.pdf',
+        originalName: file.name || 'document',
         docCode,
         uploadedAt: new Date().toISOString()
       }
     };
 
-    // Thêm timeout 1.2 giây để tránh làm chậm trải nghiệm người dùng nếu Cloud Storage chưa mở quyền
+    // Cho phép upload tệp lớn (ZIP, RAR, PDF) với timeout dài (180 giây)
     const uploadPromise = uploadBytes(storageRef, file, customMetadata);
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Firebase Storage timeout (1.2s) - Lưu trữ nội bộ an toàn')), 1200)
+      setTimeout(() => reject(new Error('Thời gian tải tệp quá 180s - Vui lòng kiểm tra lại đường truyền')), 180000)
     );
     const snapshot = await Promise.race([uploadPromise, timeoutPromise]);
     const downloadUrl = await getDownloadURL(snapshot.ref);
-    console.log('[Firebase Storage] Đã tải tài liệu PDF lên Cloud Storage:', downloadUrl);
+    console.log('[Firebase Storage] Đã tải tệp lên Cloud Storage thành công:', downloadUrl);
     return downloadUrl;
   } catch (error) {
-    console.warn('[Firebase Storage PDF] Sử dụng lưu trữ PDF nội bộ (offline resilient):', error.message || error);
+    console.warn('[Firebase Storage Attachment Error]:', error.message || error);
     return null;
   }
 };

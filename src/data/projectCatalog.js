@@ -15,7 +15,7 @@ export const DEFAULT_PROJECTS = [
     code: "2203",
     name: "Chung cư nhà ở xã hội 2",
     projectName: "Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City",
-    location: "Phường Thường Thạnh - Quận Cái Răng - Thành phố Cần Thơ",
+    location: "Phường Cái Răng - TP. Cần Thơ",
     investor: "Công ty TNHH An Phú Cần Thơ",
     supervisor: "Công ty CP Tư vấn Xây dựng và Thương mại GELICON",
     contractors: [
@@ -181,7 +181,7 @@ export const DEFAULT_PROJECTS = [
     code: "2204",
     name: "Chung cư nhà ở cao tầng",
     projectName: "Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City",
-    location: "Phường Thường Thạnh - Quận Cái Răng - Thành phố Cần Thơ",
+    location: "Phường Cái Răng - TP. Cần Thơ",
     investor: "Công ty TNHH An Phú Cần Thơ",
     supervisor: "Công ty CP Tư vấn Xây dựng và Thương mại GELICON",
     contractors: [

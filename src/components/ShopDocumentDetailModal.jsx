@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
-  X, CheckCircle2, XCircle, AlertCircle, Clock, FileText,
+  X, CheckCircle2, XCircle, AlertCircle, Clock, FileText, FileArchive,
   Download, Eye, User, Building, Calendar, Layers, Check, MessageSquare, Trash2,
   UserCheck, Send, RotateCcw, UploadCloud, Camera, ImagePlus, AlertTriangle
 } from 'lucide-react';
@@ -81,6 +81,51 @@ export default function ShopDocumentDetailModal({
     }
   }, [shopDoc]);
 
+  const isArchiveFile = (fileName = '') => {
+    const name = (fileName || '').toLowerCase();
+    return name.endsWith('.zip') || name.endsWith('.rar') || name.endsWith('.7z') || name.endsWith('.tar') || name.endsWith('.gz');
+  };
+
+  const handleDownloadFile = async (customUrl, customName) => {
+    const targetUrl = customUrl || editPdfFiles[0]?.dataUrl || shopDoc?.pdfFile?.dataUrl;
+    const targetName = customName || editPdfFiles[0]?.name || shopDoc?.pdfFile?.name || 'tep_dinh_kem';
+    if (!targetUrl) {
+      if (showAlert) showAlert({ type: 'warning', title: 'Thông báo', message: 'Hồ sơ không có tệp đính kèm để tải về.' });
+      return;
+    }
+    try {
+      if (targetUrl.startsWith('http://') || targetUrl.startsWith('https://')) {
+        const response = await fetch(targetUrl);
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = targetName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => window.URL.revokeObjectURL(blobUrl), 2000);
+      } else {
+        const a = document.createElement('a');
+        a.href = targetUrl;
+        a.download = targetName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    } catch (err) {
+      console.warn('Lỗi tải file bằng fetch blob, tải trực tiếp:', err);
+      const a = document.createElement('a');
+      a.href = targetUrl;
+      a.download = targetName;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+  };
+
   const handleOpenPdf = async (customUrl, customName) => {
     const targetUrl = customUrl || editPdfFiles[0]?.dataUrl || shopDoc?.pdfFile?.dataUrl;
     const targetName = customName || editPdfFiles[0]?.name || shopDoc?.pdfFile?.name || 'Ho_so_shop.pdf';
@@ -119,32 +164,90 @@ export default function ShopDocumentDetailModal({
   const investorAssignee = shopDoc.assignedInvestor?.assignee || (shopDoc.assignedInvestor?.uid ? shopDoc.assignedInvestor : null);
   const isInvestorAssigned = Boolean(investorAssignee?.uid);
 
-  // Quyền phân công
+  // Kiểm tra thời hạn 1 ngày (24 giờ kể từ khi nộp hồ sơ) để được phép sửa ngày, đổi người
+  const assignmentDeadlineTime = useMemo(() => {
+    if (shopDoc.assignmentDeadline) {
+      return new Date(shopDoc.assignmentDeadline).getTime();
+    }
+    const baseTime = shopDoc.submittedAt || shopDoc.createdAt;
+    if (baseTime) {
+      return new Date(baseTime).getTime() + 24 * 60 * 60 * 1000;
+    }
+    return Date.now() + 24 * 60 * 60 * 1000;
+  }, [shopDoc.assignmentDeadline, shopDoc.submittedAt, shopDoc.createdAt]);
+
+  const isWithin1DayAssignment = Date.now() <= assignmentDeadlineTime;
+
+  // Tính số giờ còn lại trong thời hạn 1 ngày
+  const remaining1DayHours = useMemo(() => {
+    const diffMs = assignmentDeadlineTime - Date.now();
+    if (diffMs <= 0) return 0;
+    return Math.ceil(diffMs / (60 * 60 * 1000));
+  }, [assignmentDeadlineTime]);
+
+  // Quyền phân công lần đầu
   const canAssignTvgs = (isLeadSupervisor || isSuperAdmin) && (!isTvgsAssigned || shopDoc.assignedTvgs?.status === 'WAITING_ASSIGNMENT');
   const canAssignInvestor = (isLeadInvestor || isSuperAdmin) && (!isInvestorAssigned || shopDoc.assignedInvestor?.status === 'WAITING_ASSIGNMENT');
 
-  // Danh sách cán bộ cấp dưới để giao việc
-  const subordinateSupervisors = useMemo(() => {
-    return (users || []).filter(u => {
-      if (u.status === 'INACTIVE') return false;
-      if (u.role !== 'SUPERVISOR') return false;
-      if (u.role === 'LEAD_SUPERVISOR' || Boolean(u.isLead)) return false;
-      const pos = (u.position || '').toLowerCase();
-      if (pos.includes('trưởng') || pos.includes('chỉ huy') || pos.includes('giám đốc')) return false;
-      return true;
-    });
-  }, [users]);
+  // Quyền sửa ngày, đổi người trong thời hạn 1 ngày (khi đã lỡ chọn, và hồ sơ chưa bị đóng/đạt)
+  const canReassignTvgs = (isLeadSupervisor || isSuperAdmin) && isTvgsAssigned && isWithin1DayAssignment && shopDoc.assignedTvgs?.status !== 'ACCEPTED';
+  const canReassignInvestor = (isLeadInvestor || isSuperAdmin) && isInvestorAssigned && isWithin1DayAssignment && shopDoc.assignedInvestor?.status !== 'ACCEPTED';
 
-  const subordinateInvestors = useMemo(() => {
-    return (users || []).filter(u => {
+  // Danh sách cán bộ TVGS để giao việc (cho phép chọn cả cán bộ cấp dưới VÀ bản thân 2 anh trưởng)
+  const availableSupervisors = useMemo(() => {
+    const list = (users || []).filter(u => {
       if (u.status === 'INACTIVE') return false;
-      if (u.role !== 'INVESTOR') return false;
-      if (u.role === 'LEAD_INVESTOR' || Boolean(u.isLead)) return false;
+      if (u.role === 'SUPERVISOR' || u.role === 'LEAD_SUPERVISOR') return true;
       const pos = (u.position || '').toLowerCase();
-      if (pos.includes('trưởng') || pos.includes('giám đốc') || pos.includes('chỉ huy')) return false;
-      return true;
+      if (pos.includes('giám sát') || pos.includes('tvgs') || pos.includes('gelicon')) return true;
+      return false;
     });
-  }, [users]);
+    // Bổ sung currentUser nếu là TVGS / Giám sát trưởng mà chưa có trong danh sách
+    if (currentUser && (currentUser.role === 'SUPERVISOR' || currentUser.role === 'LEAD_SUPERVISOR' || (currentUser.position || '').toLowerCase().includes('giám sát')) && !list.some(u => u.uid === currentUser.uid)) {
+      list.unshift(currentUser);
+    }
+    // Sắp xếp đưa Bản thân hoặc Trưởng đoàn lên đầu để dễ tìm kiếm
+    return list.sort((a, b) => {
+      if (a.uid === currentUser?.uid) return -1;
+      if (b.uid === currentUser?.uid) return 1;
+      const isLeadA = a.role === 'LEAD_SUPERVISOR' || Boolean(a.isLead) || (a.position || '').toLowerCase().includes('trưởng');
+      const isLeadB = b.role === 'LEAD_SUPERVISOR' || Boolean(b.isLead) || (b.position || '').toLowerCase().includes('trưởng');
+      if (isLeadA && !isLeadB) return -1;
+      if (!isLeadA && isLeadB) return 1;
+      return (a.fullName || '').localeCompare(b.fullName || '');
+    });
+  }, [users, currentUser]);
+
+  // Alias để tương thích
+  const subordinateSupervisors = availableSupervisors;
+
+  // Danh sách cán bộ Ban QLDA để giao việc (cho phép chọn cả cán bộ cấp dưới VÀ bản thân 2 anh trưởng)
+  const availableInvestors = useMemo(() => {
+    const list = (users || []).filter(u => {
+      if (u.status === 'INACTIVE') return false;
+      if (u.role === 'INVESTOR' || u.role === 'LEAD_INVESTOR') return true;
+      const pos = (u.position || '').toLowerCase();
+      if (pos.includes('quản lý dự án') || pos.includes('qlda') || pos.includes('chủ đầu tư') || pos.includes('coninco')) return true;
+      return false;
+    });
+    // Bổ sung currentUser nếu là QLDA / Trưởng ban mà chưa có trong danh sách
+    if (currentUser && (currentUser.role === 'INVESTOR' || currentUser.role === 'LEAD_INVESTOR' || (currentUser.position || '').toLowerCase().includes('quản lý dự án') || (currentUser.position || '').toLowerCase().includes('trưởng ban')) && !list.some(u => u.uid === currentUser.uid)) {
+      list.unshift(currentUser);
+    }
+    // Sắp xếp đưa Bản thân hoặc Trưởng ban lên đầu
+    return list.sort((a, b) => {
+      if (a.uid === currentUser?.uid) return -1;
+      if (b.uid === currentUser?.uid) return 1;
+      const isLeadA = a.role === 'LEAD_INVESTOR' || Boolean(a.isLead) || (a.position || '').toLowerCase().includes('trưởng');
+      const isLeadB = b.role === 'LEAD_INVESTOR' || Boolean(b.isLead) || (b.position || '').toLowerCase().includes('trưởng');
+      if (isLeadA && !isLeadB) return -1;
+      if (!isLeadA && isLeadB) return 1;
+      return (a.fullName || '').localeCompare(b.fullName || '');
+    });
+  }, [users, currentUser]);
+
+  // Alias để tương thích
+  const subordinateInvestors = availableInvestors;
 
   // Quyền thẩm định & phê duyệt
   const isAssignedTvgs = (tvgsAssignee?.uid === currentUser?.uid) || isLeadSupervisor || isSuperAdmin;
@@ -173,13 +276,13 @@ export default function ShopDocumentDetailModal({
     }
   };
 
-  // 1. Xử lý phân công cán bộ TVGS
+  // 1. Xử lý phân công / đổi người / sửa ngày TVGS
   const handleConfirmAssignTvgs = () => {
     if (!tvgsAssigneeUid) {
       if (showAlert) showAlert({ type: 'warning', title: 'Thiếu thông tin', message: 'Vui lòng chọn 1 cán bộ TVGS trực tiếp thụ lý!' });
       return;
     }
-    const assigneeUser = users.find(u => u.uid === tvgsAssigneeUid);
+    const assigneeUser = availableSupervisors.find(u => u.uid === tvgsAssigneeUid) || (users || []).find(u => u.uid === tvgsAssigneeUid);
     if (!assigneeUser) return;
 
     if (onAssign) {
@@ -190,7 +293,7 @@ export default function ShopDocumentDetailModal({
           uid: assigneeUser.uid,
           fullName: assigneeUser.fullName,
           email: assigneeUser.email || '',
-          position: assigneeUser.position || 'Cán bộ tư vấn giám sát',
+          position: assigneeUser.position || (assigneeUser.uid === currentUser?.uid ? currentUser?.position : 'Cán bộ tư vấn giám sát'),
           company: assigneeUser.company || 'Công ty CP Tư vấn Xây dựng và Thương mại GELICON'
         },
         slaDays: Number(tvgsSlaDays || 3),
@@ -200,13 +303,13 @@ export default function ShopDocumentDetailModal({
     }
   };
 
-  // 2. Xử lý phân công cán bộ Ban QLDA
+  // 2. Xử lý phân công / đổi người / sửa ngày Ban QLDA
   const handleConfirmAssignInvestor = () => {
     if (!investorAssigneeUid) {
       if (showAlert) showAlert({ type: 'warning', title: 'Thiếu thông tin', message: 'Vui lòng chọn 1 cán bộ Ban QLDA trực tiếp thụ lý!' });
       return;
     }
-    const assigneeUser = users.find(u => u.uid === investorAssigneeUid);
+    const assigneeUser = availableInvestors.find(u => u.uid === investorAssigneeUid) || (users || []).find(u => u.uid === investorAssigneeUid);
     if (!assigneeUser) return;
 
     if (onAssign) {
@@ -217,7 +320,7 @@ export default function ShopDocumentDetailModal({
           uid: assigneeUser.uid,
           fullName: assigneeUser.fullName,
           email: assigneeUser.email || '',
-          position: assigneeUser.position || 'Cán bộ ban QLDA',
+          position: assigneeUser.position || (assigneeUser.uid === currentUser?.uid ? currentUser?.position : 'Cán bộ ban QLDA'),
           company: assigneeUser.company || 'Ban Quản Lý Dự Án An Phú Eco City'
         },
         slaDays: Number(investorSlaDays || 3),
@@ -306,26 +409,56 @@ export default function ShopDocumentDetailModal({
     if (!files.length) return;
 
     for (const file of files) {
-      if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-        if (showAlert) showAlert({ type: 'warning', title: 'Định dạng file', message: `Tệp "${file.name}" không phải định dạng PDF!` });
+      const fileNameLower = file.name.toLowerCase();
+      const isAllowed = 
+        file.type === 'application/pdf' ||
+        fileNameLower.endsWith('.pdf') ||
+        fileNameLower.endsWith('.zip') ||
+        fileNameLower.endsWith('.rar') ||
+        fileNameLower.endsWith('.7z') ||
+        fileNameLower.endsWith('.tar') ||
+        fileNameLower.endsWith('.gz') ||
+        fileNameLower.endsWith('.doc') ||
+        fileNameLower.endsWith('.docx') ||
+        fileNameLower.endsWith('.xls') ||
+        fileNameLower.endsWith('.xlsx');
+
+      if (!isAllowed) {
+        if (showAlert) showAlert({
+          type: 'warning',
+          title: 'Định dạng tệp',
+          message: `Tệp "${file.name}" không hợp lệ! Vui lòng chọn tệp PDF hoặc tệp nén (ZIP, RAR, 7Z).`
+        });
         continue;
       }
-      if (file.size > 25 * 1024 * 1024) {
-        if (showAlert) showAlert({ type: 'warning', title: 'Kích thước tệp', message: `Tệp "${file.name}" không được vượt quá 25MB!` });
-        continue;
-      }
-      const reader = new FileReader();
-      reader.onload = () => {
-        let dataUrl = reader.result;
-        if (typeof dataUrl === 'string' && dataUrl.startsWith('data:') && !dataUrl.startsWith('data:application/pdf')) {
-          dataUrl = dataUrl.replace(/^data:[^;]*/, 'data:application/pdf');
-        }
+
+      const sizeMB = file.size / (1024 * 1024);
+      const formattedSize = sizeMB >= 1 ? `${sizeMB.toFixed(2)} MB` : `${(file.size / 1024).toFixed(1)} KB`;
+
+      // Nếu file lớn hơn 8MB, tránh đọc base64 gây tràn bộ nhớ trình duyệt, lưu rawFile để upload thẳng lên Cloud Storage
+      if (file.size > 8 * 1024 * 1024) {
         setEditPdfFiles(prev => [
           ...prev,
           {
-            id: `pdf_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            id: `file_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
             name: file.name,
-            size: (file.size / (1024 * 1024)).toFixed(2) + ' MB',
+            size: formattedSize,
+            dataUrl: null,
+            rawFile: file
+          }
+        ]);
+        continue;
+      }
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        let dataUrl = reader.result;
+        setEditPdfFiles(prev => [
+          ...prev,
+          {
+            id: `file_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            name: file.name,
+            size: formattedSize,
             dataUrl,
             rawFile: file
           }
@@ -517,7 +650,7 @@ export default function ShopDocumentDetailModal({
               <input
                 ref={editPdfInputRef}
                 type="file"
-                accept="application/pdf,.pdf"
+                accept=".pdf,.zip,.rar,.7z,.tar,.gz,.doc,.docx,.xls,.xlsx,application/pdf,application/zip,application/x-zip-compressed,application/x-rar-compressed,application/octet-stream"
                 multiple
                 style={{ display: 'none' }}
                 onChange={handlePdfUpload}
@@ -582,17 +715,15 @@ export default function ShopDocumentDetailModal({
             </div>
           )}
 
-          {/* FILE PDF ĐÍNH KÈM */}
+          {/* FILE ĐÍNH KÈM (PDF, ZIP, RAR...) */}
           {(canEditDoc || (Array.isArray(shopDoc.pdfFiles) && shopDoc.pdfFiles.length > 0) || shopDoc.pdfFile) && (
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
                 <h4 style={{ margin: 0, fontSize: '0.86rem', color: '#1e293b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  Tệp PDF Bản Vẽ / Hồ Sơ Đính Kèm ({canEditDoc ? editPdfFiles.length : (shopDoc.pdfFiles?.length || (shopDoc.pdfFile ? 1 : 0))}):
-                  {canEditDoc && (
-                    <span style={{ fontSize: '0.72rem', color: '#2563eb', background: '#eff6ff', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, border: '1px solid #bfdbfe' }}>
-                      Có thể tải lên nhiều file PDF
-                    </span>
-                  )}
+                  Tệp Đính Kèm ({canEditDoc ? editPdfFiles.length : (shopDoc.pdfFiles?.length || (shopDoc.pdfFile ? 1 : 0))}):
+                  <span style={{ fontSize: '0.72rem', color: '#2563eb', background: '#eff6ff', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, border: '1px solid #bfdbfe' }}>
+                    PDF, ZIP, RAR, 7Z (Không giới hạn)
+                  </span>
                 </h4>
 
                 {canEditDoc && (
@@ -613,7 +744,7 @@ export default function ShopDocumentDetailModal({
                       cursor: 'pointer'
                     }}
                   >
-                    <UploadCloud size={14} /> + Thêm tệp PDF
+                    <UploadCloud size={14} /> + Thêm tệp đính kèm
                   </button>
                 )}
               </div>
@@ -628,8 +759,8 @@ export default function ShopDocumentDetailModal({
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
-                          background: '#fef2f2',
-                          border: '1.5px solid #fca5a5',
+                          background: '#f8fafc',
+                          border: '1.5px solid #cbd5e1',
                           padding: '10px 14px',
                           borderRadius: '8px',
                           flexWrap: 'wrap',
@@ -637,13 +768,17 @@ export default function ShopDocumentDetailModal({
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '200px', flex: 1 }}>
-                          <FileText size={26} color="#dc2626" style={{ flexShrink: 0 }} />
+                          {isArchiveFile(pdf.name) ? (
+                            <FileArchive size={26} color="#d97706" style={{ flexShrink: 0 }} />
+                          ) : (
+                            <FileText size={26} color="#2563eb" style={{ flexShrink: 0 }} />
+                          )}
                           <div>
-                            <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#991b1b', wordBreak: 'break-all' }}>
-                              {pdf.name || `Tệp PDF ${idx + 1}`}
+                            <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#0f172a', wordBreak: 'break-all' }}>
+                              {pdf.name || `Tệp đính kèm ${idx + 1}`}
                             </div>
-                            <div style={{ fontSize: '0.72rem', color: '#b91c1c' }}>
-                              {pdf.size || 'Tài liệu PDF'} {pdf.rawFile ? '• (Tệp mới chọn)' : ''}
+                            <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                              {pdf.size || 'Tài liệu'} {pdf.rawFile ? '• (Tệp mới chọn)' : ''}
                             </div>
                           </div>
                         </div>
@@ -652,14 +787,14 @@ export default function ShopDocumentDetailModal({
                           {pdf.dataUrl && (
                             <button
                               type="button"
-                              onClick={() => handleOpenPdf(pdf.dataUrl, pdf.name)}
-                              title="Mở xem trực tiếp PDF"
+                              onClick={() => handleDownloadFile(pdf.dataUrl, pdf.name)}
+                              title={`Tải về ${pdf.name || 'tệp đính kèm'}`}
                               style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: '5px',
                                 padding: '6px 12px',
-                                background: '#dc2626',
+                                background: '#2563eb',
                                 border: 'none',
                                 borderRadius: '6px',
                                 color: '#ffffff',
@@ -668,13 +803,13 @@ export default function ShopDocumentDetailModal({
                                 fontWeight: 600
                               }}
                             >
-                              <Eye size={15} /> Mở Xem PDF
+                              <Download size={14} /> Tải về
                             </button>
                           )}
                           <button
                             type="button"
                             onClick={() => handleDeletePdf(pdf.id)}
-                            title="Xóa tệp PDF này"
+                            title="Xóa tệp này"
                             style={{
                               display: 'inline-flex',
                               alignItems: 'center',
@@ -710,10 +845,10 @@ export default function ShopDocumentDetailModal({
                   >
                     <UploadCloud size={30} color="#2563eb" style={{ margin: '0 auto 6px' }} />
                     <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1e40af' }}>
-                      + Bấm vào đây để tải lên tệp PDF (hỗ trợ chọn nhiều file)
+                      + Bấm vào đây để tải lên tệp đính kèm (PDF, ZIP, RAR...)
                     </div>
                     <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '2px' }}>
-                      Hỗ trợ định dạng .pdf (Tối đa 25MB mỗi tệp)
+                      Hỗ trợ tệp PDF, tệp nén ZIP, RAR, 7Z (Không giới hạn dung lượng)
                     </div>
                   </div>
                 )
@@ -727,22 +862,26 @@ export default function ShopDocumentDetailModal({
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        background: '#fef2f2',
-                        border: '1px solid #fecaca',
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
                         padding: '10px 14px',
                         borderRadius: '8px',
                         flexWrap: 'wrap',
                         gap: '12px'
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '220px' }}>
-                        <FileText size={26} color="#dc2626" style={{ flexShrink: 0 }} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '220px', flex: 1 }}>
+                        {isArchiveFile(pdf.name) ? (
+                          <FileArchive size={26} color="#d97706" style={{ flexShrink: 0 }} />
+                        ) : (
+                          <FileText size={26} color="#2563eb" style={{ flexShrink: 0 }} />
+                        )}
                         <div>
-                          <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#991b1b', wordBreak: 'break-all' }}>
+                          <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#0f172a', wordBreak: 'break-all' }}>
                             {pdf.name || 'Ho_so_shop.pdf'}
                           </div>
-                          <div style={{ fontSize: '0.72rem', color: '#b91c1c' }}>
-                            {pdf.size || 'Tài liệu PDF'}
+                          <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                            {pdf.size || 'Tài liệu đính kèm'}
                           </div>
                         </div>
                       </div>
@@ -750,25 +889,25 @@ export default function ShopDocumentDetailModal({
                       {pdf.dataUrl && (
                         <button
                           type="button"
-                          onClick={() => handleOpenPdf(pdf.dataUrl, pdf.name)}
-                          title="Mở xem trực tiếp tài liệu PDF trên tab mới"
+                          onClick={() => handleDownloadFile(pdf.dataUrl, pdf.name)}
+                          title={`Tải về ${pdf.name || 'tệp đính kèm'}`}
                           style={{
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '6px',
                             padding: '8px 16px',
-                            background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
+                            background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
                             border: 'none',
                             borderRadius: '6px',
                             color: '#ffffff',
                             cursor: 'pointer',
                             fontSize: '0.82rem',
                             fontWeight: 600,
-                            boxShadow: '0 2px 4px rgba(220, 38, 38, 0.25)',
+                            boxShadow: '0 2px 4px rgba(37, 99, 235, 0.25)',
                             transition: 'all 0.15s ease'
                           }}
                         >
-                          <Eye size={16} /> Mở Xem PDF
+                          <Download size={16} /> Tải Về Tệp
                         </button>
                       )}
                     </div>
@@ -1024,18 +1163,86 @@ export default function ShopDocumentDetailModal({
                   </span>
                 </div>
 
-                {/* NẾU CHƯA PHÂN CÔNG */}
-                {!isTvgsAssigned ? (
+                {/* FORM PHÂN CÔNG / ĐỔI NGƯỜI / SỬA HẠN KHI isAssigningTvgs = true */}
+                {isAssigningTvgs ? (
+                  <div style={{ background: '#ffffff', border: '1.5px solid #10b981', padding: '12px', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#047857', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <UserCheck size={15} />
+                      {isTvgsAssigned ? 'Thay đổi cán bộ TVGS / Sửa ngày (Trong hạn 1 ngày):' : 'Phân công cán bộ TVGS thụ lý:'}
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 600, color: '#334155', marginBottom: '3px' }}>
+                        Chọn cán bộ TVGS (kể cả bản thân Trưởng đoàn):
+                      </label>
+                      <select
+                        value={tvgsAssigneeUid}
+                        onChange={(e) => setTvgsAssigneeUid(e.target.value)}
+                        style={{ width: '100%', padding: '7px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.78rem' }}
+                      >
+                        <option value="">-- Chọn cán bộ TVGS --</option>
+                        {availableSupervisors.map(u => {
+                          const isMe = u.uid === currentUser?.uid;
+                          const isLead = u.role === 'LEAD_SUPERVISOR' || Boolean(u.isLead) || (u.position || '').toLowerCase().includes('trưởng');
+                          return (
+                            <option key={u.uid} value={u.uid}>
+                              {u.fullName} ({u.position || 'TVGS'}) {isMe ? '⭐ (Bản thân)' : isLead ? '👑 (Trưởng đoàn)' : ''}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 600, color: '#334155', marginBottom: '3px' }}>
+                        Thời hạn phản hồi (SLA):
+                      </label>
+                      <select
+                        value={tvgsSlaDays}
+                        onChange={(e) => setTvgsSlaDays(e.target.value)}
+                        style={{ width: '100%', padding: '7px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.78rem' }}
+                      >
+                        <option value={1}>1 ngày</option>
+                        <option value={2}>2 ngày</option>
+                        <option value={3}>3 ngày (Quy chuẩn)</option>
+                        <option value={5}>5 ngày</option>
+                        <option value={7}>7 ngày</option>
+                      </select>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '4px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setIsAssigningTvgs(false)}
+                        style={{ padding: '4px 10px', border: '1px solid #cbd5e1', background: '#fff', borderRadius: '4px', fontSize: '0.74rem', cursor: 'pointer' }}
+                      >
+                        Hủy
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleConfirmAssignTvgs}
+                        style={{ padding: '5px 14px', background: '#059669', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '0.74rem', fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        {isTvgsAssigned ? 'Lưu thay đổi' : 'Xác nhận giao việc'}
+                      </button>
+                    </div>
+                  </div>
+                ) : !isTvgsAssigned ? (
+                  /* NẾU CHƯA PHÂN CÔNG */
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
                     <div style={{ fontSize: '0.78rem', color: '#92400e', background: '#fef3c7', padding: '8px 10px', borderRadius: '6px', border: '1px solid #fde68a' }}>
                       Hồ sơ đã gửi đến <strong>TVGS Trưởng (Đinh Xuân Thám)</strong>. Thời hạn phân công cán bộ: 1 ngày (24h).
                     </div>
 
                     {/* NÚT MỞ FORM PHÂN CÔNG NẾU LÀ TVGS TRƯỞNG HOẶC ADMIN */}
-                    {canAssignTvgs && !isAssigningTvgs && (
+                    {canAssignTvgs && (
                       <button
                         type="button"
-                        onClick={() => setIsAssigningTvgs(true)}
+                        onClick={() => {
+                          setTvgsAssigneeUid(currentUser?.uid || '');
+                          setTvgsSlaDays(shopDoc.assignedTvgs?.slaDays || 3);
+                          setIsAssigningTvgs(true);
+                        }}
                         style={{
                           padding: '7px 12px',
                           background: '#059669',
@@ -1054,71 +1261,49 @@ export default function ShopDocumentDetailModal({
                         <UserCheck size={14} /> Phân công cán bộ TVGS
                       </button>
                     )}
-
-                    {/* FORM PHÂN CÔNG */}
-                    {isAssigningTvgs && (
-                      <div style={{ background: '#ffffff', border: '1px solid #10b981', padding: '10px', borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 600, color: '#334155', marginBottom: '3px' }}>
-                            Chọn cán bộ TVGS thụ lý:
-                          </label>
-                          <select
-                            value={tvgsAssigneeUid}
-                            onChange={(e) => setTvgsAssigneeUid(e.target.value)}
-                            style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.78rem' }}
-                          >
-                            <option value="">-- Chọn cán bộ TVGS --</option>
-                            {subordinateSupervisors.map(u => (
-                              <option key={u.uid} value={u.uid}>{u.fullName} ({u.position || 'TVGS'})</option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div>
-                          <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 600, color: '#334155', marginBottom: '3px' }}>
-                            Thời hạn phản hồi (SLA):
-                          </label>
-                          <select
-                            value={tvgsSlaDays}
-                            onChange={(e) => setTvgsSlaDays(e.target.value)}
-                            style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.78rem' }}
-                          >
-                            <option value={1}>1 ngày</option>
-                            <option value={2}>2 ngày</option>
-                            <option value={3}>3 ngày (Quy chuẩn)</option>
-                            <option value={5}>5 ngày</option>
-                            <option value={7}>7 ngày</option>
-                          </select>
-                        </div>
-
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '4px' }}>
-                          <button
-                            type="button"
-                            onClick={() => setIsAssigningTvgs(false)}
-                            style={{ padding: '4px 10px', border: '1px solid #cbd5e1', background: '#fff', borderRadius: '4px', fontSize: '0.74rem', cursor: 'pointer' }}
-                          >
-                            Hủy
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleConfirmAssignTvgs}
-                            style={{ padding: '4px 12px', background: '#059669', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '0.74rem', fontWeight: 600, cursor: 'pointer' }}
-                          >
-                            Xác nhận giao việc
-                          </button>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 ) : (
                   /* NẾU ĐÃ PHÂN CÔNG */
                   <div>
-                    <div style={{ fontSize: '0.82rem', color: '#334155', marginBottom: '4px' }}>
-                      <strong>Cán bộ thụ lý:</strong> {tvgsAssignee?.fullName || 'Tư Vấn Giám Sát'}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '6px', marginBottom: '4px' }}>
+                      <div style={{ fontSize: '0.82rem', color: '#334155' }}>
+                        <strong>Cán bộ thụ lý:</strong> {tvgsAssignee?.fullName || 'Tư Vấn Giám Sát'} {tvgsAssignee?.uid === currentUser?.uid ? '⭐ (Bản thân)' : ''}
+                      </div>
+
+                      {/* NÚT ĐỔI NGƯỜI / SỬA HẠN TRONG THỜI HẠN 1 NGÀY */}
+                      {canReassignTvgs && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTvgsAssigneeUid(tvgsAssignee?.uid || '');
+                            setTvgsSlaDays(shopDoc.assignedTvgs?.slaDays || 3);
+                            setIsAssigningTvgs(true);
+                          }}
+                          title="Trong hạn 1 ngày: Được phép sửa ngày phản hồi hoặc đổi cán bộ khác"
+                          style={{
+                            padding: '3px 8px',
+                            background: '#eff6ff',
+                            border: '1px solid #93c5fd',
+                            borderRadius: '5px',
+                            color: '#1d4ed8',
+                            fontSize: '0.72rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            flexShrink: 0
+                          }}
+                        >
+                          <RotateCcw size={11} /> Đổi người / Sửa ngày
+                        </button>
+                      )}
                     </div>
+
                     <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
                       {tvgsAssignee?.company || 'Tư Vấn Giám Sát Gelicon'}
                     </div>
+
                     {shopDoc.assignedTvgs?.assignedBy && (
                       <div style={{ fontSize: '0.72rem', color: '#047857', marginTop: '4px' }}>
                         Phân công bởi: {shopDoc.assignedTvgs.assignedBy.fullName} lúc {formatDateStr(shopDoc.assignedTvgs.assignedAt)}
@@ -1127,6 +1312,12 @@ export default function ShopDocumentDetailModal({
                     <div style={{ fontSize: '0.72rem', color: '#0284c7', marginTop: '2px', fontWeight: 600 }}>
                       Thời hạn hoàn thành: {shopDoc.assignedTvgs?.slaDays || 3} ngày (Hạn: {formatDateStr(shopDoc.assignedTvgs?.dueDate || shopDoc.dueDate)})
                     </div>
+
+                    {isWithin1DayAssignment && canReassignTvgs && (
+                      <div style={{ fontSize: '0.71rem', color: '#047857', background: '#ecfdf5', padding: '3px 6px', borderRadius: '4px', border: '1px solid #a7f3d0', marginTop: '4px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                        ⏱️ Hạn đổi người & sửa ngày: còn <strong>{remaining1DayHours}h</strong> (trong vòng 1 ngày).
+                      </div>
+                    )}
 
                     {shopDoc.assignedTvgs?.reviewedAt && (
                       <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: '6px' }}>
@@ -1240,18 +1431,86 @@ export default function ShopDocumentDetailModal({
                   </span>
                 </div>
 
-                {/* NẾU CHƯA PHÂN CÔNG */}
-                {!isInvestorAssigned ? (
+                {/* FORM PHÂN CÔNG / ĐỔI NGƯỜI / SỬA HẠN KHI isAssigningInvestor = true */}
+                {isAssigningInvestor ? (
+                  <div style={{ background: '#ffffff', border: '1.5px solid #f59e0b', padding: '12px', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#b45309', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <UserCheck size={15} />
+                      {isInvestorAssigned ? 'Thay đổi cán bộ Ban QLDA / Sửa ngày (Trong hạn 1 ngày):' : 'Phân công cán bộ Ban QLDA thụ lý:'}
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 600, color: '#334155', marginBottom: '3px' }}>
+                        Chọn cán bộ Ban QLDA (kể cả bản thân Trưởng ban):
+                      </label>
+                      <select
+                        value={investorAssigneeUid}
+                        onChange={(e) => setInvestorAssigneeUid(e.target.value)}
+                        style={{ width: '100%', padding: '7px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.78rem' }}
+                      >
+                        <option value="">-- Chọn cán bộ QLDA --</option>
+                        {availableInvestors.map(u => {
+                          const isMe = u.uid === currentUser?.uid;
+                          const isLead = u.role === 'LEAD_INVESTOR' || Boolean(u.isLead) || (u.position || '').toLowerCase().includes('trưởng');
+                          return (
+                            <option key={u.uid} value={u.uid}>
+                              {u.fullName} ({u.position || 'QLDA'}) {isMe ? '⭐ (Bản thân)' : isLead ? '👑 (Trưởng ban)' : ''}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 600, color: '#334155', marginBottom: '3px' }}>
+                        Thời hạn phản hồi (SLA):
+                      </label>
+                      <select
+                        value={investorSlaDays}
+                        onChange={(e) => setInvestorSlaDays(e.target.value)}
+                        style={{ width: '100%', padding: '7px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.78rem' }}
+                      >
+                        <option value={1}>1 ngày</option>
+                        <option value={2}>2 ngày</option>
+                        <option value={3}>3 ngày (Quy chuẩn)</option>
+                        <option value={5}>5 ngày</option>
+                        <option value={7}>7 ngày</option>
+                      </select>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '4px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setIsAssigningInvestor(false)}
+                        style={{ padding: '4px 10px', border: '1px solid #cbd5e1', background: '#fff', borderRadius: '4px', fontSize: '0.74rem', cursor: 'pointer' }}
+                      >
+                        Hủy
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleConfirmAssignInvestor}
+                        style={{ padding: '5px 14px', background: '#d97706', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '0.74rem', fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        {isInvestorAssigned ? 'Lưu thay đổi' : 'Xác nhận giao việc'}
+                      </button>
+                    </div>
+                  </div>
+                ) : !isInvestorAssigned ? (
+                  /* NẾU CHƯA PHÂN CÔNG */
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
                     <div style={{ fontSize: '0.78rem', color: '#92400e', background: '#fef3c7', padding: '8px 10px', borderRadius: '6px', border: '1px solid #fde68a' }}>
                       Hồ sơ đã gửi đến <strong>Trưởng Ban QLDA (Ngô Quý Linh)</strong>. Thời hạn phân công cán bộ: 1 ngày (24h).
                     </div>
 
                     {/* NÚT MỞ FORM PHÂN CÔNG NẾU LÀ TRƯỞNG BAN HOẶC ADMIN */}
-                    {canAssignInvestor && !isAssigningInvestor && (
+                    {canAssignInvestor && (
                       <button
                         type="button"
-                        onClick={() => setIsAssigningInvestor(true)}
+                        onClick={() => {
+                          setInvestorAssigneeUid(currentUser?.uid || '');
+                          setInvestorSlaDays(shopDoc.assignedInvestor?.slaDays || 3);
+                          setIsAssigningInvestor(true);
+                        }}
                         style={{
                           padding: '7px 12px',
                           background: '#d97706',
@@ -1270,71 +1529,49 @@ export default function ShopDocumentDetailModal({
                         <UserCheck size={14} /> Phân công cán bộ Ban QLDA
                       </button>
                     )}
-
-                    {/* FORM PHÂN CÔNG BAN QLDA */}
-                    {isAssigningInvestor && (
-                      <div style={{ background: '#ffffff', border: '1px solid #f59e0b', padding: '10px', borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 600, color: '#334155', marginBottom: '3px' }}>
-                            Chọn cán bộ Ban QLDA thụ lý:
-                          </label>
-                          <select
-                            value={investorAssigneeUid}
-                            onChange={(e) => setInvestorAssigneeUid(e.target.value)}
-                            style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.78rem' }}
-                          >
-                            <option value="">-- Chọn cán bộ QLDA --</option>
-                            {subordinateInvestors.map(u => (
-                              <option key={u.uid} value={u.uid}>{u.fullName} ({u.position || 'QLDA'})</option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div>
-                          <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 600, color: '#334155', marginBottom: '3px' }}>
-                            Thời hạn phản hồi (SLA):
-                          </label>
-                          <select
-                            value={investorSlaDays}
-                            onChange={(e) => setInvestorSlaDays(e.target.value)}
-                            style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.78rem' }}
-                          >
-                            <option value={1}>1 ngày</option>
-                            <option value={2}>2 ngày</option>
-                            <option value={3}>3 ngày (Quy chuẩn)</option>
-                            <option value={5}>5 ngày</option>
-                            <option value={7}>7 ngày</option>
-                          </select>
-                        </div>
-
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '4px' }}>
-                          <button
-                            type="button"
-                            onClick={() => setIsAssigningInvestor(false)}
-                            style={{ padding: '4px 10px', border: '1px solid #cbd5e1', background: '#fff', borderRadius: '4px', fontSize: '0.74rem', cursor: 'pointer' }}
-                          >
-                            Hủy
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleConfirmAssignInvestor}
-                            style={{ padding: '4px 12px', background: '#d97706', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '0.74rem', fontWeight: 600, cursor: 'pointer' }}
-                          >
-                            Xác nhận giao việc
-                          </button>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 ) : (
                   /* NẾU ĐÃ PHÂN CÔNG */
                   <div>
-                    <div style={{ fontSize: '0.82rem', color: '#334155', marginBottom: '4px' }}>
-                      <strong>Cán bộ thụ lý:</strong> {investorAssignee?.fullName || 'Ban Quản Lý Dự Án'}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '6px', marginBottom: '4px' }}>
+                      <div style={{ fontSize: '0.82rem', color: '#334155' }}>
+                        <strong>Cán bộ thụ lý:</strong> {investorAssignee?.fullName || 'Ban Quản Lý Dự Án'} {investorAssignee?.uid === currentUser?.uid ? '⭐ (Bản thân)' : ''}
+                      </div>
+
+                      {/* NÚT ĐỔI NGƯỜI / SỬA HẠN TRONG THỜI HẠN 1 NGÀY */}
+                      {canReassignInvestor && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setInvestorAssigneeUid(investorAssignee?.uid || '');
+                            setInvestorSlaDays(shopDoc.assignedInvestor?.slaDays || 3);
+                            setIsAssigningInvestor(true);
+                          }}
+                          title="Trong hạn 1 ngày: Được phép sửa ngày phản hồi hoặc đổi cán bộ khác"
+                          style={{
+                            padding: '3px 8px',
+                            background: '#fffbeb',
+                            border: '1px solid #fde68a',
+                            borderRadius: '5px',
+                            color: '#b45309',
+                            fontSize: '0.72rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            flexShrink: 0
+                          }}
+                        >
+                          <RotateCcw size={11} /> Đổi người / Sửa ngày
+                        </button>
+                      )}
                     </div>
+
                     <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
                       {investorAssignee?.company || 'Ban Quản Lý Dự Án An Phú'}
                     </div>
+
                     {shopDoc.assignedInvestor?.assignedBy && (
                       <div style={{ fontSize: '0.72rem', color: '#b45309', marginTop: '4px' }}>
                         Phân công bởi: {shopDoc.assignedInvestor.assignedBy.fullName} lúc {formatDateStr(shopDoc.assignedInvestor.assignedAt)}
@@ -1343,6 +1580,12 @@ export default function ShopDocumentDetailModal({
                     <div style={{ fontSize: '0.72rem', color: '#0284c7', marginTop: '2px', fontWeight: 600 }}>
                       Thời hạn hoàn thành: {shopDoc.assignedInvestor?.slaDays || 3} ngày (Hạn: {formatDateStr(shopDoc.assignedInvestor?.dueDate || shopDoc.dueDate)})
                     </div>
+
+                    {isWithin1DayAssignment && canReassignInvestor && (
+                      <div style={{ fontSize: '0.71rem', color: '#b45309', background: '#fffbeb', padding: '3px 6px', borderRadius: '4px', border: '1px solid #fde68a', marginTop: '4px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                        ⏱️ Hạn đổi người & sửa ngày: còn <strong>{remaining1DayHours}h</strong> (trong vòng 1 ngày).
+                      </div>
+                    )}
 
                     {shopDoc.assignedInvestor?.reviewedAt && (
                       <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: '6px' }}>

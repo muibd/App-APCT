@@ -85,7 +85,7 @@ export default function ProjectManagementView({
       name: newProjectForm.name.trim(),
       code: newProjectForm.code.trim(),
       projectName: 'Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City',
-      location: newProjectForm.location.trim() || 'Phường Thường Thạnh - Quận Cái Răng - TP. Cần Thơ',
+      location: newProjectForm.location.trim() || 'Phường Cái Răng - TP. Cần Thơ',
       investor: 'Công ty TNHH An Phú Cần Thơ',
       supervisor: 'Công ty CP Tư vấn Xây dựng và Thương mại GELICON',
       contractors: [
@@ -622,7 +622,7 @@ export default function ProjectManagementView({
                     type="text"
                     value={newProjectForm.location}
                     onChange={e => setNewProjectForm({ ...newProjectForm, location: e.target.value })}
-                    placeholder="Phường Thường Thạnh - Quận Cái Răng..."
+                    placeholder="Phường Cái Răng - TP. Cần Thơ..."
                     style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
                   />
                 </div>

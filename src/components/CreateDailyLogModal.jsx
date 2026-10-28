@@ -403,7 +403,7 @@ export default function CreateDailyLogModal({
       projectName: selectedBuildingObj?.projectName || MOCK_PROJECT.projectName,
       buildingName: selectedBuilding,
       itemName: selectedItem,
-      location: selectedBuildingObj?.location || 'Phường Thường Thạnh - Quận Cái Răng – TP. Cần Thơ.',
+      location: selectedBuildingObj?.location || 'Phường Cái Răng - TP. Cần Thơ',
       investorName: selectedBuildingObj?.investor || 'Công ty TNHH An Phú Cần Thơ',
       supervisorName: selectedBuildingObj?.supervisor || 'Công ty CP Tư vấn xây dựng và Thương mại Gelicon',
       contractorName: contractorCompany.trim() || currentUser?.company || 'Công ty TNHH Gia Huy Vĩnh Phúc',

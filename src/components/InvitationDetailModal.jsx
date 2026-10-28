@@ -418,7 +418,7 @@ export default function InvitationDetailModal({
               <div><strong>Dự án:</strong> {request.projectName || 'Đầu tư xây dựng nhà ở Phường Thường Thạnh - An Phú Eco City'}</div>
               <div><strong>Công trình:</strong> {request.buildingName}</div>
               <div><strong>Hạng mục:</strong> {request.itemName || request.packageName}</div>
-              <div><strong>Địa điểm xây dựng:</strong> {request.location || 'Phường Thường Thạnh - Quận Cái Răng - Thành phố Cần Thơ'}</div>
+              <div><strong>Địa điểm xây dựng:</strong> {request.location && !request.location.includes('Thường Thạnh') && !request.location.includes('Quận Cái Răng') ? request.location : 'Phường Cái Răng - TP. Cần Thơ'}</div>
               <div><strong>Đơn vị yêu cầu nghiệm thu:</strong> {effectiveContractorCompany}</div>
 
               <div style={{

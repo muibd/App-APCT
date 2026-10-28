@@ -562,10 +562,10 @@ export default function ShopDocumentsView({
                               </span>
                               {(doc.pdfFile || (Array.isArray(doc.pdfFiles) && doc.pdfFiles.length > 0)) && (
                                 <span
-                                  title={`${doc.pdfFiles?.length || 1} file PDF đính kèm`}
-                                  style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '0.7rem', color: '#dc2626', fontWeight: 600 }}
+                                  title={`${doc.pdfFiles?.length || 1} tệp đính kèm`}
+                                  style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '0.7rem', color: '#2563eb', fontWeight: 600 }}
                                 >
-                                  <Paperclip size={11} /> PDF {doc.pdfFiles?.length > 1 ? `(${doc.pdfFiles.length})` : ''}
+                                  <Paperclip size={11} /> Tệp {doc.pdfFiles?.length > 1 ? `(${doc.pdfFiles.length})` : ''}
                                 </span>
                               )}
                               {Array.isArray(doc.photos) && doc.photos.length > 0 && (
