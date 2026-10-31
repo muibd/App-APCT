@@ -250,7 +250,15 @@ function sanitizeReportData(r) {
     r.attendees?.contractor?.person,
     `${r.inspectionObject || ''} ${r.projectInfo?.itemName || ''} ${r.projectInfo?.packageName || ''}`
   );
-  const contractorChief = getContractorChief(cleanContComp, MOCK_USERS);
+  const contractorChief = getContractorChief(cleanContComp, MOCK_USERS, {
+    itemName: r.projectInfo?.itemName || r.itemName,
+    packageName: r.projectInfo?.packageName || r.packageName,
+    taskContent: r.inspectionObject || r.taskContent,
+    inspectionObject: r.inspectionObject,
+    createdByRole: r.attendees?.contractor?.position || r.createdByRole,
+    createdByName: r.attendees?.contractor?.person || r.createdByName,
+    createdByUid: r.createdByUid
+  });
 
   const updatedAttendees = r.attendees ? {
     ...r.attendees,
@@ -1259,9 +1267,20 @@ export default function App() {
           return !isTest;
         });
 
-        // Chuẩn hóa chính xác thông tin 4 cán bộ Phan Lê theo đúng bảng phân công
+        // Chuẩn hóa chính xác thông tin cán bộ theo bảng phân công
         cleanUsers.forEach(u => {
-          if (u.uid === 'uid_dvtc_phanle_01' || (u.email || '').toLowerCase() === 'daothanhthao@gmail.com') {
+          if (u.uid === 'uid_dvtc_ghvp_00' || (u.email || '').toLowerCase() === 'trongnhan@gmail.com') {
+            u.fullName = 'Nguyễn Trọng Nhân';
+            u.position = 'Chỉ huy trưởng Mep';
+            u.email = 'trongnhan@gmail.com';
+            u.company = 'Công ty TNHH Gia Huy Vĩnh Phúc';
+          } else if (u.uid === 'uid_dvtc_ghvp_01' || (u.email || '').toLowerCase() === 'manhhung1020558@gmail.com') {
+            u.fullName = 'Trần Mạnh Hưng';
+            u.position = 'Chỉ huy trưởng';
+            u.phone = '0907682870';
+            u.email = 'manhhung1020558@gmail.com';
+            u.company = 'Công ty TNHH Gia Huy Vĩnh Phúc';
+          } else if (u.uid === 'uid_dvtc_phanle_01' || (u.email || '').toLowerCase() === 'daothanhthao@gmail.com') {
             u.fullName = 'Đào Thanh Thảo';
             u.position = 'Chỉ huy trưởng';
             u.phone = '0917355318';
@@ -3172,8 +3191,8 @@ export default function App() {
           location: rep.projectInfo?.location || 'Cần Thơ',
           contractorCompany: resolveCleanContractorCompany(rep.attendees?.contractor?.company || rep.contractorCompany, rep.attendees?.contractor?.person),
           createdByUid: rep.createdByUid || 'uid_dvtc_01',
-          createdByName: rep.attendees?.contractor?.person || 'Phạm Thanh Nhàn',
-          createdByRole: rep.attendees?.contractor?.position || 'Chỉ huy trưởng',
+          createdByName: rep.attendees?.contractor?.person || 'KS. Lê Văn Kỹ Thuật',
+          createdByRole: rep.attendees?.contractor?.position || 'Kỹ thuật hiện trường',
           taskContent: rep.inspectionObject || (isMaterial ? 'Nghiệm thu vật liệu đầu vào' : 'Nghiệm thu công việc xây dựng'),
           startTime: rep.time?.startTime || '08h30, hôm nay',
           endTime: rep.time?.endTime || '16h30, hôm nay',
@@ -3268,8 +3287,8 @@ export default function App() {
             },
             contractor: {
               company: resolveCleanContractorCompany(req.contractorCompany, req.createdByName),
-              person: req.createdByName || 'Phạm Thanh Nhàn',
-              position: req.createdByRole || 'Chỉ huy trưởng',
+              person: req.createdByName || 'KS. Lê Văn Kỹ Thuật',
+              position: req.createdByRole || 'Kỹ thuật hiện trường',
               signed: true
             }
           },
@@ -4211,8 +4230,8 @@ export default function App() {
             newRequest.createdByName || currentUser?.fullName,
             `${newRequest.taskContent || ''} ${newRequest.itemName || ''} ${newRequest.packageName || ''}`
           ),
-          person: newRequest.createdByName || currentUser?.fullName || 'Phạm Thanh Nhàn',
-          position: newRequest.createdByRole || currentUser?.position || 'Chỉ huy trưởng',
+          person: newRequest.createdByName || currentUser?.fullName || 'KS. Lê Văn Kỹ Thuật',
+          position: newRequest.createdByRole || currentUser?.position || 'Kỹ thuật hiện trường',
           uid: newRequest.createdByUid || currentUser?.uid || '',
           signed: true
         }
@@ -4346,7 +4365,15 @@ export default function App() {
           targetReq.createdByName || rep.attendees?.contractor?.person,
           `${targetReq.taskContent || ''} ${targetReq.itemName || ''} ${targetReq.packageName || ''}`
         );
-        const leadContractor = getContractorChief(effectiveContCompany, users);
+        const leadContractor = getContractorChief(effectiveContCompany, users, {
+          itemName: targetReq.itemName || rep.projectInfo?.itemName || rep.itemName,
+          packageName: targetReq.packageName || rep.projectInfo?.packageName || rep.packageName,
+          taskContent: targetReq.taskContent || rep.inspectionObject || rep.taskContent,
+          inspectionObject: targetReq.inspectionObject || rep.inspectionObject,
+          createdByRole: targetReq.createdByRole || rep.attendees?.contractor?.position,
+          createdByName: targetReq.createdByName || rep.attendees?.contractor?.person,
+          createdByUid: targetReq.createdByUid || rep.attendees?.contractor?.uid
+        });
         if (targetReq && effectiveContCompany && targetReq.contractorCompany !== effectiveContCompany) {
           targetReq.contractorCompany = effectiveContCompany;
           setRequests(prev => {
@@ -4512,7 +4539,15 @@ export default function App() {
         const leadInv = users.find(u => u.role === 'LEAD_INVESTOR') || { fullName: 'Ngô Quý Linh', position: 'Trưởng Ban QLDA', company: 'Công ty TNHH An Phú Cần Thơ' };
         const leadSup = users.find(u => u.role === 'LEAD_SUPERVISOR') || { fullName: 'Đinh Xuân Thám', position: 'Tư vấn giám sát trưởng', company: 'Công ty CP TVXD và TM GELICON' };
         const effectiveContComp = resolveCleanContractorCompany(targetReq.contractorCompany, targetReq.createdByName, `${targetReq.taskContent || ''} ${targetReq.itemName || ''}`);
-        const leadContractor = getContractorChief(effectiveContComp, users);
+        const leadContractor = getContractorChief(effectiveContComp, users, {
+          itemName: targetReq.itemName,
+          packageName: targetReq.packageName,
+          taskContent: targetReq.taskContent,
+          inspectionObject: targetReq.inspectionObject,
+          createdByRole: targetReq.createdByRole,
+          createdByName: targetReq.createdByName,
+          createdByUid: targetReq.createdByUid
+        });
 
         return {
           investor: { 

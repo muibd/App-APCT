@@ -18,8 +18,16 @@ export default function CompletionReportDetailModal({
 
   if (!isOpen || !report) return null;
 
-  const contChief = getContractorChief(report.representatives?.contractor?.company);
-  const contLeadName = report.representatives?.contractor?.leadName || contChief.fullName;
+  const contChief = getContractorChief(report.representatives?.contractor?.company, null, {
+    itemName: report.projectInfo?.itemName || report.itemName,
+    packageName: report.projectInfo?.packageName || report.packageName,
+    taskContent: report.workContent || report.taskContent,
+    inspectionObject: report.inspectionObject,
+    createdByRole: report.representatives?.contractor?.createdPosition || report.createdByRole,
+    createdByName: report.representatives?.contractor?.createdBy || report.createdByName,
+    createdByUid: report.representatives?.contractor?.uid || report.createdByUid
+  });
+  const contLeadName = contChief.fullName;
   const contLeadPosition = 'Chỉ huy trưởng';
 
   const isCompleted = report.status === 'COMPLETED' || (
@@ -564,13 +572,13 @@ export default function CompletionReportDetailModal({
                       <div className="screen-only">
                         <div style={{ color: '#047857' }}>
                           <div style={{ fontFamily: 'cursive', fontSize: '1.1rem', fontWeight: 'bold' }}>
-                            {report.signatures?.contractor?.name || 'Phạm Thanh Nhàn'}
+                            {report.signatures?.contractor?.name || contLeadName}
                           </div>
                           <div style={{ fontSize: '0.65rem' }}>✓ Đã ký số</div>
                         </div>
                       </div>
                     </div>
-                    <strong className="screen-only">{report.representatives?.contractor?.leadName || 'Phạm Thanh Nhàn'}</strong>
+                    <strong className="screen-only">{contLeadName}</strong>
                   </div>
                 </div>
               </div>
@@ -818,13 +826,13 @@ export default function CompletionReportDetailModal({
                       <div className="screen-only">
                         <div style={{ color: '#047857' }}>
                           <div style={{ fontFamily: 'cursive', fontSize: '1.2rem', fontWeight: 'bold' }}>
-                            {report.signatures?.contractor?.name || 'Phạm Thanh Nhàn'}
+                            {report.signatures?.contractor?.name || contLeadName}
                           </div>
                           <div style={{ fontSize: '0.68rem' }}>✓ Đã ký số điện tử</div>
                         </div>
                       </div>
                     </div>
-                    <strong className="screen-only">{report.representatives?.contractor?.leadName || 'Phạm Thanh Nhàn'}</strong>
+                    <strong className="screen-only">{contLeadName}</strong>
                   </div>
                 </div>
               </div>
@@ -1018,13 +1026,13 @@ export default function CompletionReportDetailModal({
                       <div className="screen-only">
                         <div style={{ color: '#047857' }}>
                           <div style={{ fontFamily: 'cursive', fontSize: '1.2rem', fontWeight: 'bold' }}>
-                            {report.signatures?.contractor?.name || 'Phạm Thanh Nhàn'}
+                            {report.signatures?.contractor?.name || contLeadName}
                           </div>
                           <div style={{ fontSize: '0.68rem' }}>✓ Đã ký số</div>
                         </div>
                       </div>
                     </div>
-                    <strong className="screen-only">{report.representatives?.contractor?.leadName || 'Phạm Thanh Nhàn'}</strong>
+                    <strong className="screen-only">{contLeadName}</strong>
                   </div>
                 </div>
               </div>

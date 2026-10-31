@@ -404,7 +404,12 @@ export default function DailyLogDetailModal({
               <div>
                 <strong>7. Đơn vị thi công xây dựng:</strong> {log.contractorName || log.contractorCompany || log.representatives?.contractor?.company || 'Công ty TNHH Gia Huy Vĩnh Phúc'}
                 <div style={{ paddingLeft: '16px', fontStyle: 'italic' }}>
-                  - Chỉ huy trưởng công trường: {log.representatives?.contractor?.leader || getContractorChief(log.contractorName || log.contractorCompany || log.representatives?.contractor?.company).fullName}<br />
+                  - Chỉ huy trưởng công trường: {getContractorChief(log.contractorName || log.contractorCompany || log.representatives?.contractor?.company, null, {
+                    taskContent: log.workContent,
+                    createdByRole: log.representatives?.contractor?.createdPosition || log.createdByRole,
+                    createdByName: log.representatives?.contractor?.createdBy || log.createdByName,
+                    createdByUid: log.representatives?.contractor?.uid || log.createdByUid
+                  }).fullName}<br />
                   - Cán bộ KT thi công (Người tạo): {log.representatives?.contractor?.createdBy || log.createdByName || 'KS. Lê Văn Kỹ Thuật'}
                 </div>
               </div>

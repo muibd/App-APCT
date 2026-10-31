@@ -434,7 +434,12 @@ export default function CreateDailyLogModal({
         },
         contractor: {
           company: contractorCompany.trim() || currentUser?.company || 'Công ty TNHH Gia Huy Vĩnh Phúc',
-          leader: getContractorChief(contractorCompany.trim() || currentUser?.company, users).fullName,
+          leader: getContractorChief(contractorCompany.trim() || currentUser?.company, users, {
+            taskContent: workContent,
+            createdByRole: currentUser?.position,
+            createdByName: currentUser?.fullName,
+            createdByUid: currentUser?.uid
+          }).fullName,
           leaderPosition: 'Chỉ huy trưởng công trường',
           createdBy: currentUser?.fullName || 'KS. Lê Văn Kỹ Thuật',
           createdPosition: currentUser?.position || 'Cán bộ KT thi công'

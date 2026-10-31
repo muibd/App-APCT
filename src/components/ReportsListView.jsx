@@ -615,7 +615,7 @@ export default function ReportsListView({
                           <span style={{ fontSize: '0.85rem' }}>👷‍♂️</span>
                           <div>
                             <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1e293b' }}>
-                              Đơn Vị Thi Công: {report.attendees?.contractor?.person || 'Phạm Thanh Nhàn'}
+                              Đơn Vị Thi Công: {report.attendees?.contractor?.person || report.attendees?.contractor?.leadPerson || 'Đơn vị thi công'}
                             </div>
                             <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
                               {report.attendees?.contractor?.company?.includes('Phan Lê') ? 'Phan Lê' : report.attendees?.contractor?.company?.includes('Bình Hoà') ? 'Bình Hoà' : 'Gia Huy Vĩnh Phúc'}

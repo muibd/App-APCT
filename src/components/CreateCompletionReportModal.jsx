@@ -205,7 +205,13 @@ export default function CreateCompletionReportModal({
         },
         contractor: {
           company: contractorCompany.trim() || currentUser?.company || 'Công ty TNHH Gia Huy Vĩnh Phúc',
-          leadName: getContractorChief(contractorCompany || currentUser?.company, users).fullName,
+          leadName: getContractorChief(contractorCompany || currentUser?.company, users, {
+            itemName,
+            packageName,
+            createdByRole: currentUser?.position,
+            createdByName: currentUser?.fullName,
+            createdByUid: currentUser?.uid
+          }).fullName,
           leadPosition: 'Chỉ huy trưởng',
           officerName: currentUser?.fullName || 'Nguyễn Hoàng Bách',
           officerPosition: currentUser?.position || 'Kỹ thuật hiện trường',
@@ -225,7 +231,7 @@ export default function CreateCompletionReportModal({
       signatures: {
         contractor: {
           signed: true,
-          name: currentUser?.fullName || 'Phạm Thanh Nhàn',
+          name: currentUser?.fullName || contChief.fullName || 'Trần Mạnh Hưng',
           position: currentUser?.position || 'Chỉ huy trưởng',
           signedAt: new Date().toISOString()
         },
@@ -253,8 +259,8 @@ export default function CreateCompletionReportModal({
       evidencePhotos,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      createdByUid: currentUser?.uid || 'uid_dvtc_apg_01',
-      createdByName: currentUser?.fullName || 'Phạm Thanh Nhàn'
+      createdByUid: currentUser?.uid || contChief.uid || 'uid_dvtc_ghvp_01',
+      createdByName: currentUser?.fullName || contChief.fullName || 'Trần Mạnh Hưng'
     };
 
     onSubmitCompletionReport(newReport);

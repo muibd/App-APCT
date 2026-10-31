@@ -638,7 +638,16 @@ export default function InspectionReportModal({
     reportState.createdByUid || relatedRequest?.createdByUid
   );
 
-  const contractorChief = getContractorChief(contCompany, users);
+  const contractorChief = getContractorChief(contCompany, users, {
+    itemName: reportState.itemName || relatedRequest?.itemName || reportState.projectInfo?.itemName,
+    packageName: reportState.packageName || relatedRequest?.packageName || reportState.projectInfo?.packageName,
+    taskContent: reportState.taskContent || relatedRequest?.taskContent,
+    inspectionObject: reportState.inspectionObject || relatedRequest?.inspectionObject,
+    projectInfo: reportState.projectInfo || relatedRequest?.projectInfo,
+    createdByRole: reportState.attendees?.contractor?.position || relatedRequest?.createdByRole,
+    createdByName: reportState.attendees?.contractor?.person || relatedRequest?.createdByName,
+    createdByUid: reportState.createdByUid || relatedRequest?.createdByUid
+  });
   const contLeadName = contractorChief.fullName;
   const contLeadPosition = 'Chỉ huy trưởng';
   const contOfficerName = reportState.attendees?.contractor?.person || relatedRequest?.createdByName || 'KS. Lê Văn Kỹ Thuật';
@@ -2403,17 +2412,17 @@ export default function InspectionReportModal({
                   <div style={{ paddingLeft: '16px' }}>
                     {invOfficerName.trim().toLowerCase() === invLeadName.trim().toLowerCase() || assignedInv?.role === 'LEAD_INVESTOR' ? (
                       <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
-                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông: <strong>{invLeadName}</strong></span>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông: {invLeadName}</span>
                         <span>Chức vụ: {invLeadPosition}</span>
                       </div>
                     ) : (
                       <>
                         <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
-                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: <strong>{invLeadName}</strong></span>
+                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: {invLeadName}</span>
                           <span>Chức vụ: {invLeadPosition}</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
-                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: <strong>{invOfficerName}</strong></span>
+                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: {invOfficerName}</span>
                           <span>Chức vụ: {invOfficerPosition}</span>
                         </div>
                       </>
@@ -2425,17 +2434,17 @@ export default function InspectionReportModal({
                   <div style={{ paddingLeft: '16px' }}>
                     {supOfficerName.trim().toLowerCase() === supLeadName.trim().toLowerCase() || assignedSup?.role === 'LEAD_SUPERVISOR' ? (
                       <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
-                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông: <strong>{supLeadName}</strong></span>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông: {supLeadName}</span>
                         <span>Chức vụ: {supLeadPosition}</span>
                       </div>
                     ) : (
                       <>
                         <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
-                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: <strong>{supLeadName}</strong></span>
+                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: {supLeadName}</span>
                           <span>Chức vụ: {supLeadPosition}</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
-                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: <strong>{supOfficerName}</strong></span>
+                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: {supOfficerName}</span>
                           <span>Chức vụ: {supOfficerPosition}</span>
                         </div>
                       </>
@@ -2449,17 +2458,17 @@ export default function InspectionReportModal({
                   <div style={{ paddingLeft: '16px' }}>
                     {contOfficerName.trim().toLowerCase() === contLeadName.trim().toLowerCase() ? (
                       <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
-                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông: <strong>{contLeadName}</strong></span>
+                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông: {contLeadName}</span>
                         <span>Chức vụ: {contLeadPosition}</span>
                       </div>
                     ) : (
                       <>
                         <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
-                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: <strong>{contLeadName}</strong></span>
+                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: {contLeadName}</span>
                           <span>Chức vụ: {contLeadPosition}</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
-                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: <strong>{contOfficerName}</strong></span>
+                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: {contOfficerName}</span>
                           <span>Chức vụ: {contOfficerPosition}</span>
                         </div>
                       </>
@@ -2883,7 +2892,7 @@ export default function InspectionReportModal({
                       {isContractorSigned ? (
                         <div style={{ color: '#047857', fontWeight: 'bold', textAlign: 'center' }}>
                           <div style={{ fontSize: '1.2rem', fontFamily: 'cursive' }}>
-                            {contOfficerName || reportState.attendees?.contractor?.person || 'Phạm Thanh Nhàn'}
+                            {contOfficerName || reportState.attendees?.contractor?.person || contLeadName || 'Trần Mạnh Hưng'}
                           </div>
                           <div style={{ fontSize: '0.72rem' }}>✓ Đã ký số điện tử</div>
                         </div>
@@ -2892,7 +2901,7 @@ export default function InspectionReportModal({
                       )}
                     </div>
                   </div>
-                  <strong className="screen-only">{contOfficerName || reportState.attendees?.contractor?.person || 'Phạm Thanh Nhàn'}</strong>
+                  <strong className="screen-only">{contOfficerName || reportState.attendees?.contractor?.person || contLeadName || 'Trần Mạnh Hưng'}</strong>
                 </div>
               </div>
 

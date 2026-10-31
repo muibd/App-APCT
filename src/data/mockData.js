@@ -292,18 +292,6 @@ export const MOCK_USERS = [
     "status": "ACTIVE"
   },
   {
-    "uid": "uid_dvtc_apg_01",
-    "fullName": "Phạm Thanh Nhàn",
-    "role": "CONTRACTOR",
-    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
-    "position": "Chỉ huy trưởng",
-    "avatar": "TN",
-    "phone": "0869266264",
-    "email": "phamnhanktxd2014@gmail.com",
-    "password": "123456",
-    "status": "ACTIVE"
-  },
-  {
     "uid": "uid_dvtc_apg_02",
     "fullName": "Nguyễn Hoàng Bách",
     "role": "CONTRACTOR",
@@ -524,7 +512,7 @@ export const MOCK_USERS = [
     "fullName": "Trà Hoàng Anh",
     "role": "CONTRACTOR",
     "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
-    "position": "Kỹ thuật hiện trường",
+    "position": "Kỹ thuật hiện trường Mep",
     "avatar": "HA",
     "phone": "0842698168",
     "email": "hoanganh.vng12@gmail.com",
@@ -556,14 +544,26 @@ export const MOCK_USERS = [
     "status": "ACTIVE"
   },
   {
+    "uid": "uid_dvtc_ghvp_00",
+    "fullName": "Nguyễn Trọng Nhân",
+    "role": "CONTRACTOR",
+    "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
+    "position": "Chỉ huy trưởng Mep",
+    "avatar": "TN",
+    "phone": "Chưa cập nhật",
+    "email": "trongnhan@gmail.com",
+    "password": "123456",
+    "status": "ACTIVE"
+  },
+  {
     "uid": "uid_dvtc_ghvp_01",
     "fullName": "Trần Mạnh Hưng",
     "role": "CONTRACTOR",
     "company": "Công ty TNHH Gia Huy Vĩnh Phúc",
     "position": "Chỉ huy trưởng",
     "avatar": "MH",
-    "phone": "0912345678",
-    "email": "hungtm.giahuy@gmail.com",
+    "phone": "0907682870",
+    "email": "manhhung1020558@gmail.com",
     "password": "123456",
     "status": "ACTIVE"
   },
@@ -822,17 +822,111 @@ export const INITIAL_COMPLETION_REPORTS = [];
 export const MOCK_COMPLETION_REPORTS = [];
 
 /**
+ * Kiểm tra xem bối cảnh (hạng mục thi công, chức danh/chức vụ người tạo) có chứa MEP hay không
+ */
+export function isMepContext(context, pool = []) {
+  if (!context) return false;
+
+  if (typeof context === 'string') {
+    return context.toLowerCase().includes('mep');
+  }
+
+  const textToScan = [];
+  const creatorRolesToScan = [];
+  let creatorName = '';
+  let creatorUid = '';
+
+  if (typeof context === 'object') {
+    textToScan.push(
+      context.itemName,
+      context.packageName,
+      context.taskContent,
+      context.inspectionObject,
+      context.package,
+      context.task,
+      context.category,
+      context.notes,
+      context.workDescription,
+      context.workSummary,
+      context.workContent,
+      context.contextStr,
+      context.title,
+      context.projectInfo?.itemName,
+      context.projectInfo?.packageName,
+      context.projectInfo?.inspectionObject,
+      context.projectInfo?.taskContent,
+      context.relatedRequest?.itemName,
+      context.relatedRequest?.packageName,
+      context.relatedRequest?.taskContent,
+      context.relatedRequest?.inspectionObject
+    );
+
+    creatorRolesToScan.push(
+      context.createdByRole,
+      context.creatorRole,
+      context.creatorPosition,
+      context.position,
+      context.role,
+      context.createdPosition,
+      context.attendees?.contractor?.position,
+      context.representatives?.contractor?.createdPosition,
+      context.representatives?.contractor?.position,
+      context.relatedRequest?.createdByRole
+    );
+
+    creatorName = context.createdByName || 
+                  context.creatorName || 
+                  context.person || 
+                  context.attendees?.contractor?.person || 
+                  context.representatives?.contractor?.createdBy || 
+                  context.relatedRequest?.createdByName || '';
+
+    creatorUid = context.createdByUid || 
+                 context.creatorUid || 
+                 context.uid || 
+                 context.attendees?.contractor?.uid || 
+                 context.relatedRequest?.createdByUid || '';
+  }
+
+  // Tra cứu theo creatorUser nếu có thông tin người tạo trong danh sách users
+  if (creatorUid || creatorName) {
+    const cleanName = (creatorName || '').toLowerCase().trim();
+    const creatorUser = (pool || []).find(u => 
+      (creatorUid && u.uid === creatorUid) ||
+      (cleanName && (u.fullName || '').toLowerCase().trim() === cleanName) ||
+      (cleanName && (u.email || '').toLowerCase().trim() === cleanName)
+    );
+    if (creatorUser) {
+      if (creatorUser.position) creatorRolesToScan.push(creatorUser.position);
+      if (creatorUser.role) creatorRolesToScan.push(creatorUser.role);
+    }
+  }
+
+  const allText = [...textToScan, ...creatorRolesToScan].filter(Boolean).join(' ').toLowerCase();
+  return allText.includes('mep');
+}
+
+/**
  * Lấy chuẩn xác Chỉ huy trưởng theo công ty nhà thầu (Đơn vị thi công)
  * - Tuyệt đối không lấy nhầm sang Chỉ huy phó hoặc Kỹ thuật hiện trường
  * - Luôn trả về position: 'Chỉ huy trưởng'
- * - Tự động tra cứu danh sách cán bộ thật (users), nếu chưa có thì ánh xạ theo các nhà thầu chính thức của dự án:
- *   + Công ty TNHH Gia Huy Vĩnh Phúc (hoặc An Phú Gia cũ): Phạm Thanh Nhàn (Chỉ huy trưởng)
- *   + Công ty TNHH Phát Triển Xây Dựng Phan Lê: Đào Thanh Thảo (Chỉ huy trưởng)
- *   + Công ty TNHH Tư vấn Thiết kế Bình Hoà: Phan Văn Khương (Chỉ huy trưởng)
+ * - Riêng Gia Huy Vĩnh Phúc có 2 Chỉ huy trưởng:
+ *   + Hạng mục thi công hoặc Chức danh/Chức vụ người tạo có chữ Mep -> Nguyễn Trọng Nhân
+ *   + Còn lại -> Trần Mạnh Hưng
+ * - Công ty Phan Lê: Đào Thanh Thảo
+ * - Công ty Bình Hoà: Phan Văn Khương
  */
-export function getContractorChief(companyName, usersList = []) {
+export function getContractorChief(companyName, usersList = [], context = {}) {
+  // Linh hoạt xử lý nếu tham số thứ 2 là context object thay vì mảng users
+  let actualUsers = usersList;
+  let actualContext = context;
+  if (!Array.isArray(usersList) && usersList !== null && typeof usersList === 'object' && !('length' in usersList)) {
+    actualContext = usersList;
+    actualUsers = [];
+  }
+
   const cleanComp = (companyName || '').toLowerCase().trim();
-  const pool = (Array.isArray(usersList) && usersList.length > 0) ? usersList : MOCK_USERS;
+  const pool = (Array.isArray(actualUsers) && actualUsers.length > 0) ? actualUsers : MOCK_USERS;
 
   // Lọc các cán bộ thuộc Đơn vị thi công và thuộc công ty tương ứng
   const contractorUsers = pool.filter(u => {
@@ -851,51 +945,90 @@ export function getContractorChief(companyName, usersList = []) {
     return uComp.includes(cleanComp) || cleanComp.includes(uComp);
   });
 
-  // Tìm cán bộ giữ chức vụ CHỈ HUY TRƯỞNG (loại trừ tuyệt đối bất kỳ chức danh 'phó' nào)
-  const chief = contractorUsers.find(u => {
-    const pos = (u.position || '').toLowerCase().trim();
-    if (pos.includes('phó')) return false;
-    return pos.includes('chỉ huy trưởng') || (pos.includes('chỉ huy') && !pos.includes('phó'));
-  });
-
-  if (chief) {
-    return {
-      fullName: chief.fullName,
-      position: 'Chỉ huy trưởng',
-      uid: chief.uid,
-      company: chief.company || companyName,
-      phone: chief.phone,
-      email: chief.email
-    };
-  }
-
-  // Fallback chuẩn theo từng đơn vị thi công chính thức của dự án
+  // 1. Công ty TNHH Phát Triển Xây Dựng Phan Lê: Luôn là Đào Thanh Thảo
   if (cleanComp.includes('phan lê')) {
+    const phanLeChief = contractorUsers.find(u => {
+      const pos = (u.position || '').toLowerCase();
+      return (pos.includes('chỉ huy trưởng') || pos.includes('chỉ huy')) && !pos.includes('phó');
+    });
     return {
-      fullName: 'Đào Thanh Thảo',
+      fullName: phanLeChief?.fullName || 'Đào Thanh Thảo',
       position: 'Chỉ huy trưởng',
       company: 'Công ty TNHH Phát Triển Xây Dựng Phan Lê',
-      phone: '0917355318',
-      email: 'daothanhthao@gmail.com'
+      phone: phanLeChief?.phone || '0917355318',
+      email: phanLeChief?.email || 'daothanhthao@gmail.com',
+      uid: phanLeChief?.uid || 'uid_dvtc_phanle_01'
     };
   }
 
+  // 2. Công ty TNHH Tư vấn Thiết kế Bình Hoà: Luôn là Phan Văn Khương
   if (cleanComp.includes('bình hoà') || cleanComp.includes('bình hòa')) {
+    const binhHoaChief = contractorUsers.find(u => {
+      const pos = (u.position || '').toLowerCase();
+      return (pos.includes('chỉ huy trưởng') || pos.includes('chỉ huy')) && !pos.includes('phó');
+    });
     return {
-      fullName: 'Phan Văn Khương',
+      fullName: binhHoaChief?.fullName || 'Phan Văn Khương',
       position: 'Chỉ huy trưởng',
       company: 'Công ty TNHH Tư vấn Thiết kế Bình Hoà',
-      phone: '0772728885',
-      email: 'pkhuong03@gmail.com'
+      phone: binhHoaChief?.phone || '0772728885',
+      email: binhHoaChief?.email || 'pkhuong03@gmail.com',
+      uid: binhHoaChief?.uid || 'uid_dvtc_binhhoa_01'
     };
   }
 
-  // Mặc định là nhà thầu chính Gia Huy Vĩnh Phúc (hoặc các dự án thay thế An Phú Gia)
-  return {
-    fullName: 'Phạm Thanh Nhàn',
-    position: 'Chỉ huy trưởng',
-    company: 'Công ty TNHH Gia Huy Vĩnh Phúc',
-    phone: '0869266264',
-    email: 'phamnhanktxd2014@gmail.com'
-  };
+  // 3. Nếu là công ty nhà thầu khác ngoài Gia Huy Vĩnh Phúc (và đã chỉ định tên rõ ràng)
+  if (cleanComp && !cleanComp.includes('gia huy') && !cleanComp.includes('an phú gia')) {
+    const otherChief = contractorUsers.find(u => {
+      const pos = (u.position || '').toLowerCase().trim();
+      return (pos.includes('chỉ huy trưởng') || pos.includes('chỉ huy')) && !pos.includes('phó');
+    });
+    if (otherChief) {
+      return {
+        fullName: otherChief.fullName,
+        position: 'Chỉ huy trưởng',
+        company: otherChief.company || companyName,
+        phone: otherChief.phone,
+        email: otherChief.email,
+        uid: otherChief.uid
+      };
+    }
+  }
+
+  // 4. Riêng Công ty TNHH Gia Huy Vĩnh Phúc (có 2 chỉ huy trưởng):
+  // - Nếu hạng mục thi công hoặc Chức danh / Chức vụ người tạo có chữ Mep:
+  //   -> Chỉ huy trưởng là anh Nguyễn Trọng Nhân
+  // - Còn lại:
+  //   -> Chỉ huy trưởng là anh Trần Mạnh Hưng
+  const isMep = isMepContext(actualContext, pool);
+
+  if (isMep) {
+    const nhanUser = contractorUsers.find(u => (u.fullName || '').toLowerCase().includes('nhân')) ||
+      contractorUsers.find(u => {
+        const pos = (u.position || '').toLowerCase();
+        return pos.includes('chỉ huy') && pos.includes('mep');
+      });
+    return {
+      fullName: nhanUser?.fullName || 'Nguyễn Trọng Nhân',
+      position: 'Chỉ huy trưởng',
+      company: 'Công ty TNHH Gia Huy Vĩnh Phúc',
+      phone: (nhanUser?.phone && nhanUser.phone !== 'Chưa cập nhật') ? nhanUser.phone : 'Chưa cập nhật',
+      email: nhanUser?.email || 'trongnhan@gmail.com',
+      uid: nhanUser?.uid || 'uid_dvtc_ghvp_00'
+    };
+  } else {
+    const hungUser = contractorUsers.find(u => (u.fullName || '').toLowerCase().includes('hưng')) ||
+      contractorUsers.find(u => {
+        const pos = (u.position || '').toLowerCase();
+        return (pos.includes('chỉ huy trưởng') || pos.includes('chỉ huy')) && !pos.includes('mep') && !pos.includes('phó');
+      });
+    return {
+      fullName: hungUser?.fullName || 'Trần Mạnh Hưng',
+      position: 'Chỉ huy trưởng',
+      company: 'Công ty TNHH Gia Huy Vĩnh Phúc',
+      phone: hungUser?.phone || '0907682870',
+      email: hungUser?.email || 'manhhung1020558@gmail.com',
+      uid: hungUser?.uid || 'uid_dvtc_ghvp_01'
+    };
+  }
 }
