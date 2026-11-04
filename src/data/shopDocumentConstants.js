@@ -47,13 +47,15 @@ export const DEFAULT_SHOP_SLA_CONFIGS = [
 
 // Trạng thái hồ sơ
 export const SHOP_STATUS = {
-  WAITING_ASSIGNMENT: 'WAITING_ASSIGNMENT', // Chờ 2 Trưởng ban phân công cán bộ (Hạn 1 ngày)
-  SENT: 'SENT',                            // Đã phân công - đang trong quá trình thẩm định & phê duyệt
-  APPROVED: 'APPROVED',                    // Đã xác nhận - cả TVGS và Ban QLDA đều duyệt đạt
-  REJECTED: 'REJECTED',                    // Cần sửa - bị yêu cầu chỉnh sửa (sẽ gửi lại trực tiếp người từ chối)
-  OVERDUE_ASSIGNMENT: 'OVERDUE_ASSIGNMENT',// Chậm phân công - Quá 1 ngày (24h) chưa chọn cán bộ
-  OVERDUE_REVIEW: 'OVERDUE_REVIEW',        // Chậm phản hồi - Quá thời hạn SLA mà cán bộ chưa duyệt
-  OVERDUE: 'OVERDUE'                       // Alias tương thích
+  WAITING_ASSIGNMENT: 'WAITING_ASSIGNMENT', // Chờ phân công cán bộ
+  SENT: 'SENT',                            // Đang trong quá trình thẩm định & phê duyệt
+  APPROVED: 'APPROVED',                    // Đã xác nhận / Hoàn thành
+  REJECTED: 'REJECTED',                    // Cần sửa - bị yêu cầu chỉnh sửa
+  OVERDUE_TVGS: 'OVERDUE_TVGS',            // TVGS Chậm (chậm giao 1 ngày hoặc chậm duyệt)
+  OVERDUE_INVESTOR: 'OVERDUE_INVESTOR',    // Ban QLDA Chậm (chậm giao 1 ngày hoặc chậm duyệt sau khi TVGS duyệt đạt)
+  OVERDUE_ASSIGNMENT: 'OVERDUE_ASSIGNMENT',// Alias tương thích cũ
+  OVERDUE_REVIEW: 'OVERDUE_REVIEW',        // Alias tương thích cũ
+  OVERDUE: 'OVERDUE'                       // Alias tương thích cũ
 };
 
 /**
@@ -133,85 +135,182 @@ export const calculateDueDate = (submittedAt, slaDays = 3) => {
 };
 
 /**
- * Kiểm tra hồ sơ có bị Chậm Phân Công hay không (Quy tắc: 1 ngày / 24h kể từ khi tạo phiếu)
+ * Kiểm tra hồ sơ có phải là Bản vẽ hoàn công hay không
+ * (Bản vẽ hoàn công chỉ trình qua TVGS, không qua Ban Quản Lý Dự Án. Khi TVGS duyệt đạt là hoàn thành.)
  */
-export const isShopAssignmentOverdue = (doc) => {
+export const isAsBuiltDoc = (doc) => {
   if (!doc) return false;
-  if (doc.status === SHOP_STATUS.APPROVED || doc.status === SHOP_STATUS.REJECTED) return false;
-  
-  // Kiểm tra nếu ít nhất 1 bên chưa phân công cán bộ
-  const isTvgsAssigned = Boolean(doc.assignedTvgs?.assignee || doc.assignedTvgs?.uid);
-  const isInvestorAssigned = Boolean(doc.assignedInvestor?.assignee || doc.assignedInvestor?.uid);
-  
-  if (isTvgsAssigned && isInvestorAssigned) return false;
-
-  const deadlineTime = doc.assignmentDeadline 
-    ? new Date(doc.assignmentDeadline).getTime() 
-    : (new Date(doc.createdAt || doc.submittedAt || Date.now()).getTime() + 24 * 60 * 60 * 1000);
-
-  return Date.now() > deadlineTime;
+  const code = (doc.typeCode || '').toUpperCase();
+  const name = (doc.typeName || doc.title || '').toLowerCase();
+  return code === 'BAN_VE_HOAN_CONG' || name.includes('hoàn công');
 };
 
 /**
- * Kiểm tra hồ sơ có bị Chậm Phản Hồi (Quá hạn SLA của cán bộ thẩm định) hay không
+ * Kiểm tra hồ sơ có bị Chậm từ phía Tư Vấn Giám Sát (TVGS) hay không:
+ * 1. Chậm giao: Quá 24h kể từ khi tạo phiếu mà TVGS Trưởng chưa giao cán bộ.
+ * 2. Chậm duyệt: Cán bộ TVGS được giao quá hạn SLA mà chưa xác nhận ĐẠT.
  */
-export const isShopReviewOverdue = (doc) => {
-  if (!doc) return false;
-  if (doc.status === SHOP_STATUS.APPROVED || doc.status === SHOP_STATUS.REJECTED) return false;
+export const getShopTvgsOverdueInfo = (doc) => {
+  if (!doc) return { isOverdue: false };
+  if (doc.status === SHOP_STATUS.APPROVED || doc.status === SHOP_STATUS.REJECTED) {
+    return { isOverdue: false };
+  }
+
+  // Nếu TVGS đã xác nhận ĐẠT thì TVGS không còn chậm
+  if (doc.assignedTvgs?.status === 'ACCEPTED') {
+    return { isOverdue: false };
+  }
 
   const now = Date.now();
+  const isTvgsAssigned = Boolean(doc.assignedTvgs?.assignee || doc.assignedTvgs?.uid);
 
-  // Kiểm tra TVGS: Nếu đã được giao và đang chờ duyệt mà quá hạn dueDate
-  const tvgsAssigned = doc.assignedTvgs?.assignee || doc.assignedTvgs?.uid;
-  if (tvgsAssigned && doc.assignedTvgs?.status === 'PENDING') {
+  // 1. Kiểm tra chậm giao việc (Hạn 1 ngày / 24h kể từ thời điểm tạo phiếu)
+  if (!isTvgsAssigned || doc.assignedTvgs?.status === 'WAITING_ASSIGNMENT') {
+    const deadlineTime = doc.assignmentDeadline 
+      ? new Date(doc.assignmentDeadline).getTime() 
+      : (new Date(doc.createdAt || doc.submittedAt || Date.now()).getTime() + 24 * 60 * 60 * 1000);
+
+    if (now > deadlineTime) {
+      return { isOverdue: true, type: 'ASSIGNMENT', reason: 'TVGS Chậm giao' };
+    }
+    return { isOverdue: false };
+  }
+
+  // 2. Kiểm tra chậm duyệt (Quá hạn SLA của cán bộ TVGS)
+  if (doc.assignedTvgs?.status === 'PENDING') {
     const tvgsDue = doc.assignedTvgs?.dueDate 
       ? new Date(doc.assignedTvgs.dueDate).getTime() 
       : (doc.dueDate ? new Date(doc.dueDate).getTime() : null);
-    if (tvgsDue && now > tvgsDue) return true;
+    if (tvgsDue && now > tvgsDue) {
+      return { isOverdue: true, type: 'REVIEW', reason: 'TVGS Chậm duyệt' };
+    }
   }
 
-  // Kiểm tra Ban QLDA: Nếu đã được giao và đang chờ duyệt mà quá hạn dueDate
-  const invAssigned = doc.assignedInvestor?.assignee || doc.assignedInvestor?.uid;
-  if (invAssigned && doc.assignedInvestor?.status === 'PENDING') {
-    const invDue = doc.assignedInvestor?.dueDate 
-      ? new Date(doc.assignedInvestor.dueDate).getTime() 
-      : (doc.dueDate ? new Date(doc.dueDate).getTime() : null);
-    if (invDue && now > invDue) return true;
+  return { isOverdue: false };
+};
+
+/**
+ * Kiểm tra hồ sơ có bị Chậm từ phía Ban Quản Lý Dự Án (Ban QLDA) hay không:
+ * NGUYÊN TẮC TUẦN TỰ NỐI TIẾP:
+ * - Bản vẽ hoàn công: Không qua Ban QLDA -> Không bao giờ chậm.
+ * - Hồ sơ thông thường: CHỈ TÍNH HẠN KHI TVGS ĐÃ XÁC NHẬN ĐẠT!
+ *   1. Chậm giao: Quá 24h kể từ thời điểm TVGS xác nhận Đạt mà Trưởng Ban QLDA chưa giao cán bộ.
+ *   2. Chậm duyệt: Cán bộ Ban QLDA quá hạn SLA (tính từ thời điểm TVGS xác nhận Đạt) mà chưa phê duyệt.
+ */
+export const getShopInvestorOverdueInfo = (doc) => {
+  if (!doc) return { isOverdue: false };
+  if (doc.status === SHOP_STATUS.APPROVED || doc.status === SHOP_STATUS.REJECTED) {
+    return { isOverdue: false };
   }
 
-  return false;
+  // Nếu là Bản vẽ hoàn công -> không qua Ban QLDA
+  if (isAsBuiltDoc(doc)) {
+    return { isOverdue: false };
+  }
+
+  // Nếu Ban QLDA đã duyệt ĐẠT -> không chậm
+  if (doc.assignedInvestor?.status === 'ACCEPTED') {
+    return { isOverdue: false };
+  }
+
+  // ĐIỀU KIỆN TIÊN QUYẾT: TVGS phải duyệt ĐẠT trước thì Ban QLDA mới đến lượt xử lý!
+  // Khi TVGS chưa duyệt đạt: Ban QLDA tuyệt đối KHÔNG bị tính là chậm
+  if (doc.assignedTvgs?.status !== 'ACCEPTED') {
+    return { isOverdue: false };
+  }
+
+  const now = Date.now();
+  // Thời điểm TVGS xác nhận Đạt (mốc khởi đầu tính giờ cho Ban QLDA)
+  const tvgsReviewedTime = doc.assignedTvgs?.reviewedAt 
+    ? new Date(doc.assignedTvgs.reviewedAt).getTime() 
+    : (doc.updatedAt ? new Date(doc.updatedAt).getTime() : now);
+
+  const isInvestorAssigned = Boolean(doc.assignedInvestor?.assignee || doc.assignedInvestor?.uid);
+
+  // 1. Kiểm tra chậm giao: Trưởng Ban QLDA có 1 ngày (24h) kể từ khi TVGS duyệt đạt để chọn cán bộ
+  if (!isInvestorAssigned || doc.assignedInvestor?.status === 'WAITING_ASSIGNMENT') {
+    const invAssignDeadline = tvgsReviewedTime + 24 * 60 * 60 * 1000;
+    if (now > invAssignDeadline) {
+      return { isOverdue: true, type: 'ASSIGNMENT', reason: 'Ban QLDA Chậm giao' };
+    }
+    return { isOverdue: false };
+  }
+
+  // 2. Kiểm tra chậm duyệt: Cán bộ Ban QLDA có số ngày SLA tính từ thời điểm TVGS duyệt đạt
+  if (doc.assignedInvestor?.status === 'PENDING') {
+    const invSlaDays = Number(doc.assignedInvestor?.slaDays || doc.slaDays || 3);
+    const invDueTime = doc.assignedInvestor?.dueDate && new Date(doc.assignedInvestor.dueDate).getTime() > tvgsReviewedTime
+      ? new Date(doc.assignedInvestor.dueDate).getTime()
+      : (tvgsReviewedTime + invSlaDays * 24 * 60 * 60 * 1000);
+
+    if (now > invDueTime) {
+      return { isOverdue: true, type: 'REVIEW', reason: 'Ban QLDA Chậm duyệt' };
+    }
+  }
+
+  return { isOverdue: false };
+};
+
+/**
+ * Kiểm tra hồ sơ có bị Chậm Phân Công hay không (hàm tương thích)
+ */
+export const isShopAssignmentOverdue = (doc) => {
+  return getShopTvgsOverdueInfo(doc).type === 'ASSIGNMENT' || getShopInvestorOverdueInfo(doc).type === 'ASSIGNMENT';
+};
+
+/**
+ * Kiểm tra hồ sơ có bị Chậm Phản Hồi (Quá hạn SLA) hay không (hàm tương thích)
+ */
+export const isShopReviewOverdue = (doc) => {
+  return getShopTvgsOverdueInfo(doc).type === 'REVIEW' || getShopInvestorOverdueInfo(doc).type === 'REVIEW';
 };
 
 /**
  * Kiểm tra hồ sơ có bị Chậm (hàm tương thích ngược)
  */
 export const isShopDocumentOverdue = (doc) => {
-  return isShopAssignmentOverdue(doc) || isShopReviewOverdue(doc);
+  return getShopTvgsOverdueInfo(doc).isOverdue || getShopInvestorOverdueInfo(doc).isOverdue;
 };
 
 /**
- * Lấy trạng thái hiển thị thực tế (tính toán realtime theo các mốc thời gian SLA)
+ * Lấy trạng thái hiển thị thực tế (tính toán realtime theo các mốc thời gian SLA tuần tự)
  */
 export const getEffectiveShopStatus = (doc) => {
   if (!doc) return SHOP_STATUS.SENT;
   if (doc.status === SHOP_STATUS.APPROVED) return SHOP_STATUS.APPROVED;
   if (doc.status === SHOP_STATUS.REJECTED) return SHOP_STATUS.REJECTED;
 
-  // Kiểm tra chậm phân công trước
-  if (isShopAssignmentOverdue(doc)) {
-    return SHOP_STATUS.OVERDUE_ASSIGNMENT;
+  const isAsBuilt = isAsBuiltDoc(doc);
+
+  // Nếu là Bản vẽ hoàn công: khi TVGS đã duyệt đạt thì đã hoàn thiện (APPROVED)
+  if (isAsBuilt && doc.assignedTvgs?.status === 'ACCEPTED') {
+    return SHOP_STATUS.APPROVED;
   }
 
-  // Nếu vẫn đang chờ phân công
-  const isTvgsAssigned = Boolean(doc.assignedTvgs?.assignee || doc.assignedTvgs?.uid);
+  // 1. ƯU TIÊN KIỂM TRA CHẬM CỦA TVGS TRƯỚC (Vì TVGS là bước 1)
+  const tvgsOverdue = getShopTvgsOverdueInfo(doc);
+  if (tvgsOverdue.isOverdue) {
+    return SHOP_STATUS.OVERDUE_TVGS;
+  }
+
+  // 2. NẾU TVGS CHƯA DUYỆT ĐẠT:
+  if (doc.assignedTvgs?.status !== 'ACCEPTED') {
+    const isTvgsAssigned = Boolean(doc.assignedTvgs?.assignee || doc.assignedTvgs?.uid);
+    if (!isTvgsAssigned || doc.assignedTvgs?.status === 'WAITING_ASSIGNMENT') {
+      return SHOP_STATUS.WAITING_ASSIGNMENT;
+    }
+    return SHOP_STATUS.SENT;
+  }
+
+  // 3. NẾU TVGS ĐÃ DUYỆT ĐẠT: KIỂM TRA BƯỚC BAN QLDA
+  const investorOverdue = getShopInvestorOverdueInfo(doc);
+  if (investorOverdue.isOverdue) {
+    return SHOP_STATUS.OVERDUE_INVESTOR;
+  }
+
   const isInvestorAssigned = Boolean(doc.assignedInvestor?.assignee || doc.assignedInvestor?.uid);
-  if (doc.status === SHOP_STATUS.WAITING_ASSIGNMENT || (!isTvgsAssigned || !isInvestorAssigned)) {
+  if (!isInvestorAssigned || doc.assignedInvestor?.status === 'WAITING_ASSIGNMENT') {
     return SHOP_STATUS.WAITING_ASSIGNMENT;
-  }
-
-  // Nếu đã phân công đầy đủ -> Kiểm tra chậm phản hồi thẩm định
-  if (isShopReviewOverdue(doc)) {
-    return SHOP_STATUS.OVERDUE_REVIEW;
   }
 
   return SHOP_STATUS.SENT;
@@ -245,6 +344,22 @@ export const getShopStatusBadgeConfig = (status) => {
         color: '#b45309',
         border: '#fde68a',
         dotColor: '#f59e0b'
+      };
+    case SHOP_STATUS.OVERDUE_TVGS:
+      return {
+        label: 'TVGS Chậm',
+        bg: '#fff1f2',
+        color: '#e11d48',
+        border: '#fecdd3',
+        dotColor: '#f43f5e'
+      };
+    case SHOP_STATUS.OVERDUE_INVESTOR:
+      return {
+        label: 'Ban QLDA Chậm',
+        bg: '#fdf2f8',
+        color: '#be185d',
+        border: '#fbcfe8',
+        dotColor: '#ec4899'
       };
     case SHOP_STATUS.OVERDUE_ASSIGNMENT:
       return {

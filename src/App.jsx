@@ -68,6 +68,7 @@ import {
   isShopReviewOverdue,
   getShopLeadSupervisor,
   getShopLeadInvestor,
+  isAsBuiltDoc,
   SHOP_DOCUMENTS_STORAGE_KEY,
   SHOP_SLA_STORAGE_KEY
 } from './data/shopDocumentConstants';
@@ -1196,8 +1197,15 @@ export default function App() {
             const localHasRectification = localItem.status === 'RECTIFIED' || Boolean(localItem.rectification?.photos?.length);
             const cloudHasRectification = cloudItem.status === 'RECTIFIED' || Boolean(cloudItem.rectification?.photos?.length);
 
+            const localHasPhotos = Array.isArray(localItem.evidencePhotos) && localItem.evidencePhotos.length > 0;
+            const cloudHasPhotos = Array.isArray(cloudItem.evidencePhotos) && cloudItem.evidencePhotos.length > 0;
+
             if (localHasRectification && !cloudHasRectification) {
               map.set(key, { ...cloudItem, ...localItem });
+            } else if (localHasPhotos && !cloudHasPhotos) {
+              const mergedItem = { ...cloudItem, ...localItem };
+              map.set(key, mergedItem);
+              saveInspectionReport(mergedItem).catch(console.warn);
             } else {
               const cloudTime = new Date(cloudItem.updatedAt || cloudItem.createdAt || 0).getTime();
               const localTime = new Date(localItem.updatedAt || localItem.createdAt || 0).getTime();
@@ -1632,10 +1640,17 @@ export default function App() {
       // Tìm UID của TVGS Trưởng (Đinh Xuân Thám) và Trưởng Ban QLDA (Ngô Quý Linh)
       const leadSup = getShopLeadSupervisor(users);
       const leadInv = getShopLeadInvestor(users);
+      const isAsBuilt = isAsBuiltDoc(saved);
 
-      // Tạo thông báo đến 2 anh Trưởng và Chủ Đầu Tư
-      const notifTitle = `📑 [Cần phân công] Hồ sơ Shop mới: ${saved.title}`;
-      const notifBody = `${saved.createdByName} (${saved.contractorCompany || 'ĐVTC'}) vừa trình duyệt "${saved.typeName}": ${saved.title}. Mời TVGS Trưởng (${leadSup.fullName}) & Trưởng Ban QLDA (${leadInv.fullName}) phân công cán bộ phụ trách trong vòng 1 ngày (24 giờ).`;
+      // Tạo thông báo phân công:
+      // Bản vẽ hoàn công: chỉ gửi TVGS Trưởng. Các loại khác: gửi 2 Trưởng ban.
+      const notifTitle = isAsBuilt
+        ? `📑 [Cần phân công TVGS] Bản vẽ hoàn công: ${saved.title}`
+        : `📑 [Cần phân công] Hồ sơ Shop mới: ${saved.title}`;
+
+      const notifBody = isAsBuilt
+        ? `${saved.createdByName} (${saved.contractorCompany || 'ĐVTC'}) vừa trình Bản vẽ hoàn công: "${saved.title}". Kính mời TVGS Trưởng (${leadSup.fullName}) phân công cán bộ thụ lý thẩm tra & ký duyệt hoàn tất (không qua Ban QLDA).`
+        : `${saved.createdByName} (${saved.contractorCompany || 'ĐVTC'}) vừa trình duyệt "${saved.typeName}": ${saved.title}. Mời TVGS Trưởng (${leadSup.fullName}) & Trưởng Ban QLDA (${leadInv.fullName}) phân công cán bộ phụ trách trong vòng 1 ngày (24 giờ).`;
 
       const notif = {
         id: `notif_${Date.now()}`,
@@ -1647,12 +1662,17 @@ export default function App() {
         assignedRecipients: saved.assignedRecipients || [],
         createdByUid: saved.createdByUid,
         createdByName: saved.createdByName,
-        extraRecipientUids: [
+        extraRecipientUids: isAsBuilt ? [
+          saved.createdByUid,
+          leadSup.uid
+        ].filter(Boolean) : [
           saved.createdByUid,
           leadSup.uid,
           leadInv.uid
         ].filter(Boolean),
-        targetRoles: ['LEAD_SUPERVISOR', 'LEAD_INVESTOR', 'ADMIN', 'CONTRACTOR'],
+        targetRoles: isAsBuilt 
+          ? ['LEAD_SUPERVISOR', 'ADMIN', 'CONTRACTOR']
+          : ['LEAD_SUPERVISOR', 'LEAD_INVESTOR', 'ADMIN', 'CONTRACTOR'],
         createdAt: new Date().toISOString(),
         time: 'Vừa xong',
         isRead: false
@@ -1673,13 +1693,15 @@ export default function App() {
       sendOneSignalPush({
         title: notifTitle,
         message: notifBody,
-        targetRoles: ['LEAD_SUPERVISOR', 'LEAD_INVESTOR', 'ADMIN']
+        targetRoles: isAsBuilt ? ['LEAD_SUPERVISOR', 'ADMIN'] : ['LEAD_SUPERVISOR', 'LEAD_INVESTOR', 'ADMIN']
       }).catch(console.warn);
 
       showAlert({
         type: 'success',
         title: 'Tạo Hồ Sơ Thành Công!',
-        message: `Đã phát hành hồ sơ "${saved.title}" (Mã: ${saved.docCode}).\nHồ sơ đã được gửi mặc định đến TVGS Trưởng (${leadSup.fullName}) và Trưởng Ban QLDA (${leadInv.fullName}) để phân công cán bộ chuyên môn trong vòng 1 ngày.`,
+        message: isAsBuilt
+          ? `Đã phát hành hồ sơ "${saved.title}" (Mã: ${saved.docCode}).\nHồ sơ thuộc loại Bản vẽ hoàn công, chỉ trình qua TVGS Trưởng (${leadSup.fullName}) để phân công thẩm định & ký duyệt hoàn tất (không qua Ban QLDA).`
+          : `Đã phát hành hồ sơ "${saved.title}" (Mã: ${saved.docCode}).\nHồ sơ đã được gửi mặc định đến TVGS Trưởng (${leadSup.fullName}) và Trưởng Ban QLDA (${leadInv.fullName}) để phân công cán bộ chuyên môn trong vòng 1 ngày.`,
         confirmText: 'Xem Hồ Sơ',
         cancelText: 'Đóng',
         onConfirm: () => setSelectedShopDoc(saved)
@@ -1701,8 +1723,11 @@ export default function App() {
       if (!doc) return;
 
       const nowIso = new Date().toISOString();
-      const targetDueDateIso = calculateDueDate(nowIso, slaDays).toISOString();
       const isTvgs = roleType === 'SUPERVISOR';
+      // Nếu là Ban QLDA và TVGS đã duyệt đạt trước đó thì tính dueDate từ reviewedAt của TVGS
+      const targetDueDateIso = (!isTvgs && doc.assignedTvgs?.status === 'ACCEPTED' && doc.assignedTvgs?.reviewedAt)
+        ? calculateDueDate(doc.assignedTvgs.reviewedAt, slaDays).toISOString()
+        : calculateDueDate(nowIso, slaDays).toISOString();
 
       const updatedTvgs = isTvgs ? {
         ...doc.assignedTvgs,
@@ -1742,8 +1767,12 @@ export default function App() {
         status: 'PENDING'
       } : doc.assignedInvestor;
 
-      // Cả 2 bên đều đã được phân công cán bộ -> Chuyển sang trạng thái SENT (Đang thẩm định)
-      const bothAssigned = Boolean(updatedTvgs?.assignee || updatedTvgs?.uid) && Boolean(updatedInvestor?.assignee || updatedInvestor?.uid);
+      const isAsBuilt = isAsBuiltDoc(doc);
+      // Đối với Bản vẽ hoàn công: chỉ cần TVGS được phân công là chuyển sang SENT (Đang thẩm định)
+      // Đối với hồ sơ khác: Cả 2 bên đều đã được phân công cán bộ -> Chuyển sang trạng thái SENT
+      const bothAssigned = isAsBuilt 
+        ? Boolean(updatedTvgs?.assignee || updatedTvgs?.uid)
+        : (Boolean(updatedTvgs?.assignee || updatedTvgs?.uid) && Boolean(updatedInvestor?.assignee || updatedInvestor?.uid));
 
       const updatedDoc = {
         ...doc,
@@ -1833,14 +1862,26 @@ export default function App() {
       const doc = (shopDocuments || []).find(d => d.id === docId) || selectedShopDoc;
       if (!doc) return;
 
-      // Bảo vệ chặt chẽ: Ban QLDA chỉ được duyệt khi TVGS đã duyệt đạt
-      if (roleType === 'INVESTOR' && doc.assignedTvgs?.status !== 'ACCEPTED') {
-        showAlert({
-          type: 'warning',
-          title: 'Chưa đủ điều kiện phê duyệt',
-          message: 'Tư Vấn Giám Sát chưa thẩm định đạt hồ sơ này. Ban QLDA chỉ được phê duyệt sau khi TVGS đã duyệt đạt!'
-        });
-        return;
+      const isAsBuilt = isAsBuiltDoc(doc);
+
+      // Bảo vệ chặt chẽ: Ban QLDA chỉ được duyệt khi TVGS đã duyệt đạt (với hồ sơ thông thường)
+      if (roleType === 'INVESTOR') {
+        if (isAsBuilt) {
+          showAlert({
+            type: 'info',
+            title: 'Không yêu cầu Ban QLDA',
+            message: 'Bản vẽ hoàn công chỉ trình qua TVGS thẩm định và ký duyệt hoàn tất, không yêu cầu Ban QLDA phê duyệt!'
+          });
+          return;
+        }
+        if (doc.assignedTvgs?.status !== 'ACCEPTED') {
+          showAlert({
+            type: 'warning',
+            title: 'Chưa đủ điều kiện phê duyệt',
+            message: 'Tư Vấn Giám Sát chưa thẩm định đạt hồ sơ này. Ban QLDA chỉ được phê duyệt sau khi TVGS đã duyệt đạt!'
+          });
+          return;
+        }
       }
 
       const nowIso = new Date().toISOString();
@@ -1851,15 +1892,29 @@ export default function App() {
         note: note || 'Xác nhận đạt yêu cầu kỹ thuật'
       } : doc.assignedTvgs;
 
-      const updatedAssignedInvestor = roleType === 'INVESTOR' ? {
+      let updatedAssignedInvestor = roleType === 'INVESTOR' ? {
         ...doc.assignedInvestor,
         status: 'ACCEPTED',
         reviewedAt: nowIso,
         note: note || 'Xác nhận đạt yêu cầu kỹ thuật'
       } : doc.assignedInvestor;
 
-      // Cả 2 bên đều xác nhận đạt -> Trạng thái hoàn tất APPROVED
-      const isBothAccepted = (updatedAssignedTvgs?.status === 'ACCEPTED') && (updatedAssignedInvestor?.status === 'ACCEPTED');
+      // Khi TVGS duyệt đạt (với hồ sơ thông thường):
+      // Nếu Ban QLDA đã được phân công trước đó, kích hoạt thời hạn hoàn thành dueDate chính thức từ thời điểm này!
+      if (roleType === 'SUPERVISOR' && !isAsBuilt && (doc.assignedInvestor?.assignee || doc.assignedInvestor?.uid)) {
+        const invSlaDays = Number(doc.assignedInvestor?.slaDays || 3);
+        const invDueDate = calculateDueDate(nowIso, invSlaDays).toISOString();
+        updatedAssignedInvestor = {
+          ...doc.assignedInvestor,
+          dueDate: invDueDate
+        };
+      }
+
+      // Với Bản vẽ hoàn công: TVGS duyệt đạt là hoàn thiện (APPROVED).
+      // Với các loại khác: Cả 2 bên đều xác nhận đạt mới hoàn tất APPROVED.
+      const isBothAccepted = isAsBuilt 
+        ? (updatedAssignedTvgs?.status === 'ACCEPTED')
+        : ((updatedAssignedTvgs?.status === 'ACCEPTED') && (updatedAssignedInvestor?.status === 'ACCEPTED'));
 
       const updatedDoc = {
         ...doc,
@@ -1873,7 +1928,7 @@ export default function App() {
             by: reviewer?.fullName || (roleType === 'SUPERVISOR' ? 'Tư Vấn Giám Sát' : 'Ban QLDA'),
             role: roleType === 'SUPERVISOR' ? 'Tư Vấn Giám Sát' : 'Ban QLDA',
             time: nowIso,
-            note: note ? `Xác nhận đạt: ${note}` : 'Đã xác nhận phê duyệt đạt'
+            note: note ? `Xác nhận đạt: ${note}` : (isAsBuilt && roleType === 'SUPERVISOR' ? 'TVGS đã ký duyệt và hoàn thiện Bản vẽ hoàn công' : 'Đã xác nhận phê duyệt đạt')
           }
         ],
         updatedAt: nowIso
@@ -1887,14 +1942,23 @@ export default function App() {
       });
       setSelectedShopDoc(updatedDoc);
 
-      // Phân định thông báo theo bước thẩm định tuần tự
+      // Phân định thông báo theo bước thẩm định tuần tự hoặc hoàn thiện hoàn công
       let notifTitle = '';
       let notifBody = '';
       let targetRoles = [];
       let extraRecipientUids = [];
 
-      if (roleType === 'SUPERVISOR') {
-        // Bước 1: TVGS duyệt đạt -> Gửi thông báo mời Ban QLDA vào phê duyệt
+      if (isAsBuilt && roleType === 'SUPERVISOR') {
+        // Bản vẽ hoàn công: TVGS ký duyệt là hoàn tất luôn
+        notifTitle = `✅ Bản vẽ hoàn công đã hoàn thiện: ${updatedDoc.title}`;
+        notifBody = `Tư Vấn Giám Sát (${reviewer?.fullName || 'TVGS'}) đã thẩm tra và ký duyệt ĐẠT hồ sơ Bản vẽ hoàn công "${updatedDoc.title}". Hồ sơ đã hoàn tất và đủ điều kiện nghiệm thu quyết toán!`;
+        targetRoles = ['CONTRACTOR', 'SUPERVISOR', 'LEAD_SUPERVISOR', 'INVESTOR', 'LEAD_INVESTOR', 'ADMIN'];
+        extraRecipientUids = [
+          updatedDoc.createdByUid,
+          updatedDoc.assignedTvgs?.uid || updatedDoc.assignedTvgs?.assignee?.uid
+        ].filter(Boolean);
+      } else if (roleType === 'SUPERVISOR') {
+        // Bước 1 hồ sơ thường: TVGS duyệt đạt -> Gửi thông báo mời Ban QLDA vào phê duyệt
         notifTitle = `📋 TVGS đã duyệt đạt - Mời Ban QLDA phê duyệt: ${updatedDoc.title}`;
         notifBody = `Tư Vấn Giám Sát (${reviewer?.fullName || 'TVGS'}) đã thẩm định và xác nhận ĐẠT hồ sơ "${updatedDoc.title}". Kính mời Ban QLDA (${updatedDoc.assignedInvestor?.fullName || updatedDoc.assignedInvestor?.assignee?.fullName || 'QLDA'}) vào kiểm tra và phê duyệt cuối cùng.`;
         targetRoles = ['INVESTOR', 'LEAD_INVESTOR', 'ADMIN', 'CONTRACTOR'];
@@ -1904,7 +1968,7 @@ export default function App() {
           updatedDoc.assignedTvgs?.uid || updatedDoc.assignedTvgs?.assignee?.uid
         ].filter(Boolean);
       } else {
-        // Bước 2: Ban QLDA duyệt đạt -> Cả 2 bên đã duyệt hoàn tất
+        // Bước 2 hồ sơ thường: Ban QLDA duyệt đạt -> Cả 2 bên đã duyệt hoàn tất
         notifTitle = `✅ Hồ sơ Shop đã được Ban QLDA phê duyệt hoàn tất: ${updatedDoc.title}`;
         notifBody = `Ban QLDA (${reviewer?.fullName || 'Ban QLDA'}) đã phê duyệt hoàn tất hồ sơ "${updatedDoc.title}". Cả TVGS và Ban QLDA đều đã xác nhận đạt, hồ sơ đủ điều kiện triển khai thi công!`;
         targetRoles = ['CONTRACTOR', 'SUPERVISOR', 'LEAD_SUPERVISOR', 'INVESTOR', 'LEAD_INVESTOR', 'ADMIN'];
@@ -1917,7 +1981,7 @@ export default function App() {
 
       const notif = {
         id: `notif_${Date.now()}`,
-        type: roleType === 'SUPERVISOR' ? 'SHOP_DOCUMENT_TVGS_APPROVED' : 'SHOP_DOCUMENT_APPROVED',
+        type: (isAsBuilt && roleType === 'SUPERVISOR') ? 'SHOP_DOCUMENT_APPROVED' : (roleType === 'SUPERVISOR' ? 'SHOP_DOCUMENT_TVGS_APPROVED' : 'SHOP_DOCUMENT_APPROVED'),
         title: notifTitle,
         body: notifBody,
         targetShopDocId: updatedDoc.id,
@@ -1948,10 +2012,12 @@ export default function App() {
 
       showAlert({
         type: 'success',
-        title: roleType === 'SUPERVISOR' ? 'TVGS Đã Thẩm Định Đạt!' : 'Phê Duyệt Hoàn Tất!',
-        message: roleType === 'SUPERVISOR'
-          ? `Hồ sơ "${updatedDoc.title}" đã được TVGS duyệt đạt.\nHệ thống đã gửi thông báo đến Ban QLDA để tiến hành phê duyệt bước tiếp theo.`
-          : `Hồ sơ "${updatedDoc.title}" đã được Ban QLDA phê duyệt hoàn tất. Cả 2 bên TVGS và Ban QLDA đều đã xác nhận đạt!`
+        title: (isAsBuilt && roleType === 'SUPERVISOR') ? 'Bản Vẽ Hoàn Công Đã Hoàn Thiện! 🎉' : (roleType === 'SUPERVISOR' ? 'TVGS Đã Thẩm Định Đạt!' : 'Phê Duyệt Hoàn Tất!'),
+        message: (isAsBuilt && roleType === 'SUPERVISOR')
+          ? `Hồ sơ "${updatedDoc.title}" đã được TVGS thẩm định và ký duyệt hoàn tất. Hồ sơ đã hoàn thành mà không cần qua Ban QLDA.`
+          : (roleType === 'SUPERVISOR'
+            ? `Hồ sơ "${updatedDoc.title}" đã được TVGS duyệt đạt.\nHệ thống đã gửi thông báo đến Ban QLDA để tiến hành phê duyệt bước tiếp theo.`
+            : `Hồ sơ "${updatedDoc.title}" đã được Ban QLDA phê duyệt hoàn tất. Cả 2 bên TVGS và Ban QLDA đều đã xác nhận đạt!`)
       });
     } catch (err) {
       console.error('Lỗi duyệt hồ sơ shop:', err);
@@ -2629,12 +2695,25 @@ export default function App() {
         note: note || 'Xác nhận đạt yêu cầu'
       } : doc.assignedTvgs;
 
-      const updatedAssignedInvestor = roleType === 'INVESTOR' ? {
-        ...doc.assignedInvestor,
-        status: 'ACCEPTED',
-        reviewedAt: nowIso,
-        note: note || 'Xác nhận đạt yêu cầu'
-      } : doc.assignedInvestor;
+      // Khi TVGS duyệt đạt: Kích hoạt mốc tính thời gian cho Ban QLDA (bắt đầu tính SLA từ thời điểm TVGS duyệt đạt)
+      let updatedAssignedInvestor = doc.assignedInvestor;
+      let nextDocDueDate = doc.dueDate;
+      if (roleType === 'SUPERVISOR' && doc.assignedInvestor) {
+        const invSlaDays = Number(doc.assignedInvestor.slaDays || doc.slaDays || 3);
+        const invDueDateIso = calculateDueDate(nowIso, invSlaDays).toISOString();
+        updatedAssignedInvestor = {
+          ...doc.assignedInvestor,
+          dueDate: invDueDateIso
+        };
+        nextDocDueDate = invDueDateIso;
+      } else if (roleType === 'INVESTOR') {
+        updatedAssignedInvestor = {
+          ...doc.assignedInvestor,
+          status: 'ACCEPTED',
+          reviewedAt: nowIso,
+          note: note || 'Xác nhận đạt yêu cầu'
+        };
+      }
 
       const isBothAccepted = (updatedAssignedTvgs?.status === 'ACCEPTED') && (updatedAssignedInvestor?.status === 'ACCEPTED');
 
@@ -2643,6 +2722,8 @@ export default function App() {
         assignedTvgs: updatedAssignedTvgs,
         assignedInvestor: updatedAssignedInvestor,
         status: isBothAccepted ? PAYMENT_STATUS.APPROVED : PAYMENT_STATUS.SENT,
+        dueDate: nextDocDueDate,
+        investorReviewOverdueNotified: roleType === 'SUPERVISOR' ? false : doc.investorReviewOverdueNotified,
         history: [
           ...(doc.history || []),
           {
@@ -3100,13 +3181,19 @@ export default function App() {
             }
           }
 
-          // Kiểm tra Ban QLDA quá hạn
-          const invAssigned = d.assignedInvestor?.assignee || d.assignedInvestor?.uid;
-          if (invAssigned && d.assignedInvestor?.status === 'PENDING') {
-            const invDue = d.assignedInvestor?.dueDate ? new Date(d.assignedInvestor.dueDate).getTime() : (d.dueDate ? new Date(d.dueDate).getTime() : 0);
-            if (invDue && now > invDue && !d.investorReviewOverdueNotified) {
-              d.investorReviewOverdueNotified = true;
-              changed = true;
+          // Kiểm tra Ban QLDA quá hạn (CHỈ KIỂM TRA KHI TVGS ĐÃ DUYỆT ĐẠT!)
+          if (d.assignedTvgs?.status === 'ACCEPTED') {
+            const invAssigned = d.assignedInvestor?.assignee || d.assignedInvestor?.uid;
+            if (invAssigned && d.assignedInvestor?.status === 'PENDING') {
+              const tvgsReviewedTime = d.assignedTvgs?.reviewedAt ? new Date(d.assignedTvgs.reviewedAt).getTime() : 0;
+              const invSlaDays = Number(d.assignedInvestor?.slaDays || d.slaDays || 3);
+              const invDue = d.assignedInvestor?.dueDate && new Date(d.assignedInvestor.dueDate).getTime() > tvgsReviewedTime
+                ? new Date(d.assignedInvestor.dueDate).getTime()
+                : (tvgsReviewedTime + invSlaDays * 24 * 3600 * 1000);
+
+              if (invDue && now > invDue && !d.investorReviewOverdueNotified) {
+                d.investorReviewOverdueNotified = true;
+                changed = true;
 
               const invName = d.assignedInvestor?.assignee?.fullName || d.assignedInvestor?.fullName || 'Cán bộ QLDA';
               const invUid = d.assignedInvestor?.assignee?.uid || d.assignedInvestor?.uid;
@@ -3137,6 +3224,7 @@ export default function App() {
             }
           }
         }
+      }
 
         if (changed) {
           hasUpdates = true;
@@ -4384,8 +4472,11 @@ export default function App() {
           saveInspectionRequest({ ...targetReq, contractorCompany: effectiveContCompany }).catch(console.warn);
         }
 
+        const isWaitingInv = !isCompleted && (targetReq.status === 'WAITING_INVESTOR' || rep.status === 'WAITING_INVESTOR');
+
         rep = {
           ...rep,
+          status: isCompleted ? 'COMPLETED' : (isWaitingInv ? 'WAITING_INVESTOR' : rep.status),
           requestId: targetReq.id,
           requestNumber: targetReq.requestNumber || rep.requestNumber,
           projectInfo: {
@@ -4410,7 +4501,8 @@ export default function App() {
               position: assignedSup?.position || rep.attendees?.supervisor?.position || leadSup.position,
               company: assignedSup?.company || rep.attendees?.supervisor?.company || leadSup.company,
               leadPerson: rep.attendees?.supervisor?.leadPerson || leadSup.fullName,
-              leadPosition: rep.attendees?.supervisor?.leadPosition || leadSup.position
+              leadPosition: rep.attendees?.supervisor?.leadPosition || leadSup.position,
+              signed: Boolean(rep.attendees?.supervisor?.signed || isCompleted || isWaitingInv)
             },
             investor: {
               ...rep.attendees?.investor,
@@ -4464,6 +4556,21 @@ export default function App() {
             updatedAt: rep.updatedAt || new Date().toISOString()
           };
         }
+      }
+
+      const isWaitingInv = !isCompleted && (targetReq?.status === 'WAITING_INVESTOR' || rep.status === 'WAITING_INVESTOR');
+      if (isWaitingInv && !rep.attendees?.supervisor?.signed) {
+        rep = {
+          ...rep,
+          status: 'WAITING_INVESTOR',
+          attendees: {
+            ...rep.attendees,
+            supervisor: {
+              ...rep.attendees?.supervisor,
+              signed: true
+            }
+          }
+        };
       }
 
       setSelectedReport(rep);
@@ -4549,6 +4656,7 @@ export default function App() {
           createdByUid: targetReq.createdByUid
         });
 
+        const isWaitingInv = targetReq.status === 'WAITING_INVESTOR';
         return {
           investor: { 
             uid: assignedInv?.uid || leadInv.uid,
@@ -4558,7 +4666,7 @@ export default function App() {
             email: assignedInv?.email || leadInv.email,
             leadPerson: leadInv.fullName,
             leadPosition: leadInv.position,
-            signed: false 
+            signed: targetReq.status === 'COMPLETED' 
           },
           supervisor: { 
             uid: assignedSup?.uid || leadSup.uid,
@@ -4568,7 +4676,7 @@ export default function App() {
             email: assignedSup?.email || leadSup.email,
             leadPerson: leadSup.fullName,
             leadPosition: leadSup.position,
-            signed: false 
+            signed: targetReq.status === 'COMPLETED' || isWaitingInv 
           },
           contractor: { 
             uid: targetReq.createdByUid,
@@ -4584,7 +4692,7 @@ export default function App() {
       standardsApplied: appliedStandards,
       qualityAssessment: { matchDesign: true, matchStandards: true, matchTechnical: true, otherOpinions: 'Không' },
       conclusion: { isAccepted: true, repairRequired: 'Không có', otherRequirements: 'Không có' },
-      status: 'PENDING_APPROVAL',
+      status: targetReq.status === 'COMPLETED' ? 'COMPLETED' : (targetReq.status === 'WAITING_INVESTOR' ? 'WAITING_INVESTOR' : 'PENDING_APPROVAL'),
       defectPhotos: [],
       evidencePhotos: targetReq.evidencePhotos || [],
       rectification: null,
@@ -5869,8 +5977,11 @@ export default function App() {
       `${targetReq?.taskContent || rep.inspectionObject || ''} ${targetReq?.itemName || rep.projectInfo?.itemName || ''} ${targetReq?.packageName || ''}`
     );
 
+    const isWaitingInv = !isCompleted && (targetReq?.status === 'WAITING_INVESTOR' || rep.status === 'WAITING_INVESTOR');
+
     const repWithRecipients = {
       ...rep,
+      status: isCompleted ? 'COMPLETED' : (isWaitingInv ? 'WAITING_INVESTOR' : rep.status),
       requestId: targetReq?.id || rep.requestId,
       requestNumber: targetReq?.requestNumber || rep.requestNumber,
       projectInfo: {
@@ -5886,6 +5997,10 @@ export default function App() {
       assignedRecipients: rep.assignedRecipients || targetReq?.assignedRecipients || [],
       attendees: {
         ...rep.attendees,
+        supervisor: {
+          ...rep.attendees?.supervisor,
+          signed: Boolean(rep.attendees?.supervisor?.signed || isCompleted || isWaitingInv)
+        },
         contractor: {
           ...rep.attendees?.contractor,
           company: effectiveContCompany,
@@ -6257,6 +6372,7 @@ export default function App() {
           ) : activeTab === 'SHOP_DOCUMENTS' ? (
             <ShopDocumentsView 
               shopDocuments={shopDocuments}
+              projects={projectsList}
               currentUser={currentUser}
               currentRole={currentRole}
               onOpenCreateModal={() => setIsCreateShopModalOpen(true)}
@@ -6618,10 +6734,6 @@ export default function App() {
                   </div>
                 ) : (
                   filteredRequests.map(req => {
-                    const isCompleted = req.status === 'COMPLETED';
-                    const isCancelled = req.status === 'CANCELLED';
-                    const isRejected = req.status === 'HAS_REJECTIONS';
-                    const isRectified = req.status === 'RECTIFIED';
                     const matchingRep = reports.find(r => {
                       const isMatch = (req.reportId && r.id === req.reportId) || (req.id && r.requestId === req.id);
                       if (!isMatch) return false;
@@ -6634,14 +6746,28 @@ export default function App() {
                     });
 
                     const isSupervisorSigned = Boolean(
+                      matchingRep?.signatures?.supervisor === true ||
                       matchingRep?.signatures?.supervisor?.signed || 
-                      matchingRep?.attendees?.supervisor?.signed
+                      matchingRep?.attendees?.supervisor?.signed ||
+                      matchingRep?.status === 'WAITING_INVESTOR' ||
+                      matchingRep?.status === 'COMPLETED' ||
+                      req.status === 'WAITING_INVESTOR' ||
+                      req.status === 'COMPLETED'
                     );
                     const isInvestorSigned = Boolean(
+                      matchingRep?.signatures?.investor === true ||
                       matchingRep?.signatures?.investor?.signed || 
-                      matchingRep?.attendees?.investor?.signed
+                      matchingRep?.attendees?.investor?.signed ||
+                      matchingRep?.status === 'COMPLETED' ||
+                      req.status === 'COMPLETED'
                     );
-                    const isConfirmed = isSupervisorSigned || isInvestorSigned || isCompleted || req.status === 'WAITING_INVESTOR';
+
+                    const isCompleted = req.status === 'COMPLETED' || matchingRep?.status === 'COMPLETED' || (isSupervisorSigned && isInvestorSigned);
+                    const isCancelled = req.status === 'CANCELLED' || matchingRep?.status === 'CANCELLED';
+                    const isRejected = !isCompleted && ((req.status === 'HAS_REJECTIONS' || matchingRep?.status === 'REJECTED') || matchingRep?.conclusion?.isAccepted === false);
+                    const isRectified = !isCompleted && !isRejected && (req.status === 'RECTIFIED' || matchingRep?.status === 'RECTIFIED');
+                    const isWaitingInvestor = !isCompleted && !isRejected && !isRectified && (req.status === 'WAITING_INVESTOR' || matchingRep?.status === 'WAITING_INVESTOR' || (isSupervisorSigned && !isInvestorSigned));
+                    const isConfirmed = isSupervisorSigned || isInvestorSigned || isCompleted || isWaitingInvestor;
 
                     const isCreator = Boolean(
                       (currentUser?.uid && req.createdByUid === currentUser.uid) ||
@@ -6690,7 +6816,7 @@ export default function App() {
                               <span className="badge-status" style={{ background: '#f3e8ff', color: '#6b21a8', border: '1px solid #d8b4fe', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                                 <RotateCcw size={13} color="#7c3aed" /> Đã Sửa (Chờ Duyệt Lại)
                               </span>
-                            ) : req.status === 'WAITING_INVESTOR' ? (
+                            ) : isWaitingInvestor ? (
                               <span className="badge-status" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                                 <Clock size={13} color="#2563eb" /> Chờ CĐT Phê Duyệt
                               </span>
@@ -7162,6 +7288,7 @@ export default function App() {
       <CreateShopDocumentModal 
         isOpen={isCreateShopModalOpen}
         onClose={() => setIsCreateShopModalOpen(false)}
+        projects={projectsList}
         users={users}
         currentUser={currentUser}
         slaConfigs={shopSlaConfigs}
@@ -7174,6 +7301,7 @@ export default function App() {
         isOpen={Boolean(selectedShopDoc)}
         onClose={() => setSelectedShopDoc(null)}
         document={selectedShopDoc}
+        projects={projectsList}
         currentUser={currentUser}
         currentRole={currentRole}
         users={users}

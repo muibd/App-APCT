@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { 
   X, MapPin, FileText, Calendar, Award, Building, UserCheck, 
   Camera, Clock, AlertTriangle, RotateCcw, CheckCircle2, 
-  ArrowLeftRight, Edit3, Ban, AlertCircle, Save 
+  ArrowLeftRight, Edit3, Ban, AlertCircle, Save, ZoomIn 
 } from 'lucide-react';
 import { getDocumentRevisionNumber } from '../data/projectCatalog';
+import ImagePreviewModal from './ImagePreviewModal';
 
 export default function InvitationDetailModal({
   isOpen,
@@ -156,6 +157,11 @@ export default function InvitationDetailModal({
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [previewModalState, setPreviewModalState] = useState({
+    isOpen: false,
+    photos: [],
+    initialIndex: 0
+  });
 
   useEffect(() => {
     setSelectedDate(parseInitialDate());
@@ -543,19 +549,58 @@ export default function InvitationDetailModal({
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
                 {request.evidencePhotos.map((photo, i) => (
-                  <div key={photo.id || i} style={{
-                    background: '#ffffff',
-                    borderRadius: '8px',
-                    overflow: 'hidden',
-                    border: '1px solid #e2e8f0',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-                  }}>
+                  <div
+                    key={photo.id || i}
+                    onClick={() => setPreviewModalState({
+                      isOpen: true,
+                      photos: request.evidencePhotos,
+                      initialIndex: i
+                    })}
+                    style={{
+                      background: '#ffffff',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      border: '1px solid #e2e8f0',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                      cursor: 'zoom-in',
+                      transition: 'all 0.2s ease',
+                      position: 'relative'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                      e.currentTarget.style.boxShadow = '0 6px 14px rgba(37,99,235,0.18)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)';
+                    }}
+                  >
                     <div style={{ position: 'relative' }}>
                       <img
                         src={photo.url}
                         alt={photo.caption || `Ảnh ${i + 1}`}
-                        style={{ width: '100%', height: '130px', objectFit: 'cover', display: 'block' }}
+                        style={{ width: '100%', height: '140px', objectFit: 'cover', display: 'block' }}
                       />
+                      <div style={{
+                        position: 'absolute',
+                        top: '6px',
+                        right: '6px',
+                        background: 'rgba(15, 23, 42, 0.75)',
+                        backdropFilter: 'blur(4px)',
+                        color: '#fff',
+                        padding: '3px 8px',
+                        borderRadius: '20px',
+                        fontSize: '0.66rem',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        pointerEvents: 'none',
+                        boxShadow: '0 2px 5px rgba(0,0,0,0.3)'
+                      }}>
+                        <ZoomIn size={12} />
+                        <span>Xem lớn</span>
+                      </div>
                       <div style={{
                         position: 'absolute',
                         bottom: '4px',
@@ -946,6 +991,14 @@ export default function InvitationDetailModal({
           </div>
         </div>
       )}
+
+      {/* Modal xem trước & phóng to ảnh chất lượng cao */}
+      <ImagePreviewModal
+        isOpen={previewModalState.isOpen}
+        onClose={() => setPreviewModalState(prev => ({ ...prev, isOpen: false }))}
+        photos={previewModalState.photos}
+        initialIndex={previewModalState.initialIndex}
+      />
     </div>
   );
 }

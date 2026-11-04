@@ -2,16 +2,65 @@ import React, { useState, useMemo } from 'react';
 import {
   Search, Plus, Calendar, Filter, Clock, FileText, CheckCircle2,
   AlertTriangle, XCircle, Eye, Download, UserCheck, ShieldAlert,
-  ArrowUpDown, RefreshCw, Layers, FileSpreadsheet, Paperclip, Trash2
+  ArrowUpDown, RefreshCw, Layers, FileSpreadsheet, Paperclip, Trash2,
+  Building2, Briefcase, RotateCcw
 } from 'lucide-react';
 import {
   getEffectiveShopStatus,
   getShopStatusBadgeConfig,
-  SHOP_STATUS
+  SHOP_STATUS,
+  isAsBuiltDoc,
+  getShopTvgsOverdueInfo,
+  getShopInvestorOverdueInfo
 } from '../data/shopDocumentConstants';
+
+// Hàm trích xuất / suy luận Công trình, Gói thầu, Hạng mục của hồ sơ shop
+export const getDocHierarchyInfo = (doc) => {
+  if (!doc) return { projectName: '', packageName: '', itemName: '' };
+  const content = `${(doc.title || '').toLowerCase()} ${(doc.notes || '').toLowerCase()}`;
+
+  // 1. Tên công trình
+  let projectName = doc.projectName || '';
+  if (!projectName) {
+    if (content.includes('noxh2') || content.includes('nhà ở xã hội 2') || content.includes('2203')) {
+      projectName = 'Chung cư nhà ở xã hội 2';
+    } else if (content.includes('cao tầng') || content.includes('2204')) {
+      projectName = 'Chung cư nhà ở cao tầng';
+    }
+  }
+
+  // 2. Tên gói thầu
+  let packageName = doc.packageName || '';
+  if (!packageName) {
+    if (content.includes('xt-lt-bt') || content.includes('hoàn thiện') || content.includes('xây trát')) {
+      packageName = 'Thi công phần hoàn thiện Tòa A và Tòa B';
+    } else if (content.includes('hạ tầng')) {
+      packageName = 'Thi công cảnh quan sân vườn và hạ tầng kỹ thuật';
+    } else if (content.includes('kết cấu')) {
+      packageName = 'Thi công phần kết cấu – Tòa A và Tòa B';
+    } else if (content.includes('mep') || content.includes('điện nước')) {
+      packageName = 'Thi công hệ thống Mep Tòa A và Tòa B';
+    } else if (content.includes('pccc')) {
+      packageName = 'Thi công hệ thống PCCC trong và ngoài nhà';
+    }
+  }
+
+  // 3. Tên hạng mục công việc
+  let itemName = doc.itemName || doc.taskName || '';
+  if (!itemName) {
+    if (content.includes('xt-lt-bt') || (content.includes('xây') && content.includes('trát'))) {
+      itemName = 'Xây trát tường & Ốp lát gạch';
+    } else if (content.includes('hạ tầng')) {
+      itemName = 'Hạ tầng kỹ thuật & sân đường';
+    }
+  }
+
+  return { projectName, packageName, itemName };
+};
 
 export default function ShopDocumentsView({
   shopDocuments = [],
+  projects = [],
   currentUser,
   currentRole,
   onOpenCreateModal,
@@ -23,6 +72,9 @@ export default function ShopDocumentsView({
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('ALL'); // 'ALL' | 'SENT' | 'APPROVED' | 'REJECTED' | 'OVERDUE'
   const [selectedType, setSelectedType] = useState('ALL');
+  const [selectedProject, setSelectedProject] = useState('ALL');
+  const [selectedPackage, setSelectedPackage] = useState('ALL');
+  const [selectedItem, setSelectedItem] = useState('ALL');
 
   // Format date helper
   const formatDateDisplay = (iso) => {
@@ -40,7 +92,7 @@ export default function ShopDocumentsView({
     }
   };
 
-  // Tính toán SLA còn lại hoặc quá hạn
+  // Tính toán SLA còn lại hoặc quá hạn tuần tự theo 2 cấp
   const getSlaRemainingInfo = (doc) => {
     if (doc.status === SHOP_STATUS.APPROVED) {
       return { text: 'Đã hoàn thành', isOverdue: false, color: '#15803d', bg: '#f0fdf4' };
@@ -50,44 +102,33 @@ export default function ShopDocumentsView({
     }
 
     const effStatus = getEffectiveShopStatus(doc);
+    const isAsBuilt = isAsBuiltDoc(doc);
+    const now = Date.now();
 
-    // 1. Nếu đang chờ phân công hoặc chậm phân công
-    const isTvgsAssigned = Boolean(doc.assignedTvgs?.assignee || doc.assignedTvgs?.uid);
-    const isInvestorAssigned = Boolean(doc.assignedInvestor?.assignee || doc.assignedInvestor?.uid);
-
-    if (effStatus === SHOP_STATUS.OVERDUE_ASSIGNMENT) {
+    // 1. Kiểm tra chậm TVGS
+    if (effStatus === SHOP_STATUS.OVERDUE_TVGS) {
+      const tvgsOverdue = getShopTvgsOverdueInfo(doc);
       return {
-        text: 'Chậm phân công',
+        text: tvgsOverdue.reason || 'TVGS Chậm',
+        isOverdue: true,
+        color: '#e11d48',
+        bg: '#fff1f2'
+      };
+    }
+
+    // 2. Kiểm tra chậm Ban QLDA
+    if (effStatus === SHOP_STATUS.OVERDUE_INVESTOR) {
+      const invOverdue = getShopInvestorOverdueInfo(doc);
+      return {
+        text: invOverdue.reason || 'Ban QLDA Chậm',
         isOverdue: true,
         color: '#be185d',
         bg: '#fdf2f8'
       };
     }
 
-    if (doc.status === SHOP_STATUS.WAITING_ASSIGNMENT || (!isTvgsAssigned || !isInvestorAssigned)) {
-      const deadline = doc.assignmentDeadline 
-        ? new Date(doc.assignmentDeadline).getTime() 
-        : (new Date(doc.createdAt || doc.submittedAt || Date.now()).getTime() + 24 * 60 * 60 * 1000);
-      const diffHours = Math.round((deadline - Date.now()) / (3600 * 1000));
-      if (diffHours < 0) {
-        return {
-          text: `Chậm giao ${Math.abs(diffHours) === 0 ? 1 : Math.abs(diffHours)}h`,
-          isOverdue: true,
-          color: '#be185d',
-          bg: '#fdf2f8'
-        };
-      } else {
-        return {
-          text: `Hạn giao: ${diffHours}h`,
-          isOverdue: false,
-          color: '#b45309',
-          bg: '#fffbeb'
-        };
-      }
-    }
-
-    // 2. Nếu đã phân công -> Kiểm tra thời hạn thẩm định
-    if (effStatus === SHOP_STATUS.OVERDUE_REVIEW) {
+    // Tương thích cũ nếu còn
+    if (effStatus === SHOP_STATUS.OVERDUE_ASSIGNMENT || effStatus === SHOP_STATUS.OVERDUE_REVIEW || effStatus === SHOP_STATUS.OVERDUE) {
       return {
         text: 'Chậm phản hồi',
         isOverdue: true,
@@ -96,35 +137,73 @@ export default function ShopDocumentsView({
       };
     }
 
-    if (!doc.dueDate) return { text: '---', isOverdue: false, diffDays: 0 };
-    const dueTime = new Date(doc.dueDate).getTime();
-    const now = Date.now();
-    const diffMs = dueTime - now;
-    const diffDays = Math.ceil(diffMs / (24 * 60 * 60 * 1000));
+    const isTvgsAssigned = Boolean(doc.assignedTvgs?.assignee || doc.assignedTvgs?.uid);
+    const isTvgsApproved = doc.assignedTvgs?.status === 'ACCEPTED';
 
-    if (diffMs < 0) {
-      const overdueDays = Math.abs(diffDays);
+    // 3. Nếu TVGS chưa duyệt đạt:
+    if (!isTvgsApproved) {
+      // 3.1. TVGS chưa phân công cán bộ (Đang trong hạn 24h)
+      if (!isTvgsAssigned || doc.assignedTvgs?.status === 'WAITING_ASSIGNMENT') {
+        const deadline = doc.assignmentDeadline 
+          ? new Date(doc.assignmentDeadline).getTime() 
+          : (new Date(doc.createdAt || doc.submittedAt || now).getTime() + 24 * 60 * 60 * 1000);
+        const diffHours = Math.round((deadline - now) / (3600 * 1000));
+        return {
+          text: `Hạn TVGS giao: ${Math.max(0, diffHours)}h`,
+          isOverdue: false,
+          color: '#b45309',
+          bg: '#fffbeb'
+        };
+      }
+
+      // 3.2. TVGS đã phân công cán bộ -> Đang trong hạn duyệt của TVGS
+      const tvgsDue = doc.assignedTvgs?.dueDate 
+        ? new Date(doc.assignedTvgs.dueDate).getTime() 
+        : (doc.dueDate ? new Date(doc.dueDate).getTime() : (now + 3 * 24 * 3600 * 1000));
+      const diffDays = Math.ceil((tvgsDue - now) / (24 * 3600 * 1000));
+
+      if (diffDays <= 0) {
+        return { text: 'TVGS hạn hôm nay', isOverdue: false, color: '#ea580c', bg: '#fff7ed' };
+      }
+      return { text: `TVGS còn: ${diffDays} ngày`, isOverdue: false, color: '#0284c7', bg: '#f0f9ff' };
+    }
+
+    // 4. Nếu TVGS ĐÃ DUYỆT ĐẠT:
+    // Bản vẽ hoàn công: TVGS duyệt đạt là xong
+    if (isAsBuilt) {
+      return { text: 'Đã hoàn thành', isOverdue: false, color: '#15803d', bg: '#f0fdf4' };
+    }
+
+    // Hồ sơ thường -> Tính hạn cho Ban QLDA:
+    const tvgsReviewedTime = doc.assignedTvgs?.reviewedAt 
+      ? new Date(doc.assignedTvgs.reviewedAt).getTime() 
+      : (doc.updatedAt ? new Date(doc.updatedAt).getTime() : now);
+
+    const isInvestorAssigned = Boolean(doc.assignedInvestor?.assignee || doc.assignedInvestor?.uid);
+
+    // 4.1. Ban QLDA chưa phân công cán bộ (Đang trong hạn 24h tính từ lúc TVGS duyệt)
+    if (!isInvestorAssigned || doc.assignedInvestor?.status === 'WAITING_ASSIGNMENT') {
+      const invAssignDeadline = tvgsReviewedTime + 24 * 60 * 60 * 1000;
+      const diffHours = Math.round((invAssignDeadline - now) / (3600 * 1000));
       return {
-        text: `Quá hạn ${overdueDays === 0 ? '1' : overdueDays} ngày`,
-        isOverdue: true,
-        color: '#e11d48',
-        bg: '#fff1f2'
-      };
-    } else if (diffDays === 0) {
-      return {
-        text: 'Đến hạn hôm nay',
+        text: `Hạn QLDA giao: ${Math.max(0, diffHours)}h`,
         isOverdue: false,
-        color: '#ea580c',
-        bg: '#fff7ed'
-      };
-    } else {
-      return {
-        text: `Còn ${diffDays} ngày`,
-        isOverdue: false,
-        color: '#0284c7',
-        bg: '#f0f9ff'
+        color: '#b45309',
+        bg: '#fffbeb'
       };
     }
+
+    // 4.2. Ban QLDA đã phân công cán bộ -> Đang trong hạn duyệt của Ban QLDA (tính từ lúc TVGS duyệt)
+    const invSlaDays = Number(doc.assignedInvestor?.slaDays || doc.slaDays || 3);
+    const invDueTime = doc.assignedInvestor?.dueDate && new Date(doc.assignedInvestor.dueDate).getTime() > tvgsReviewedTime
+      ? new Date(doc.assignedInvestor.dueDate).getTime()
+      : (tvgsReviewedTime + invSlaDays * 24 * 60 * 60 * 1000);
+    const diffDays = Math.ceil((invDueTime - now) / (24 * 3600 * 1000));
+
+    if (diffDays <= 0) {
+      return { text: 'QLDA hạn hôm nay', isOverdue: false, color: '#ea580c', bg: '#fff7ed' };
+    }
+    return { text: `QLDA còn: ${diffDays} ngày`, isOverdue: false, color: '#0284c7', bg: '#f0f9ff' };
   };
 
   // Thống kê đếm số lượng hồ sơ theo từng trạng thái
@@ -139,7 +218,13 @@ export default function ShopDocumentsView({
       const effStatus = getEffectiveShopStatus(doc);
       if (effStatus === SHOP_STATUS.APPROVED) approved++;
       else if (effStatus === SHOP_STATUS.REJECTED) rejected++;
-      else if (effStatus === SHOP_STATUS.OVERDUE_ASSIGNMENT || effStatus === SHOP_STATUS.OVERDUE_REVIEW || effStatus === SHOP_STATUS.OVERDUE) overdue++;
+      else if (
+        effStatus === SHOP_STATUS.OVERDUE_TVGS ||
+        effStatus === SHOP_STATUS.OVERDUE_INVESTOR ||
+        effStatus === SHOP_STATUS.OVERDUE_ASSIGNMENT ||
+        effStatus === SHOP_STATUS.OVERDUE_REVIEW ||
+        effStatus === SHOP_STATUS.OVERDUE
+      ) overdue++;
       else if (effStatus === SHOP_STATUS.WAITING_ASSIGNMENT) waitingAssignment++;
       else sent++;
     });
@@ -154,10 +239,98 @@ export default function ShopDocumentsView({
     };
   }, [shopDocuments]);
 
+  // Danh sách Công trình (Level 1)
+  const projectOptions = useMemo(() => {
+    const list = [];
+    (projects || []).forEach(p => {
+      const code = p.code || p.id;
+      const name = p.name || p.projectName || `Công trình ${code}`;
+      if (!list.some(x => x.name === name)) {
+        list.push({ code, name, id: p.id });
+      }
+    });
+    // Bổ sung từ shopDocuments nếu có
+    shopDocuments.forEach(d => {
+      const { projectName } = getDocHierarchyInfo(d);
+      if (projectName && !list.some(x => x.name === projectName)) {
+        list.push({ code: d.projectCode || projectName, name: projectName, id: projectName });
+      }
+    });
+    return list;
+  }, [projects, shopDocuments]);
+
+  // Danh sách Gói thầu (Level 3 - phụ thuộc vào Công trình nếu có chọn)
+  const packageOptions = useMemo(() => {
+    const list = [];
+    (projects || []).forEach(p => {
+      const projCode = p.code || p.id;
+      const projName = p.name || p.projectName;
+      if (selectedProject !== 'ALL' && selectedProject !== projCode && selectedProject !== projName && selectedProject !== p.id) {
+        return;
+      }
+      (p.contractors || []).forEach(c => {
+        (c.packages || []).forEach(pkg => {
+          if (!list.some(x => x.name === pkg.name)) {
+            list.push({ id: pkg.id, name: pkg.name });
+          }
+        });
+      });
+    });
+    // Bổ sung từ shopDocuments
+    shopDocuments.forEach(d => {
+      const { projectName, packageName } = getDocHierarchyInfo(d);
+      if (packageName && !list.some(x => x.name === packageName)) {
+        if (selectedProject === 'ALL' || selectedProject === projectName || (projects || []).some(p => (p.code === selectedProject || p.id === selectedProject) && p.name === projectName)) {
+          list.push({ id: packageName, name: packageName });
+        }
+      }
+    });
+    return list;
+  }, [projects, shopDocuments, selectedProject]);
+
+  // Danh sách Hạng mục (Level 4 - phụ thuộc vào Công trình & Gói thầu nếu có chọn)
+  const itemOptions = useMemo(() => {
+    const list = [];
+    (projects || []).forEach(p => {
+      const projCode = p.code || p.id;
+      const projName = p.name || p.projectName;
+      if (selectedProject !== 'ALL' && selectedProject !== projCode && selectedProject !== projName && selectedProject !== p.id) {
+        return;
+      }
+      (p.contractors || []).forEach(c => {
+        (c.packages || []).forEach(pkg => {
+          if (selectedPackage !== 'ALL' && pkg.id !== selectedPackage && pkg.name !== selectedPackage) {
+            return;
+          }
+          (pkg.tasks || []).forEach(t => {
+            const taskName = typeof t === 'string' ? t : (t.name || t.taskName);
+            if (taskName && !list.includes(taskName)) {
+              list.push(taskName);
+            }
+          });
+        });
+      });
+    });
+    // Bổ sung từ shopDocuments
+    shopDocuments.forEach(d => {
+      const { projectName, packageName, itemName } = getDocHierarchyInfo(d);
+      if (itemName && !list.includes(itemName)) {
+        const matchProj = selectedProject === 'ALL' || selectedProject === projectName || (projects || []).some(p => (p.code === selectedProject || p.id === selectedProject) && p.name === projectName);
+        const matchPkg = selectedPackage === 'ALL' || selectedPackage === packageName;
+        if (matchProj && matchPkg) {
+          list.push(itemName);
+        }
+      }
+    });
+    return list;
+  }, [projects, shopDocuments, selectedProject, selectedPackage]);
+
   // Lọc danh sách hồ sơ
   const filteredDocuments = useMemo(() => {
     return shopDocuments.filter(doc => {
-      // 1. Lọc theo text search (tên hồ sơ, mã số, người tạo, loại hồ sơ)
+      const { projectName: docProjName, packageName: docPkgName, itemName: docItemName } = getDocHierarchyInfo(doc);
+
+      // 1. Lọc theo text search (tên hồ sơ, mã số, người lập, loại hồ sơ, công trình, gói thầu)
       if (searchTerm.trim()) {
         const query = searchTerm.toLowerCase().trim();
         const title = (doc.title || '').toLowerCase();
@@ -166,13 +339,19 @@ export default function ShopDocumentsView({
         const creator = (doc.createdByName || '').toLowerCase();
         const tvgs = (doc.assignedTvgs?.assignee?.fullName || doc.assignedTvgs?.fullName || '').toLowerCase();
         const investor = (doc.assignedInvestor?.assignee?.fullName || doc.assignedInvestor?.fullName || '').toLowerCase();
+        const pName = docProjName.toLowerCase();
+        const pkgName = docPkgName.toLowerCase();
+        const iName = docItemName.toLowerCase();
 
         const match = title.includes(query) ||
           docCode.includes(query) ||
           typeName.includes(query) ||
           creator.includes(query) ||
           tvgs.includes(query) ||
-          investor.includes(query);
+          investor.includes(query) ||
+          pName.includes(query) ||
+          pkgName.includes(query) ||
+          iName.includes(query);
 
         if (!match) return false;
       }
@@ -187,7 +366,10 @@ export default function ShopDocumentsView({
       if (selectedStatus !== 'ALL') {
         const effStatus = getEffectiveShopStatus(doc);
         if (selectedStatus === SHOP_STATUS.OVERDUE) {
-          const isOverdue = effStatus === SHOP_STATUS.OVERDUE || 
+          const isOverdue = 
+            effStatus === SHOP_STATUS.OVERDUE_TVGS ||
+            effStatus === SHOP_STATUS.OVERDUE_INVESTOR ||
+            effStatus === SHOP_STATUS.OVERDUE || 
             effStatus === SHOP_STATUS.OVERDUE_ASSIGNMENT || 
             effStatus === SHOP_STATUS.OVERDUE_REVIEW;
           if (!isOverdue) return false;
@@ -201,9 +383,43 @@ export default function ShopDocumentsView({
         if (doc.typeCode !== selectedType) return false;
       }
 
+      // 5. Lọc theo Công trình
+      if (selectedProject !== 'ALL') {
+        const projObj = projectOptions.find(p => p.code === selectedProject || p.id === selectedProject || p.name === selectedProject);
+        const targetName = projObj?.name || selectedProject;
+        const targetCode = projObj?.code || selectedProject;
+
+        const match = docProjName === targetName ||
+          doc.projectId === selectedProject ||
+          doc.projectCode === targetCode ||
+          (doc.projectName && doc.projectName.toLowerCase().includes(targetName.toLowerCase()));
+
+        if (!match) return false;
+      }
+
+      // 6. Lọc theo Gói thầu
+      if (selectedPackage !== 'ALL') {
+        const match = docPkgName === selectedPackage ||
+          doc.packageId === selectedPackage ||
+          (doc.packageName && doc.packageName.toLowerCase().includes(selectedPackage.toLowerCase()));
+
+        if (!match) return false;
+      }
+
+      // 7. Lọc theo Hạng mục
+      if (selectedItem !== 'ALL') {
+        const match = docItemName === selectedItem ||
+          doc.itemId === selectedItem ||
+          doc.itemName === selectedItem ||
+          doc.taskName === selectedItem ||
+          (doc.title && doc.title.toLowerCase().includes(selectedItem.toLowerCase()));
+
+        if (!match) return false;
+      }
+
       return true;
     });
-  }, [shopDocuments, searchTerm, selectedDate, selectedStatus, selectedType]);
+  }, [shopDocuments, searchTerm, selectedDate, selectedStatus, selectedType, selectedProject, selectedPackage, selectedItem, projectOptions]);
 
   return (
     <div className="shop-documents-view" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -389,102 +605,215 @@ export default function ShopDocumentsView({
         borderRadius: '10px',
         padding: '14px 18px',
         display: 'flex',
-        flexWrap: 'wrap',
-        alignItems: 'center',
+        flexDirection: 'column',
         gap: '12px',
         boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
       }}>
-        
-        {/* TÌM KIẾM THEO TÊN HỒ SƠ / MÃ */}
-        <div style={{ flex: '2 1 240px', position: 'relative' }}>
-          <Search size={17} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-          <input
-            type="text"
-            placeholder="Tìm theo tên hồ sơ, mã số, người lập, cán bộ..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '9px 12px 9px 36px',
-              border: '1.5px solid #e2e8f0',
-              borderRadius: '8px',
-              fontSize: '0.86rem',
-              outline: 'none',
-              boxSizing: 'border-box'
-            }}
-          />
+        {/* HÀNG 1: TÌM KIẾM TỪ KHÓA, NGÀY VÀ TRẠNG THÁI */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px' }}>
+          
+          {/* TÌM KIẾM THEO TÊN HỒ SƠ / MÃ */}
+          <div style={{ flex: '2 1 240px', position: 'relative' }}>
+            <Search size={17} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+            <input
+              type="text"
+              placeholder="Tìm theo tên hồ sơ, mã số, người lập, cán bộ, công trình..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '9px 12px 9px 36px',
+                border: '1.5px solid #e2e8f0',
+                borderRadius: '8px',
+                fontSize: '0.86rem',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+
+          {/* LỌC THEO NGÀY TẠO */}
+          <div style={{ flex: '1 1 150px', position: 'relative' }}>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              title="Lọc theo ngày tạo hồ sơ"
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: '1.5px solid #e2e8f0',
+                borderRadius: '8px',
+                fontSize: '0.86rem',
+                color: '#334155',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+
+          {/* LỌC THEO TRẠNG THÁI */}
+          <div style={{ flex: '1 1 180px' }}>
+            <select
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                border: '1.5px solid #e2e8f0',
+                borderRadius: '8px',
+                fontSize: '0.86rem',
+                color: '#334155',
+                background: '#fff',
+                outline: 'none',
+                cursor: 'pointer',
+                boxSizing: 'border-box'
+              }}
+            >
+              <option value="ALL">Tất cả trạng thái</option>
+              <option value={SHOP_STATUS.WAITING_ASSIGNMENT}>Chờ phân công (24h)</option>
+              <option value={SHOP_STATUS.SENT}>Đang thẩm định</option>
+              <option value={SHOP_STATUS.APPROVED}>Đã xác nhận</option>
+              <option value={SHOP_STATUS.REJECTED}>Cần sửa</option>
+              <option value={SHOP_STATUS.OVERDUE}>Tất cả hồ sơ Chậm</option>
+              <option value={SHOP_STATUS.OVERDUE_TVGS}>⚠️ TVGS Chậm</option>
+              <option value={SHOP_STATUS.OVERDUE_INVESTOR}>⚠️ Ban QLDA Chậm</option>
+            </select>
+          </div>
         </div>
 
-        {/* LỌC THEO NGÀY TẠO */}
-        <div style={{ flex: '1 1 160px', position: 'relative' }}>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            title="Lọc theo ngày tạo hồ sơ"
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              border: '1.5px solid #e2e8f0',
-              borderRadius: '8px',
-              fontSize: '0.86rem',
-              color: '#334155',
-              outline: 'none',
-              boxSizing: 'border-box'
-            }}
-          />
-        </div>
+        {/* HÀNG 2: PHÂN CẤP CÔNG TRÌNH - GÓI THẦU - HẠNG MỤC */}
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: '12px',
+          paddingTop: '10px',
+          borderTop: '1px dashed #e2e8f0'
+        }}>
+          {/* LỌC THEO CÔNG TRÌNH */}
+          <div style={{ flex: '1 1 200px' }}>
+            <select
+              value={selectedProject}
+              onChange={(e) => {
+                setSelectedProject(e.target.value);
+                setSelectedPackage('ALL');
+                setSelectedItem('ALL');
+              }}
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                border: selectedProject !== 'ALL' ? '1.5px solid #059669' : '1.5px solid #cbd5e1',
+                borderRadius: '8px',
+                fontSize: '0.86rem',
+                fontWeight: selectedProject !== 'ALL' ? 700 : 500,
+                color: selectedProject !== 'ALL' ? '#047857' : '#334155',
+                background: selectedProject !== 'ALL' ? '#f0fdf4' : '#fff',
+                outline: 'none',
+                cursor: 'pointer',
+                boxSizing: 'border-box'
+              }}
+            >
+              <option value="ALL">🏢 Tất cả công trình</option>
+              {projectOptions.map(p => (
+                <option key={p.id || p.code} value={p.name}>
+                  🏢 {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
-        {/* LỌC THEO TRẠNG THÁI */}
-        <div style={{ flex: '1 1 180px' }}>
-          <select
-            value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '9px 12px',
-              border: '1.5px solid #e2e8f0',
-              borderRadius: '8px',
-              fontSize: '0.86rem',
-              color: '#334155',
-              background: '#fff',
-              outline: 'none',
-              cursor: 'pointer',
-              boxSizing: 'border-box'
-            }}
-          >
-            <option value="ALL">Tất cả trạng thái</option>
-            <option value={SHOP_STATUS.WAITING_ASSIGNMENT}>Chờ phân công (24h)</option>
-            <option value={SHOP_STATUS.SENT}>Đang thẩm định</option>
-            <option value={SHOP_STATUS.APPROVED}>Đã xác nhận</option>
-            <option value={SHOP_STATUS.REJECTED}>Cần sửa</option>
-            <option value={SHOP_STATUS.OVERDUE}>Chậm (Quá hạn SLA)</option>
-          </select>
-        </div>
+          {/* LỌC THEO GÓI THẦU */}
+          <div style={{ flex: '1 1 220px' }}>
+            <select
+              value={selectedPackage}
+              onChange={(e) => {
+                setSelectedPackage(e.target.value);
+                setSelectedItem('ALL');
+              }}
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                border: selectedPackage !== 'ALL' ? '1.5px solid #d97706' : '1.5px solid #cbd5e1',
+                borderRadius: '8px',
+                fontSize: '0.86rem',
+                fontWeight: selectedPackage !== 'ALL' ? 700 : 500,
+                color: selectedPackage !== 'ALL' ? '#b45309' : '#334155',
+                background: selectedPackage !== 'ALL' ? '#fffbeb' : '#fff',
+                outline: 'none',
+                cursor: 'pointer',
+                boxSizing: 'border-box'
+              }}
+            >
+              <option value="ALL">📦 Tất cả gói thầu</option>
+              {packageOptions.map(pkg => (
+                <option key={pkg.id || pkg.name} value={pkg.name}>
+                  📦 {pkg.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
-        {/* NÚT XÓA BỘ LỌC */}
-        {(searchTerm || selectedDate || selectedStatus !== 'ALL') && (
-          <button
-            type="button"
-            onClick={() => {
-              setSearchTerm('');
-              setSelectedDate('');
-              setSelectedStatus('ALL');
-            }}
-            style={{
-              border: 'none',
-              background: '#f1f5f9',
-              color: '#475569',
-              borderRadius: '6px',
-              padding: '8px 12px',
-              fontSize: '0.8rem',
-              fontWeight: 600,
-              cursor: 'pointer'
-            }}
-          >
-            Xóa lọc
-          </button>
-        )}
+          {/* LỌC THEO HẠNG MỤC CÔNG VIỆC */}
+          <div style={{ flex: '1 1 200px' }}>
+            <select
+              value={selectedItem}
+              onChange={(e) => setSelectedItem(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                border: selectedItem !== 'ALL' ? '1.5px solid #4f46e5' : '1.5px solid #cbd5e1',
+                borderRadius: '8px',
+                fontSize: '0.86rem',
+                fontWeight: selectedItem !== 'ALL' ? 700 : 500,
+                color: selectedItem !== 'ALL' ? '#4338ca' : '#334155',
+                background: selectedItem !== 'ALL' ? '#eef2ff' : '#fff',
+                outline: 'none',
+                cursor: 'pointer',
+                boxSizing: 'border-box'
+              }}
+            >
+              <option value="ALL">📑 Tất cả hạng mục</option>
+              {itemOptions.map((item, idx) => (
+                <option key={idx} value={item}>
+                  📑 {item}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* NÚT XÓA BỘ LỌC */}
+          {(searchTerm || selectedDate || selectedStatus !== 'ALL' || selectedProject !== 'ALL' || selectedPackage !== 'ALL' || selectedItem !== 'ALL') && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchTerm('');
+                setSelectedDate('');
+                setSelectedStatus('ALL');
+                setSelectedProject('ALL');
+                setSelectedPackage('ALL');
+                setSelectedItem('ALL');
+              }}
+              style={{
+                border: '1px solid #cbd5e1',
+                background: '#f8fafc',
+                color: '#475569',
+                borderRadius: '8px',
+                padding: '8px 14px',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px'
+              }}
+            >
+              <RotateCcw size={13} />
+              <span>Xóa lọc</span>
+            </button>
+          )}
+
+        </div>
 
       </div>
 
@@ -524,6 +853,7 @@ export default function ShopDocumentsView({
                   const effectiveStatus = getEffectiveShopStatus(doc);
                   const badgeConfig = getShopStatusBadgeConfig(effectiveStatus);
                   const slaInfo = getSlaRemainingInfo(doc);
+                  const { projectName: docProjName, packageName: docPkgName, itemName: docItemName } = getDocHierarchyInfo(doc);
 
                   const tvgsUser = doc.assignedTvgs?.assignee || (doc.assignedTvgs?.uid ? doc.assignedTvgs : null);
                   const isTvgsAssigned = Boolean(tvgsUser?.uid);
@@ -574,6 +904,27 @@ export default function ShopDocumentsView({
                                 </span>
                               )}
                             </div>
+
+                            {/* BADGES PHÂN CẤP CÔNG TRÌNH / GÓI THẦU / HẠNG MỤC */}
+                            {(docProjName || docPkgName || docItemName) && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '4px', flexWrap: 'wrap' }}>
+                                {docProjName && (
+                                  <span style={{ fontSize: '0.7rem', color: '#0f766e', background: '#f0fdfa', border: '1px solid #ccfbf1', padding: '1px 5px', borderRadius: '4px', fontWeight: 600 }}>
+                                    🏢 {docProjName}
+                                  </span>
+                                )}
+                                {docPkgName && (
+                                  <span style={{ fontSize: '0.7rem', color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', padding: '1px 5px', borderRadius: '4px', fontWeight: 600 }}>
+                                    📦 {docPkgName}
+                                  </span>
+                                )}
+                                {docItemName && (
+                                  <span style={{ fontSize: '0.7rem', color: '#4338ca', background: '#eef2ff', border: '1px solid #c7d2fe', padding: '1px 5px', borderRadius: '4px', fontWeight: 600 }}>
+                                    📑 {docItemName}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -610,15 +961,15 @@ export default function ShopDocumentsView({
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '4px',
-                            color: '#b45309',
-                            background: '#fffbeb',
-                            border: '1px solid #fde68a',
+                            color: getShopTvgsOverdueInfo(doc).type === 'ASSIGNMENT' ? '#e11d48' : '#b45309',
+                            background: getShopTvgsOverdueInfo(doc).type === 'ASSIGNMENT' ? '#fff1f2' : '#fffbeb',
+                            border: `1px solid ${getShopTvgsOverdueInfo(doc).type === 'ASSIGNMENT' ? '#fecdd3' : '#fde68a'}`,
                             padding: '3px 8px',
                             borderRadius: '4px',
                             fontSize: '0.74rem',
                             fontWeight: 600
                           }}>
-                            ⏳ Chờ TVGS Trưởng giao
+                            {getShopTvgsOverdueInfo(doc).type === 'ASSIGNMENT' ? '⚠️ Chậm TVGS Trưởng giao' : '⏳ Chờ TVGS Trưởng giao'}
                           </span>
                         ) : (
                           <div>
@@ -630,6 +981,8 @@ export default function ShopDocumentsView({
                                 <span style={{ color: '#15803d', fontWeight: 600 }}>✓ Đã xác nhận</span>
                               ) : doc.assignedTvgs?.status === 'REJECTED' ? (
                                 <span style={{ color: '#b91c1c', fontWeight: 600 }}>✕ Yêu cầu sửa</span>
+                              ) : getShopTvgsOverdueInfo(doc).type === 'REVIEW' ? (
+                                <span style={{ color: '#e11d48', fontWeight: 700 }}>⚠️ TVGS chậm duyệt</span>
                               ) : (
                                 <span style={{ color: '#0284c7' }}>⏳ Đang thẩm định</span>
                               )}
@@ -640,21 +993,53 @@ export default function ShopDocumentsView({
 
                       {/* TÊN BAN QLDA */}
                       <td style={{ padding: '12px 16px' }}>
-                        {!isInvestorAssigned ? (
+                        {isAsBuiltDoc(doc) ? (
                           <span style={{
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '4px',
-                            color: '#b45309',
-                            background: '#fffbeb',
-                            border: '1px solid #fde68a',
+                            color: '#64748b',
+                            background: '#f1f5f9',
+                            border: '1px solid #e2e8f0',
                             padding: '3px 8px',
                             borderRadius: '4px',
                             fontSize: '0.74rem',
-                            fontWeight: 600
+                            fontWeight: 500,
+                            fontStyle: 'italic'
                           }}>
-                            ⏳ Chờ Trưởng Ban giao
+                            — Không qua Ban QLDA
                           </span>
+                        ) : !isInvestorAssigned ? (
+                          doc.assignedTvgs?.status !== 'ACCEPTED' ? (
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              color: '#64748b',
+                              background: '#f8fafc',
+                              border: '1px solid #e2e8f0',
+                              padding: '3px 8px',
+                              borderRadius: '4px',
+                              fontSize: '0.74rem'
+                            }}>
+                              ⏳ Chờ TVGS duyệt trước
+                            </span>
+                          ) : (
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              color: getShopInvestorOverdueInfo(doc).type === 'ASSIGNMENT' ? '#be185d' : '#b45309',
+                              background: getShopInvestorOverdueInfo(doc).type === 'ASSIGNMENT' ? '#fdf2f8' : '#fffbeb',
+                              border: `1px solid ${getShopInvestorOverdueInfo(doc).type === 'ASSIGNMENT' ? '#fbcfe8' : '#fde68a'}`,
+                              padding: '3px 8px',
+                              borderRadius: '4px',
+                              fontSize: '0.74rem',
+                              fontWeight: 600
+                            }}>
+                              {getShopInvestorOverdueInfo(doc).type === 'ASSIGNMENT' ? '⚠️ Chậm Trưởng Ban giao' : '⏳ Chờ Trưởng Ban giao'}
+                            </span>
+                          )
                         ) : (
                           <div>
                             <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.84rem' }}>
@@ -667,6 +1052,8 @@ export default function ShopDocumentsView({
                                 <span style={{ color: '#b91c1c', fontWeight: 600 }}>✕ Yêu cầu sửa</span>
                               ) : doc.assignedTvgs?.status !== 'ACCEPTED' ? (
                                 <span style={{ color: '#94a3b8' }}>⏳ Chờ TVGS duyệt trước</span>
+                              ) : getShopInvestorOverdueInfo(doc).type === 'REVIEW' ? (
+                                <span style={{ color: '#be185d', fontWeight: 700 }}>⚠️ Ban QLDA chậm duyệt</span>
                               ) : (
                                 <span style={{ color: '#b45309', fontWeight: 600 }}>⏳ Chờ Ban QLDA duyệt</span>
                               )}

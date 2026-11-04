@@ -130,6 +130,104 @@ export async function clearAllAPCTStorage() {
  * Sử dụng URL.createObjectURL để tối ưu RAM thiết bị di động, không bị đơ hoặc lỗi rỗng.
  * Ngăn chặn 100% lỗi QuotaExceededError của LocalStorage và giới hạn 1MB Document của Firestore.
  */
+/**
+ * Chuyển chuỗi base64 dataUrl sang Blob nhị phân để upload trực tiếp lên Firebase Storage
+ */
+export function dataUrlToBlob(dataUrl) {
+  if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) return null;
+  try {
+    const arr = dataUrl.split(',');
+    const mimeMatch = arr[0].match(/:(.*?);/);
+    const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new Blob([u8arr], { type: mime });
+  } catch (e) {
+    console.warn('[dataUrlToBlob Error]', e);
+    return null;
+  }
+}
+
+/**
+ * Nén ảnh sang định dạng Blob chuẩn JPEG (1400px, 80% quality)
+ * Giữ nguyên độ sắc nét cao cho văn bản, thước đo, thiết bị kiểm tra công trình
+ * Dung lượng file xuất ra chỉ ~150KB - 250KB, tối ưu tải siêu tốc lên Firebase Storage
+ */
+export function compressImageToBlob(fileOrUrl, maxWidth = 1400, maxHeight = 1400, quality = 0.8) {
+  return new Promise((resolve) => {
+    if (!fileOrUrl) return resolve(null);
+    let objectUrl = null;
+    let imgSrc = '';
+
+    if (typeof fileOrUrl === 'string') {
+      imgSrc = fileOrUrl;
+    } else if (fileOrUrl instanceof Blob || fileOrUrl instanceof File) {
+      try {
+        objectUrl = URL.createObjectURL(fileOrUrl);
+        imgSrc = objectUrl;
+      } catch (e) {
+        return resolve(fileOrUrl);
+      }
+    } else {
+      return resolve(null);
+    }
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        let width = img.width;
+        let height = img.height;
+        if (!width || !height) {
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          return resolve(fileOrUrl);
+        }
+
+        if (width > maxWidth || height > maxHeight) {
+          if (width / height > maxWidth / maxHeight) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          } else {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob((blob) => {
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          if (blob) {
+            resolve(blob);
+          } else {
+            resolve(fileOrUrl);
+          }
+        }, 'image/jpeg', quality);
+      } catch (err) {
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        resolve(fileOrUrl);
+      }
+    };
+
+    img.onerror = () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      resolve(fileOrUrl);
+    };
+
+    img.src = imgSrc;
+  });
+}
+
 export function compressImageFile(fileOrUrl, maxWidth = 700, maxHeight = 700, quality = 0.55) {
   return new Promise((resolve) => {
     if (!fileOrUrl) {

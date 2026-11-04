@@ -34,6 +34,7 @@ export const uploadEvidenceImage = async (file, metadata = {}) => {
     
     // Gắn metadata tùy chỉnh vào file Google Cloud Storage
     const customMetadata = {
+      contentType: file.type || 'image/jpeg',
       customMetadata: {
         gps: metadata.gps || "10.0076° N, 105.7823° E",
         time: metadata.time || new Date().toLocaleString('vi-VN'),
@@ -58,6 +59,33 @@ export const uploadEvidenceImage = async (file, metadata = {}) => {
   } catch (error) {
     console.error('[Firebase Storage Upload Error]', error);
     throw error;
+  }
+};
+
+/**
+ * Tự động chuyển đổi chuỗi Base64 Data URL sang File Blob và tải lên Firebase Storage
+ * Giúp giải phóng 100% dung lượng Firestore document từ 1MB xuống chỉ vài KB!
+ */
+export const uploadBase64ToStorage = async (base64Url, metadata = {}) => {
+  if (!base64Url || typeof base64Url !== 'string') return base64Url;
+  if (!base64Url.startsWith('data:image/')) return base64Url;
+
+  try {
+    const arr = base64Url.split(',');
+    const mimeMatch = arr[0].match(/:(.*?);/);
+    const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    const blob = new Blob([u8arr], { type: mime });
+    const res = await uploadEvidenceImage(blob, metadata);
+    return res.url || res.secure_url || base64Url;
+  } catch (err) {
+    console.warn('[uploadBase64ToStorage Warning] Không thể tải base64 lên storage:', err);
+    return base64Url;
   }
 };
 

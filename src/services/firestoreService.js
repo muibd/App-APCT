@@ -23,6 +23,7 @@ import {
   INITIAL_NOTIFICATIONS,
   MOCK_USERS 
 } from '../data/mockData';
+import { uploadBase64ToStorage } from './storageService';
 
 const REQUESTS_COLLECTION = 'inspection_requests';
 const REPORTS_COLLECTION = 'inspection_reports';
@@ -77,17 +78,45 @@ export const subscribeToRequests = (callback) => {
   }
 };
 
+// Helper tự động chuyển đổi ảnh Base64 sang Google Firebase Storage trước khi ghi Firestore
+// Giúp giảm dung lượng document từ >1MB xuống chỉ vài KB, chống lỗi vượt giới hạn quota
+const migrateArrayPhotosToStorage = async (photosArray, projectId) => {
+  if (!Array.isArray(photosArray) || !photosArray.length) return photosArray;
+  const hasBase64 = photosArray.some(p => p && typeof p.url === 'string' && p.url.startsWith('data:image/'));
+  if (!hasBase64) return photosArray;
+
+  return await Promise.all(
+    photosArray.map(async (photo) => {
+      if (photo && typeof photo.url === 'string' && photo.url.startsWith('data:image/')) {
+        const cloudUrl = await uploadBase64ToStorage(photo.url, {
+          projectId: projectId || '2203',
+          caption: photo.caption || '',
+          gps: photo.gps || '',
+          time: photo.time || ''
+        });
+        return { ...photo, url: cloudUrl };
+      }
+      return photo;
+    })
+  );
+};
+
 /**
  * Lưu hoặc cập nhật Phiếu yêu cầu lên Firestore
  */
 export const saveInspectionRequest = async (requestData) => {
-  const cleanData = sanitizeData(requestData);
+  let cleanData = sanitizeData(requestData);
   if (!isFirebaseConfigured || !db) {
     console.log('[Firestore Offline] Lưu phiếu nội bộ:', cleanData?.requestNumber);
     return cleanData;
   }
 
   try {
+    const projId = cleanData.projectCode || cleanData.projectId || '2203';
+    if (Array.isArray(cleanData.evidencePhotos) && cleanData.evidencePhotos.length > 0) {
+      cleanData.evidencePhotos = await migrateArrayPhotosToStorage(cleanData.evidencePhotos, projId);
+    }
+
     const docRef = doc(db, REQUESTS_COLLECTION, cleanData.id);
     await setDoc(docRef, cleanData);
     console.log('[Firestore Cloud] Đã lưu phiếu thành công:', cleanData.requestNumber);
@@ -160,13 +189,24 @@ export const subscribeToReports = (callback) => {
  * Lưu hoặc cập nhật Biên bản nghiệm thu lên Firestore
  */
 export const saveInspectionReport = async (reportData) => {
-  const cleanData = sanitizeData(reportData);
+  let cleanData = sanitizeData(reportData);
   if (!isFirebaseConfigured || !db) {
     console.log('[Firestore Offline] Lưu biên bản nội bộ:', cleanData?.reportNumber);
     return cleanData;
   }
 
   try {
+    const projId = cleanData.projectCode || cleanData.projectId || '2203';
+    if (Array.isArray(cleanData.evidencePhotos) && cleanData.evidencePhotos.length > 0) {
+      cleanData.evidencePhotos = await migrateArrayPhotosToStorage(cleanData.evidencePhotos, projId);
+    }
+    if (Array.isArray(cleanData.defectPhotos) && cleanData.defectPhotos.length > 0) {
+      cleanData.defectPhotos = await migrateArrayPhotosToStorage(cleanData.defectPhotos, projId);
+    }
+    if (cleanData.rectification && Array.isArray(cleanData.rectification.photos) && cleanData.rectification.photos.length > 0) {
+      cleanData.rectification.photos = await migrateArrayPhotosToStorage(cleanData.rectification.photos, projId);
+    }
+
     const docRef = doc(db, REPORTS_COLLECTION, cleanData.id);
     await setDoc(docRef, cleanData);
     console.log('[Firestore Cloud] Đã lưu biên bản thành công:', cleanData.reportNumber);

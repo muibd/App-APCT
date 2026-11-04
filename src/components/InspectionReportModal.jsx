@@ -3,13 +3,15 @@ import {
   X, Printer, CheckCircle2, ShieldCheck, Camera, MapPin, Clock, 
   Download, PenTool, AlertCircle, AlertTriangle, Trash2, ImagePlus, 
   Zap, RotateCcw, FileWarning, Eye, User, Wrench, Send, ChevronRight, XCircle,
-  ArrowLeftRight, Calendar, ArrowRight, Ban, UserCheck, FileText, Check
+  ArrowLeftRight, Calendar, ArrowRight, Ban, UserCheck, FileText, Check, Loader2, ZoomIn
 } from 'lucide-react';
-import { STANDARD_CRITERIA_LIST, getContractorChief } from '../data/mockData';
+import { STANDARD_CRITERIA_LIST, getContractorChief, isMepContext } from '../data/mockData';
 import { getSuggestedStandards, GENERAL_MANDATORY_STANDARDS } from '../data/standardsRules';
 import { triggerSafeConfetti } from '../utils/confettiHelper';
-import { compressImageFile } from '../utils/storageHelper';
+import { compressImageFile, compressImageToBlob, dataUrlToBlob } from '../utils/storageHelper';
+import { uploadEvidenceImage, uploadBase64ToStorage } from '../services/storageService';
 import { generateDocumentCode, getDocumentRevisionNumber } from '../data/projectCatalog';
+import ImagePreviewModal from './ImagePreviewModal';
 
 
 
@@ -58,11 +60,37 @@ export default function InspectionReportModal({
   );
   const [reportState, setReportState] = useState(report || {});
 
+  // Lấy yêu cầu nghiệm thu tương ứng (nếu có) để truy xuất danh sách cán bộ được chọn & trạng thái
+  const relatedRequest = request || (requests || []).find(r => 
+    (report?.requestId && r.id === report.requestId) || 
+    (report?.id && (r.reportId === report.id || r.id === report.id)) ||
+    (report?.inspectionObject && r.taskContent && report.inspectionObject.trim() === r.taskContent.trim())
+  );
+
+  const initialSupervisorSigned = Boolean(
+    report?.attendees?.supervisor?.signed ||
+    report?.signatures?.supervisor ||
+    report?.status === 'WAITING_INVESTOR' ||
+    report?.status === 'COMPLETED' ||
+    relatedRequest?.status === 'WAITING_INVESTOR' ||
+    relatedRequest?.status === 'COMPLETED' ||
+    request?.status === 'WAITING_INVESTOR' ||
+    request?.status === 'COMPLETED'
+  );
+
+  const initialInvestorSigned = Boolean(
+    report?.attendees?.investor?.signed ||
+    report?.signatures?.investor ||
+    report?.status === 'COMPLETED' ||
+    relatedRequest?.status === 'COMPLETED' ||
+    request?.status === 'COMPLETED'
+  );
+
   // Digital Signatures state for 3 parties
   const [signatures, setSignatures] = useState({
-    investor: report?.attendees?.investor?.signed || false,
-    supervisor: report?.attendees?.supervisor?.signed || false,
-    contractor: report?.attendees?.contractor?.signed || true
+    investor: initialInvestorSigned,
+    supervisor: initialSupervisorSigned,
+    contractor: report?.attendees?.contractor?.signed !== false
   });
 
   const isMaterialReport = Boolean(
@@ -121,6 +149,19 @@ export default function InspectionReportModal({
   const [rectifyDesc, setRectifyDesc] = useState(reportState?.rectification?.description || '');
   const [rectifyPhotos, setRectifyPhotos] = useState(reportState?.rectification?.photos || []);
   const [evidencePhotos, setEvidencePhotos] = useState(report?.evidencePhotos || reportState?.evidencePhotos || []);
+  const [uploadingEvidence, setUploadingEvidence] = useState(false);
+  const [uploadProgressText, setUploadProgressText] = useState('');
+
+  // Quản lý Modal xem ảnh phóng to toàn màn hình (Lightbox)
+  const [previewModalState, setPreviewModalState] = useState({ isOpen: false, photos: [], initialIndex: 0 });
+
+  const handleOpenImagePreview = (photosList, index = 0) => {
+    setPreviewModalState({
+      isOpen: true,
+      photos: photosList || [],
+      initialIndex: index
+    });
+  };
 
   const getInitialRectifyDate = () => {
     if (reportState?.rectification?.suggestedDate && /^\d{4}-\d{2}-\d{2}$/.test(reportState.rectification.suggestedDate)) {
@@ -347,50 +388,74 @@ export default function InspectionReportModal({
     if (onSaveReport) onSaveReport(updated);
   };
 
+  // Phân biệt vai trò và quyền duyệt / hủy ("xác nhận/hủy những phiếu mà mình là người duyệt"):
+  const isAdmin = currentRole === 'ADMIN';
+  const isSupervisorRole = currentRole === 'SUPERVISOR' || currentRole === 'LEAD_SUPERVISOR';
+  const isInvestorRole = currentRole === 'INVESTOR' || currentRole === 'LEAD_INVESTOR';
+
   // Kiểm tra trạng thái ký số độc lập của 3 bên
-  const isSupervisorSigned = Boolean(signatures?.supervisor || reportState?.attendees?.supervisor?.signed);
-  const isInvestorSigned = Boolean(signatures?.investor || reportState?.attendees?.investor?.signed);
-  const isContractorSigned = Boolean(signatures?.contractor || reportState?.attendees?.contractor?.signed !== false);
+  const isSupervisorSigned = Boolean(
+    signatures?.supervisor || 
+    reportState?.attendees?.supervisor?.signed ||
+    report?.attendees?.supervisor?.signed ||
+    reportState?.status === 'WAITING_INVESTOR' ||
+    report?.status === 'WAITING_INVESTOR' ||
+    relatedRequest?.status === 'WAITING_INVESTOR' ||
+    request?.status === 'WAITING_INVESTOR' ||
+    reportState?.status === 'COMPLETED' ||
+    report?.status === 'COMPLETED' ||
+    relatedRequest?.status === 'COMPLETED' ||
+    request?.status === 'COMPLETED'
+  );
+  const isInvestorSigned = Boolean(
+    signatures?.investor || 
+    reportState?.attendees?.investor?.signed ||
+    report?.attendees?.investor?.signed ||
+    reportState?.status === 'COMPLETED' ||
+    report?.status === 'COMPLETED' ||
+    relatedRequest?.status === 'COMPLETED' ||
+    request?.status === 'COMPLETED'
+  );
+  const isContractorSigned = Boolean(
+    signatures?.contractor || 
+    reportState?.attendees?.contractor?.signed !== false
+  );
 
   // Trạng thái hoàn tất nghiệm thu đủ điều kiện:
   // CHỈ hoàn tất khi status là 'COMPLETED' HOẶC cả 3 bên độc lập đều đã ký số!
   const isCompleted = 
     reportState?.status === 'COMPLETED' || 
     report?.status === 'COMPLETED' || 
+    relatedRequest?.status === 'COMPLETED' ||
+    request?.status === 'COMPLETED' ||
     (isSupervisorSigned && isInvestorSigned && isContractorSigned);
 
   // Trạng thái chờ CĐT phê duyệt (sau khi TVGS đã duyệt đạt):
   const isWaitingInvestor = !isCompleted && (
     reportState?.status === 'WAITING_INVESTOR' ||
     report?.status === 'WAITING_INVESTOR' ||
+    relatedRequest?.status === 'WAITING_INVESTOR' ||
+    request?.status === 'WAITING_INVESTOR' ||
     (isSupervisorSigned && !isInvestorSigned && reportState?.conclusion?.isAccepted !== false)
   );
 
   // Trạng thái từ chối & đã sửa chữa (CHỈ KHI CHƯA HOÀN THÀNH VÀ CHƯA ĐƯỢC DUYỆT ĐẠT):
   const isRectified = !isCompleted && !isWaitingInvestor && (
     reportState?.status === 'RECTIFIED' || 
-    report?.status === 'RECTIFIED'
+    report?.status === 'RECTIFIED' ||
+    relatedRequest?.status === 'RECTIFIED' ||
+    request?.status === 'RECTIFIED'
   );
   const isRejected = !isCompleted && !isWaitingInvestor && !isRectified && (
     reportState?.status === 'REJECTED' || 
     report?.status === 'REJECTED' ||
+    relatedRequest?.status === 'HAS_REJECTIONS' ||
+    request?.status === 'HAS_REJECTIONS' ||
     reportState?.conclusion?.isAccepted === false
   );
   const rejectionInfo = reportState?.conclusion?.rejectedBy || null;
 
-  // Phân biệt vai trò và quyền duyệt / hủy ("xác nhận/hủy những phiếu mà mình là người duyệt"):
-  const isAdmin = currentRole === 'ADMIN';
-  const isSupervisorRole = currentRole === 'SUPERVISOR' || currentRole === 'LEAD_SUPERVISOR';
-  const isInvestorRole = currentRole === 'INVESTOR' || currentRole === 'LEAD_INVESTOR';
-
-  // Lấy yêu cầu nghiệm thu tương ứng (nếu có) để truy xuất danh sách cán bộ được chọn
-  const relatedRequest = request || (requests || []).find(r => 
-    (reportState.requestId && r.id === reportState.requestId) || 
-    (reportState.id && (r.reportId === reportState.id || r.id === reportState.id)) ||
-    (reportState.inspectionObject && r.taskContent && reportState.inspectionObject.trim() === r.taskContent.trim())
-  );
-
-  const isCancelled = reportState?.status === 'CANCELLED' || relatedRequest?.status === 'CANCELLED';
+  const isCancelled = reportState?.status === 'CANCELLED' || relatedRequest?.status === 'CANCELLED' || request?.status === 'CANCELLED';
 
   const docCode = isMaterialReport ? 'MI' : 'WA';
   const projCode = reportState.projectCode || relatedRequest?.projectCode || (
@@ -617,19 +682,38 @@ export default function InspectionReportModal({
   const leadInvUser = (users || []).find(u => u.role === 'LEAD_INVESTOR') || { fullName: 'Ngô Quý Linh', position: 'Trưởng Ban QLDA', company: 'Công ty TNHH An Phú Cần Thơ' };
   const leadSupUser = (users || []).find(u => u.role === 'LEAD_SUPERVISOR') || { fullName: 'Đinh Xuân Thám', position: 'Tư vấn giám sát trưởng', company: 'Công ty CP TVXD và TM GELICON' };
 
+  // Kiểm tra xem công việc nghiệm thu có thuộc hệ thống MEP hay không
+  const isMep = isMepContext({
+    itemName: reportState.itemName || relatedRequest?.itemName || reportState.projectInfo?.itemName,
+    packageName: reportState.packageName || relatedRequest?.packageName || reportState.projectInfo?.packageName,
+    taskContent: reportState.taskContent || relatedRequest?.taskContent,
+    inspectionObject: reportState.inspectionObject || relatedRequest?.inspectionObject,
+    projectInfo: reportState.projectInfo || relatedRequest?.projectInfo,
+    createdByRole: reportState.attendees?.contractor?.position || relatedRequest?.createdByRole,
+    createdByName: reportState.attendees?.contractor?.person || relatedRequest?.createdByName,
+    createdByUid: reportState.createdByUid || relatedRequest?.createdByUid,
+    relatedRequest: relatedRequest
+  }, users);
+
   // a) Đại diện Chủ đầu tư
-  const invCompany = assignedInv?.company || reportState.attendees?.investor?.company || leadInvUser.company || 'Công ty TNHH An Phú Cần Thơ';
+  const cleanInvCompany = (rawComp) => {
+    if (rawComp && !rawComp.includes('An Phú Cần Thơ') && rawComp.trim().length > 3) {
+      return rawComp.trim();
+    }
+    return 'Công ty cổ phần CONINCO Máy xây dựng và Công trình công nghiệp (CONINCO-MI)';
+  };
+  const invCompany = cleanInvCompany(assignedInv?.company || reportState.attendees?.investor?.company || leadInvUser.company);
   const invLeadName = reportState.attendees?.investor?.leadPerson || leadInvUser.fullName;
   const invLeadPosition = reportState.attendees?.investor?.leadPosition || leadInvUser.position;
-  const invOfficerName = assignedInv?.fullName || reportState.attendees?.investor?.person || 'Bành Nguyễn Hậu';
-  const invOfficerPosition = assignedInv?.position || reportState.attendees?.investor?.position || 'Cán bộ ban QLDA';
+  const invOfficerName = assignedInv?.fullName || reportState.attendees?.investor?.person || 'Nguyễn Thành Trung';
+  const invOfficerPosition = assignedInv?.position || reportState.attendees?.investor?.position || (isMep ? 'Phó ban QLDA' : 'Cán bộ ban QLDA');
 
   // b) Tư vấn giám sát
-  const supCompany = assignedSup?.company || reportState.attendees?.supervisor?.company || leadSupUser.company || 'Công ty CP TVXD và TM GELICON';
+  const supCompany = assignedSup?.company || reportState.attendees?.supervisor?.company || leadSupUser.company || 'Công ty CP Tư vấn Xây dựng và Thương mại GELICON';
   const supLeadName = reportState.attendees?.supervisor?.leadPerson || leadSupUser.fullName;
   const supLeadPosition = reportState.attendees?.supervisor?.leadPosition || leadSupUser.position;
-  const supOfficerName = assignedSup?.fullName || reportState.attendees?.supervisor?.person || 'Võ Văn Tón';
-  const supOfficerPosition = assignedSup?.position || reportState.attendees?.supervisor?.position || 'Cán bộ tư vấn giám sát';
+  const supOfficerName = assignedSup?.fullName || reportState.attendees?.supervisor?.person || (isMep ? 'Nguyễn Đông Vũ' : 'Kiều Đỗ Minh Luân');
+  const supOfficerPosition = assignedSup?.position || reportState.attendees?.supervisor?.position || (isMep ? 'Phó đoàn TVGS' : 'Cán bộ tư vấn giám sát');
 
   // c) Đơn vị thi công: Luôn lấy chuẩn xác Chỉ huy trưởng theo công ty nhà thầu, không lấy Chỉ huy phó
   const contCompany = cleanContractorCompany(
@@ -667,6 +751,54 @@ export default function InspectionReportModal({
     r => r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR'
   );
 
+  // Danh sách đại diện CĐT tham gia nghiệm thu:
+  // - Nếu là MEP: Nguyễn Thành Trung - Phó ban QLDA + người được mời nghiệm thu
+  // - Nếu không phải MEP: Bỏ 2 anh Trưởng, chỉ hiển thị người được mời nghiệm thu
+  const mepInvOfficers = (assignedInvRecipients.length > 0
+    ? assignedInvRecipients.filter(r => !(r.fullName || '').toLowerCase().includes('linh') && !(r.fullName || '').toLowerCase().includes('trung'))
+    : (invOfficerName && !invOfficerName.toLowerCase().includes('linh') && !invOfficerName.toLowerCase().includes('trung')
+        ? [{ fullName: invOfficerName, position: invOfficerPosition || 'Cán bộ ban QLDA' }]
+        : []
+      )
+  );
+
+  const nonMepInvOfficers = (assignedInvRecipients.length > 0
+    ? assignedInvRecipients.filter(r => !(r.fullName || '').toLowerCase().includes('linh'))
+    : [{
+        fullName: (invOfficerName && !invOfficerName.toLowerCase().includes('linh')) ? invOfficerName : (reportState.attendees?.investor?.person || 'Nguyễn Thành Trung'),
+        position: (invOfficerPosition && !invOfficerPosition.includes('Trưởng Ban')) ? invOfficerPosition : 'Cán bộ ban QLDA'
+      }]
+  );
+
+  // Danh sách đại diện TVGS tham gia nghiệm thu:
+  // - Nếu là MEP: Nguyễn Đông Vũ - Phó đoàn TVGS + người được mời nghiệm thu
+  // - Nếu không phải MEP: Bỏ 2 anh Trưởng, chỉ hiển thị người được mời nghiệm thu
+  const mepSupOfficers = (assignedSupRecipients.length > 0
+    ? assignedSupRecipients.filter(r => !(r.fullName || '').toLowerCase().includes('thám') && !(r.fullName || '').toLowerCase().includes('vũ'))
+    : (supOfficerName && !supOfficerName.toLowerCase().includes('thám') && !supOfficerName.toLowerCase().includes('vũ')
+        ? [{ fullName: supOfficerName, position: supOfficerPosition || 'Cán bộ tư vấn giám sát' }]
+        : []
+      )
+  );
+
+  const nonMepSupOfficers = (assignedSupRecipients.length > 0
+    ? assignedSupRecipients.filter(r => !(r.fullName || '').toLowerCase().includes('thám'))
+    : [{
+        fullName: (supOfficerName && !supOfficerName.toLowerCase().includes('thám')) ? supOfficerName : (reportState.attendees?.supervisor?.person || 'Kiều Đỗ Minh Luân'),
+        position: (supOfficerPosition && !supOfficerPosition.includes('trưởng')) ? supOfficerPosition : 'Cán bộ tư vấn giám sát'
+      }]
+  );
+
+  const displayInvSigner = isMep
+    ? ((invOfficerName && !invOfficerName.toLowerCase().includes('linh') && !invOfficerName.toLowerCase().includes('trung')) ? invOfficerName : 'Nguyễn Thành Trung')
+    : ((invOfficerName && !invOfficerName.toLowerCase().includes('linh')) ? invOfficerName : (reportState.attendees?.investor?.person && !reportState.attendees.investor.person.toLowerCase().includes('linh') ? reportState.attendees.investor.person : 'Nguyễn Thành Trung'));
+
+  const displaySupSigner = isMep
+    ? ((supOfficerName && !supOfficerName.toLowerCase().includes('thám') && !supOfficerName.toLowerCase().includes('vũ')) ? supOfficerName : 'Nguyễn Đông Vũ')
+    : ((supOfficerName && !supOfficerName.toLowerCase().includes('thám')) ? supOfficerName : (reportState.attendees?.supervisor?.person && !reportState.attendees.supervisor.person.toLowerCase().includes('thám') ? reportState.attendees.supervisor.person : 'Kiều Đỗ Minh Luân'));
+
+  const displayContSigner = contOfficerName || reportState.attendees?.contractor?.person || contLeadName || 'Trần Mạnh Hưng';
+
   const assignedSupPerson = (assignedSupRecipients.length > 0
     ? assignedSupRecipients.map(r => r.fullName).filter(Boolean).join(', ')
     : (assignedSup?.fullName || assignedSup?.person || supOfficerName || 'Cán bộ TVGS')
@@ -680,6 +812,7 @@ export default function InspectionReportModal({
   const isSupervisorReviewer = Boolean(
     !isAdmin &&
     isSupervisorRole && (
+      (isMep && curName && (curName.includes('nguyễn đông vũ') || curName.includes('vũ'))) ||
       (supAttendee?.uid && curUid && supAttendee.uid === curUid) ||
       (supAttendee?.email && curEmail && supAttendee.email.toLowerCase() === curEmail) ||
       (supAttendee?.person && curName && (
@@ -702,6 +835,7 @@ export default function InspectionReportModal({
   const isInvestorReviewer = Boolean(
     !isAdmin &&
     isInvestorRole && (
+      (isMep && curName && (curName.includes('nguyễn thành trung') || curName.includes('trung'))) ||
       (invAttendee?.uid && curUid && invAttendee.uid === curUid) ||
       (invAttendee?.email && curEmail && invAttendee.email.toLowerCase() === curEmail) ||
       (invAttendee?.person && curName && (
@@ -743,16 +877,37 @@ export default function InspectionReportModal({
     setReportState(report);
 
     // Đồng bộ lại chữ ký theo dữ liệu report hiện hành
+    const currentRelReq = request || (requests || []).find(r => 
+      (report.requestId && r.id === report.requestId) || 
+      (report.id && (r.reportId === report.id || r.id === report.id)) ||
+      (report.inspectionObject && r.taskContent && report.inspectionObject.trim() === r.taskContent.trim())
+    );
+
+    const supSigned = Boolean(
+      report.attendees?.supervisor?.signed ||
+      report.status === 'WAITING_INVESTOR' ||
+      report.status === 'COMPLETED' ||
+      currentRelReq?.status === 'WAITING_INVESTOR' ||
+      currentRelReq?.status === 'COMPLETED'
+    );
+    const invSigned = Boolean(
+      report.attendees?.investor?.signed ||
+      report.status === 'COMPLETED' ||
+      currentRelReq?.status === 'COMPLETED'
+    );
+
     setSignatures({
-      investor: Boolean(report.attendees?.investor?.signed),
-      supervisor: Boolean(report.attendees?.supervisor?.signed),
+      investor: invSigned,
+      supervisor: supSigned,
       contractor: report.attendees?.contractor?.signed !== false
     });
 
-    if (report.evidencePhotos) {
+    if (report.evidencePhotos && Array.isArray(report.evidencePhotos) && report.evidencePhotos.length > 0) {
       setEvidencePhotos(report.evidencePhotos);
+    } else if (evidencePhotos.length > 0 && !isDifferentReport) {
+      // Giữ nguyên ảnh hiện trường đã chụp trên máy nếu chưa bị đổi sang biên bản khác
     } else {
-      setEvidencePhotos([]);
+      setEvidencePhotos(report.evidencePhotos || []);
     }
 
     if (report.time?.startTimeText) {
@@ -859,7 +1014,11 @@ export default function InspectionReportModal({
 
   const handleSign = (party) => {
     try {
-      const nextSignatures = { ...signatures, [party]: true };
+      const nextSignatures = { 
+        ...signatures, 
+        [party]: true,
+        supervisor: party === 'investor' ? true : (signatures.supervisor || isSupervisorSigned)
+      };
       setSignatures(nextSignatures);
 
       const now = new Date().toISOString();
@@ -868,7 +1027,7 @@ export default function InspectionReportModal({
       // Cả 3 bên ký số độc lập: Chỉ khi cả 3 bên đều hoàn thành thì mới là COMPLETED
       const isAllSigned = 
         (party === 'investor' || nextSignatures.investor) &&
-        (party === 'supervisor' || nextSignatures.supervisor) &&
+        (party === 'supervisor' || nextSignatures.supervisor || isSupervisorSigned) &&
         (party === 'contractor' || nextSignatures.contractor !== false);
 
       const nextStatus = isAllSigned 
@@ -885,6 +1044,11 @@ export default function InspectionReportModal({
         },
         attendees: {
           ...reportState.attendees,
+          supervisor: {
+            ...reportState.attendees?.supervisor,
+            signed: party === 'supervisor' ? true : Boolean(reportState.attendees?.supervisor?.signed || isSupervisorSigned),
+            signedAt: party === 'supervisor' ? nowFormatted : (reportState.attendees?.supervisor?.signedAt || nowFormatted)
+          },
           [party]: {
             ...reportState.attendees?.[party],
             signed: true,
@@ -963,21 +1127,89 @@ export default function InspectionReportModal({
     }
   };
 
-  // Thêm ảnh chụp lỗi từ Camera hoặc Thư viện (Tự động nén tối ưu & Lưu tức thì)
+  // Tự động giải phóng ảnh Base64 cũ và chuyển thành Google Firebase Storage URL vĩnh viễn
+  useEffect(() => {
+    if (!evidencePhotos || !evidencePhotos.length) return;
+    const hasBase64 = evidencePhotos.some(p => p && typeof p.url === 'string' && p.url.startsWith('data:image/'));
+    if (!hasBase64) return;
+
+    let isMounted = true;
+    const autoMigrateBase64 = async () => {
+      try {
+        console.log('[Auto-Sync Storage] Đang tự động chuyển ảnh Base64 sang Google Firebase Storage...');
+        let changed = false;
+        const migrated = await Promise.all(
+          evidencePhotos.map(async (p) => {
+            if (p && typeof p.url === 'string' && p.url.startsWith('data:image/')) {
+              try {
+                const cloudUrl = await uploadBase64ToStorage(p.url, {
+                  projectId: reportState?.projectCode || report?.projectCode || '2203',
+                  caption: p.caption || '',
+                  gps: p.gps || '',
+                  time: p.time || ''
+                });
+                if (cloudUrl && cloudUrl !== p.url) {
+                  changed = true;
+                  return { ...p, url: cloudUrl };
+                }
+              } catch (err) {
+                console.warn('[Auto-Sync Storage Error]', err);
+              }
+            }
+            return p;
+          })
+        );
+
+        if (changed && isMounted) {
+          setEvidencePhotos(migrated);
+          const updated = {
+            ...reportState,
+            evidencePhotos: migrated,
+            updatedAt: new Date().toISOString()
+          };
+          setReportState(updated);
+          if (onSaveReport) {
+            onSaveReport(updated);
+          }
+          console.log('[Auto-Sync Storage] Đã đồng bộ thành công ảnh lên Google Firebase Storage!');
+        }
+      } catch (e) {
+        console.warn('[Auto-Sync Storage Exception]', e);
+      }
+    };
+
+    autoMigrateBase64();
+    return () => { isMounted = false; };
+  }, [evidencePhotos]);
+
+  // Thêm ảnh chụp lỗi từ Camera hoặc Thư viện (Tải lên Cloud Storage)
   const handleFileCapture = async (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
 
     const newPhotos = [];
     for (const file of files) {
-      const compressedUrl = await compressImageFile(file);
-      if (!compressedUrl) continue;
+      let photoUrl = '';
       const now = new Date();
       const timeStr = `${now.toLocaleTimeString('vi-VN')} ngày ${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
+      const caption = file.name ? `Hiện trường lỗi: ${file.name.replace(/\.[^/.]+$/, '')}` : 'Hiện trường kiểm tra không đạt';
+      try {
+        const blob = await compressImageToBlob(file, 1400, 1400, 0.8);
+        const res = await uploadEvidenceImage(blob || file, {
+          projectId: reportState?.projectCode || report?.projectCode || '2203',
+          caption,
+          gps: '10.0076° N, 105.7823° E',
+          time: timeStr
+        });
+        photoUrl = res.url || res.secure_url;
+      } catch (err) {
+        photoUrl = await compressImageFile(file, 600, 600, 0.45);
+      }
+      if (!photoUrl) continue;
       newPhotos.push({
         id: `defect_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        url: compressedUrl,
-        caption: file.name ? `Hiện trường lỗi: ${file.name.replace(/\.[^/.]+$/, '')}` : 'Hiện trường kiểm tra không đạt',
+        url: photoUrl,
+        caption,
         gps: '10.0076° N, 105.7823° E (P. Thường Thạnh, TP. Cần Thơ)',
         time: timeStr,
         photographer: `${currentUser?.fullName || 'Kỹ sư'} (${currentRole === 'LEAD_SUPERVISOR' ? 'TVGS Trưởng' : currentRole === 'SUPERVISOR' ? 'TVGS' : currentRole === 'LEAD_INVESTOR' ? 'Trưởng Ban QLDA' : currentRole === 'INVESTOR' ? 'Ban QLDA' : currentRole === 'ADMIN' ? 'CĐT' : 'ĐVTC'})`
@@ -994,21 +1226,34 @@ export default function InspectionReportModal({
     e.target.value = '';
   };
 
-  // Thêm ảnh chụp đã sửa từ Camera hoặc Thư viện (Tự động nén tối ưu & Lưu tức thì)
+  // Thêm ảnh chụp đã sửa từ Camera hoặc Thư viện (Tải lên Cloud Storage)
   const handleFileCaptureRectify = async (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
 
     const newPhotos = [];
     for (const file of files) {
-      const compressedUrl = await compressImageFile(file);
-      if (!compressedUrl) continue;
+      let photoUrl = '';
       const now = new Date();
       const timeStr = `${now.toLocaleTimeString('vi-VN')} ngày ${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
+      const caption = file.name ? `Ảnh sửa chữa: ${file.name.replace(/\.[^/.]+$/, '')}` : 'Hiện trường sau khi khắc phục xong';
+      try {
+        const blob = await compressImageToBlob(file, 1400, 1400, 0.8);
+        const res = await uploadEvidenceImage(blob || file, {
+          projectId: reportState?.projectCode || report?.projectCode || '2203',
+          caption,
+          gps: '10.0076° N, 105.7823° E',
+          time: timeStr
+        });
+        photoUrl = res.url || res.secure_url;
+      } catch (err) {
+        photoUrl = await compressImageFile(file, 600, 600, 0.45);
+      }
+      if (!photoUrl) continue;
       newPhotos.push({
         id: `rectify_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        url: compressedUrl,
-        caption: file.name ? `Ảnh sửa chữa: ${file.name.replace(/\.[^/.]+$/, '')}` : 'Hiện trường sau khi khắc phục xong',
+        url: photoUrl,
+        caption,
         gps: '10.0076° N, 105.7823° E (P. Thường Thạnh, TP. Cần Thơ)',
         time: timeStr,
         photographer: `${currentUser?.fullName || 'KS. Lê Văn Kỹ Thuật'} (ĐVTC ${contCompany.includes('Phan Lê') ? 'Phan Lê' : contCompany.includes('Bình Hoà') ? 'Bình Hoà' : 'Gia Huy Vĩnh Phúc'})`
@@ -1037,8 +1282,6 @@ export default function InspectionReportModal({
     }
     e.target.value = '';
   };
-
-
 
   const handleDeletePhoto = (photoId) => {
     setDefectPhotos(prev => {
@@ -1073,40 +1316,85 @@ export default function InspectionReportModal({
     });
   };
 
-  // Quản lý ảnh nghiệm thu hiện trường (Tự động nén tối ưu)
+  // Quản lý ảnh nghiệm thu hiện trường (Tải trực tiếp lên Google Cloud Storage, không giới hạn số lượng ảnh)
   const handleCaptureEvidencePhoto = async (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
 
-    for (const file of files) {
-      const compressedUrl = await compressImageFile(file);
-      const now = new Date();
-      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} ${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
-      const newPhoto = {
-        id: `evidence_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        url: compressedUrl,
-        caption: file.name ? `Hiện trường: ${file.name.replace(/\.[^/.]+$/, '')}` : 'Hình ảnh nghiệm thu hiện trường',
-        gps: '10.0076° N, 105.7823° E (P. Thường Thạnh, TP. Cần Thơ)',
-        time: timeStr,
-        photographer: `${currentUser?.fullName || 'Kỹ sư'} (${currentRole === 'LEAD_SUPERVISOR' ? 'TVGS Trưởng' : currentRole === 'SUPERVISOR' ? 'TVGS' : currentRole === 'LEAD_INVESTOR' ? 'Trưởng Ban QLDA' : currentRole === 'INVESTOR' ? 'Ban QLDA' : currentRole === 'ADMIN' ? 'CĐT' : 'ĐVTC'})`
-      };
-      setEvidencePhotos(prev => {
-        const next = [...prev, newPhoto];
-        const updated = { ...reportState, evidencePhotos: next };
-        setReportState(updated);
-        if (onSaveReport) onSaveReport(updated);
-        return next;
-      });
+    setUploadingEvidence(true);
+    setUploadProgressText(`Đang tải 0/${files.length} ảnh lên Google Cloud...`);
+
+    const newPhotos = [];
+    let count = 0;
+    try {
+      for (const file of files) {
+        count++;
+        setUploadProgressText(`Đang tải ${count}/${files.length} ảnh lên Google Cloud...`);
+        const now = new Date();
+        const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} ${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+        const caption = file.name ? `Hiện trường: ${file.name.replace(/\.[^/.]+$/, '')}` : 'Hình ảnh nghiệm thu hiện trường';
+        const gps = '10.0076° N, 105.7823° E (P. Thường Thạnh, TP. Cần Thơ)';
+        const photographer = `${currentUser?.fullName || 'Kỹ sư'} (${currentRole === 'LEAD_SUPERVISOR' ? 'TVGS Trưởng' : currentRole === 'SUPERVISOR' ? 'TVGS' : currentRole === 'LEAD_INVESTOR' ? 'Trưởng Ban QLDA' : currentRole === 'INVESTOR' ? 'Ban QLDA' : currentRole === 'ADMIN' ? 'CĐT' : 'ĐVTC'})`;
+
+        let photoUrl = '';
+        try {
+          // 1. Nén ảnh chất lượng cao sang Blob (1400px, 80% JPEG)
+          const blob = await compressImageToBlob(file, 1400, 1400, 0.8);
+          // 2. Tải thẳng lên Firebase Storage
+          const res = await uploadEvidenceImage(blob || file, {
+            projectId: reportState?.projectCode || report?.projectCode || '2203',
+            caption,
+            gps,
+            time: timeStr
+          });
+          photoUrl = res.url || res.secure_url;
+        } catch (err) {
+          console.warn('[Evidence Photo Storage Warning] Tải lên Cloud Storage gặp lỗi, fallback sang base64 siêu nén:', err);
+          photoUrl = await compressImageFile(file, 600, 600, 0.45);
+        }
+
+        if (photoUrl) {
+          newPhotos.push({
+            id: `evidence_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            url: photoUrl,
+            caption,
+            gps,
+            time: timeStr,
+            photographer
+          });
+        }
+      }
+
+      if (newPhotos.length > 0) {
+        setEvidencePhotos(prev => {
+          const next = [...prev, ...newPhotos];
+          const updated = {
+            ...reportState,
+            evidencePhotos: next,
+            updatedAt: new Date().toISOString()
+          };
+          setReportState(updated);
+          if (onSaveReport) {
+            onSaveReport(updated);
+          }
+          return next;
+        });
+      }
+    } finally {
+      setUploadingEvidence(false);
+      setUploadProgressText('');
+      e.target.value = '';
     }
-    e.target.value = '';
   };
-
-
 
   const handleDeleteEvidencePhoto = (photoId) => {
     setEvidencePhotos(prev => {
       const next = prev.filter(p => p.id !== photoId);
-      const updated = { ...reportState, evidencePhotos: next };
+      const updated = {
+        ...reportState,
+        evidencePhotos: next,
+        updatedAt: new Date().toISOString()
+      };
       setReportState(updated);
       if (onSaveReport) onSaveReport(updated);
       return next;
@@ -1116,7 +1404,11 @@ export default function InspectionReportModal({
   const handleUpdateEvidenceCaption = (photoId, newCaption) => {
     setEvidencePhotos(prev => {
       const next = prev.map(p => p.id === photoId ? { ...p, caption: newCaption } : p);
-      const updated = { ...reportState, evidencePhotos: next };
+      const updated = {
+        ...reportState,
+        evidencePhotos: next,
+        updatedAt: new Date().toISOString()
+      };
       setReportState(updated);
       if (onSaveReport) onSaveReport(updated);
       return next;
@@ -2402,7 +2694,7 @@ export default function InspectionReportModal({
                 </div>
               </div>
 
-              {/* 2. Thành phần trực tiếp nghiệm thu (Căn thẳng hàng chức vụ chuẩn theo yêu cầu) */}
+              {/* 2. Thành phần trực tiếp nghiệm thu (Căn thẳng hàng chức vụ chuẩn theo yêu cầu, bỏ 2 anh trưởng) */}
               <div style={{ marginBottom: '14px' }}>
                 <strong>2. Thành phần trực tiếp nghiệm thu:</strong>
                 
@@ -2410,44 +2702,52 @@ export default function InspectionReportModal({
                   {/* a) Đại diện Chủ đầu tư */}
                   <div><strong>a) Đại diện Chủ đầu tư:</strong> {invCompany}</div>
                   <div style={{ paddingLeft: '16px' }}>
-                    {invOfficerName.trim().toLowerCase() === invLeadName.trim().toLowerCase() || assignedInv?.role === 'LEAD_INVESTOR' ? (
-                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
-                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông: {invLeadName}</span>
-                        <span>Chức vụ: {invLeadPosition}</span>
-                      </div>
-                    ) : (
+                    {isMep ? (
                       <>
                         <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
-                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: {invLeadName}</span>
-                          <span>Chức vụ: {invLeadPosition}</span>
+                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: Nguyễn Thành Trung</span>
+                          <span>Chức vụ: Phó ban QLDA</span>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
-                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: {invOfficerName}</span>
-                          <span>Chức vụ: {invOfficerPosition}</span>
-                        </div>
+                        {mepInvOfficers.map((off, idx) => (
+                          <div key={idx} style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                            <span style={{ width: '240px', flexShrink: 0 }}>- Ông: {off.fullName}</span>
+                            <span>Chức vụ: {off.position || 'Cán bộ ban QLDA'}</span>
+                          </div>
+                        ))}
                       </>
+                    ) : (
+                      nonMepInvOfficers.map((off, idx) => (
+                        <div key={idx} style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: {off.fullName}</span>
+                          <span>Chức vụ: {off.position || 'Cán bộ ban QLDA'}</span>
+                        </div>
+                      ))
                     )}
                   </div>
 
                   {/* b) Tư vấn giám sát */}
                   <div style={{ marginTop: '4px' }}><strong>b) Tư vấn giám sát:</strong> {supCompany}</div>
                   <div style={{ paddingLeft: '16px' }}>
-                    {supOfficerName.trim().toLowerCase() === supLeadName.trim().toLowerCase() || assignedSup?.role === 'LEAD_SUPERVISOR' ? (
-                      <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
-                        <span style={{ width: '240px', flexShrink: 0 }}>- Ông: {supLeadName}</span>
-                        <span>Chức vụ: {supLeadPosition}</span>
-                      </div>
-                    ) : (
+                    {isMep ? (
                       <>
                         <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
-                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: {supLeadName}</span>
-                          <span>Chức vụ: {supLeadPosition}</span>
+                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: Nguyễn Đông Vũ</span>
+                          <span>Chức vụ: Phó đoàn TVGS</span>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
-                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: {supOfficerName}</span>
-                          <span>Chức vụ: {supOfficerPosition}</span>
-                        </div>
+                        {mepSupOfficers.map((off, idx) => (
+                          <div key={idx} style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                            <span style={{ width: '240px', flexShrink: 0 }}>- Ông: {off.fullName}</span>
+                            <span>Chức vụ: {off.position || 'Cán bộ tư vấn giám sát'}</span>
+                          </div>
+                        ))}
                       </>
+                    ) : (
+                      nonMepSupOfficers.map((off, idx) => (
+                        <div key={idx} style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1.65 }}>
+                          <span style={{ width: '240px', flexShrink: 0 }}>- Ông: {off.fullName}</span>
+                          <span>Chức vụ: {off.position || 'Cán bộ tư vấn giám sát'}</span>
+                        </div>
+                      ))
                     )}
                   </div>
 
@@ -2822,7 +3122,7 @@ export default function InspectionReportModal({
                       {isInvestorSigned ? (
                         <div style={{ color: '#047857', fontWeight: 'bold', textAlign: 'center' }}>
                           <div style={{ fontSize: '1.2rem', fontFamily: 'cursive' }}>
-                            {invOfficerName || reportState.attendees?.investor?.person || 'Ngô Quý Linh'}
+                            {displayInvSigner}
                           </div>
                           <div style={{ fontSize: '0.72rem' }}>✓ Đã ký số điện tử</div>
                           {reportState.attendees?.investor?.signedAt && (
@@ -2846,7 +3146,7 @@ export default function InspectionReportModal({
                       )}
                     </div>
                   </div>
-                  <strong className="screen-only">{invOfficerName || reportState.attendees?.investor?.person || 'Ngô Quý Linh'}</strong>
+                  <strong className="screen-only">{displayInvSigner}</strong>
                 </div>
 
                 {/* 2. TƯ VẤN GIÁM SÁT */}
@@ -2858,7 +3158,7 @@ export default function InspectionReportModal({
                       {isSupervisorSigned ? (
                         <div style={{ color: '#047857', fontWeight: 'bold', textAlign: 'center' }}>
                           <div style={{ fontSize: '1.2rem', fontFamily: 'cursive' }}>
-                            {supOfficerName || reportState.attendees?.supervisor?.person || 'Đinh Xuân Thám'}
+                            {displaySupSigner}
                           </div>
                           <div style={{ fontSize: '0.72rem' }}>✓ Đã ký số điện tử</div>
                           {reportState.attendees?.supervisor?.signedAt && (
@@ -2880,7 +3180,7 @@ export default function InspectionReportModal({
                       )}
                     </div>
                   </div>
-                  <strong className="screen-only">{supOfficerName || reportState.attendees?.supervisor?.person || 'Đinh Xuân Thám'}</strong>
+                  <strong className="screen-only">{displaySupSigner}</strong>
                 </div>
 
                 {/* 3. ĐƠN VỊ THI CÔNG */}
@@ -2892,7 +3192,7 @@ export default function InspectionReportModal({
                       {isContractorSigned ? (
                         <div style={{ color: '#047857', fontWeight: 'bold', textAlign: 'center' }}>
                           <div style={{ fontSize: '1.2rem', fontFamily: 'cursive' }}>
-                            {contOfficerName || reportState.attendees?.contractor?.person || contLeadName || 'Trần Mạnh Hưng'}
+                            {displayContSigner}
                           </div>
                           <div style={{ fontSize: '0.72rem' }}>✓ Đã ký số điện tử</div>
                         </div>
@@ -2901,7 +3201,7 @@ export default function InspectionReportModal({
                       )}
                     </div>
                   </div>
-                  <strong className="screen-only">{contOfficerName || reportState.attendees?.contractor?.person || contLeadName || 'Trần Mạnh Hưng'}</strong>
+                  <strong className="screen-only">{displayContSigner}</strong>
                 </div>
               </div>
 
@@ -3003,7 +3303,12 @@ export default function InspectionReportModal({
                       <div className="doc-photo-grid">
                         {evidencePhotos.map((photo, idx) => (
                           <div key={photo.id || idx} className="doc-photo-card">
-                            <div className="doc-photo-card-img-wrapper" style={{ height: '210px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: '#f8fafc', borderRadius: '6px', marginBottom: '8px' }}>
+                            <div 
+                              className="doc-photo-card-img-wrapper" 
+                              style={{ height: '210px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: '#f8fafc', borderRadius: '6px', marginBottom: '8px', cursor: 'zoom-in' }}
+                              onClick={() => handleOpenImagePreview(evidencePhotos, idx)}
+                              title="Bấm để xem ảnh lớn & phóng to"
+                            >
                               <img 
                                 src={photo.url} 
                                 alt={photo.caption || `Ảnh hiện trường ${idx + 1}`} 
@@ -3046,7 +3351,12 @@ export default function InspectionReportModal({
                         <div className="doc-photo-grid">
                           {defectPhotos.map((photo, idx) => (
                             <div key={photo.id || idx} className="doc-photo-card">
-                              <div className="doc-photo-card-img-wrapper" style={{ height: '210px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: '#fef2f2', borderRadius: '6px', marginBottom: '8px' }}>
+                              <div 
+                                className="doc-photo-card-img-wrapper" 
+                                style={{ height: '210px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: '#fef2f2', borderRadius: '6px', marginBottom: '8px', cursor: 'zoom-in' }}
+                                onClick={() => handleOpenImagePreview(defectPhotos, idx)}
+                                title="Bấm để xem ảnh lớn & phóng to"
+                              >
                                 <img 
                                   src={photo.url} 
                                   alt={photo.note || `Ảnh lỗi ${idx + 1}`} 
@@ -3090,7 +3400,12 @@ export default function InspectionReportModal({
                         <div className="doc-photo-grid">
                           {rectifyPhotos.map((photo, idx) => (
                             <div key={photo.id || idx} className="doc-photo-card">
-                              <div className="doc-photo-card-img-wrapper" style={{ height: '210px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: '#faf5ff', borderRadius: '6px', marginBottom: '8px' }}>
+                              <div 
+                                className="doc-photo-card-img-wrapper" 
+                                style={{ height: '210px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: '#faf5ff', borderRadius: '6px', marginBottom: '8px', cursor: 'zoom-in' }}
+                                onClick={() => handleOpenImagePreview(rectifyPhotos, idx)}
+                                title="Bấm để xem ảnh lớn & phóng to"
+                              >
                                 <img 
                                   src={photo.url} 
                                   alt={photo.caption || photo.note || `Ảnh khắc phục ${idx + 1}`} 
@@ -3177,6 +3492,31 @@ export default function InspectionReportModal({
                 </div>
               </div>
 
+              {uploadingEvidence && (
+                <div style={{
+                  background: '#f0fdf4',
+                  border: '1px solid #86efac',
+                  borderRadius: '10px',
+                  padding: '12px 16px',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  color: '#15803d',
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.04)'
+                }}>
+                  <Loader2 className="animate-spin" size={20} color="#16a34a" />
+                  <div style={{ flex: 1 }}>
+                    <div>{uploadProgressText || 'Đang tải ảnh lên Google Cloud Storage...'}</div>
+                    <div style={{ fontSize: '0.78rem', color: '#166534', fontWeight: 400, marginTop: '2px' }}>
+                      Hình ảnh đang được đồng bộ hóa tức thì lên Google Cloud để TVGS và Ban QLDA xem trực tiếp.
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {evidencePhotos.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '40px 20px', background: '#ffffff', borderRadius: '12px', border: '2px dashed #cbd5e1' }}>
                   <Camera size={44} color="#94a3b8" style={{ margin: '0 auto 10px auto', display: 'block' }} />
@@ -3201,7 +3541,11 @@ export default function InspectionReportModal({
                         position: 'relative'
                       }}
                     >
-                      <div style={{ position: 'relative' }}>
+                      <div 
+                        style={{ position: 'relative', cursor: 'zoom-in' }}
+                        onClick={() => handleOpenImagePreview(evidencePhotos, idx)}
+                        title="Bấm để xem ảnh lớn & phóng to chi tiết"
+                      >
                         <img 
                           src={photo.url} 
                           alt={photo.caption || `Ảnh ${idx + 1}`}
@@ -3220,9 +3564,31 @@ export default function InspectionReportModal({
                         }}>
                           ẢNH #{idx + 1}
                         </span>
+                        <div style={{
+                          position: 'absolute',
+                          top: '10px',
+                          right: '46px',
+                          background: 'rgba(15, 23, 42, 0.78)',
+                          color: '#ffffff',
+                          borderRadius: '6px',
+                          padding: '3px 8px',
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          backdropFilter: 'blur(4px)',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                        }}>
+                          <ZoomIn size={12} />
+                          <span>Xem lớn</span>
+                        </div>
                         <button 
                           type="button" 
-                          onClick={() => handleDeleteEvidencePhoto(photo.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteEvidencePhoto(photo.id);
+                          }}
                           style={{ 
                             position: 'absolute', 
                             top: '10px', 
@@ -3391,7 +3757,11 @@ export default function InspectionReportModal({
                         position: 'relative'
                       }}
                     >
-                      <div style={{ position: 'relative' }}>
+                      <div 
+                        style={{ position: 'relative', cursor: 'zoom-in' }}
+                        onClick={() => handleOpenImagePreview(defectPhotos, idx)}
+                        title="Bấm để xem ảnh lớn & phóng to chi tiết"
+                      >
                         <img 
                           src={photo.url} 
                           alt={`Lỗi ${idx + 1}`}
@@ -3399,7 +3769,10 @@ export default function InspectionReportModal({
                         />
                         <button
                           type="button"
-                          onClick={() => handleDeletePhoto(photo.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeletePhoto(photo.id);
+                          }}
                           style={{
                             position: 'absolute',
                             top: '8px',
@@ -3560,7 +3933,11 @@ export default function InspectionReportModal({
                         boxShadow: '0 2px 8px rgba(16, 185, 129, 0.1)' 
                       }}
                     >
-                      <div style={{ position: 'relative' }}>
+                      <div 
+                        style={{ position: 'relative', cursor: 'zoom-in' }}
+                        onClick={() => handleOpenImagePreview(rectifyPhotos, idx)}
+                        title="Bấm để xem ảnh lớn & phóng to chi tiết"
+                      >
                         <img 
                           src={photo.url} 
                           alt={`Đã sửa ${idx + 1}`}
@@ -4328,6 +4705,14 @@ export default function InspectionReportModal({
           </div>
         </div>
       )}
+
+      {/* MODAL PHÓNG TO HÌNH ẢNH TOÀN MÀN HÌNH (LIGHTBOX) */}
+      <ImagePreviewModal
+        isOpen={previewModalState.isOpen}
+        onClose={() => setPreviewModalState(prev => ({ ...prev, isOpen: false }))}
+        photos={previewModalState.photos}
+        initialIndex={previewModalState.initialIndex}
+      />
     </div>
   );
 }

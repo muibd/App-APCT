@@ -87,6 +87,22 @@ export default function PaymentDocumentsView({
     }
 
     // 2. Nếu đã phân công -> Kiểm tra thời hạn thẩm định
+    if (effStatus === PAYMENT_STATUS.OVERDUE_TVGS) {
+      return {
+        text: 'TVGS Chậm',
+        isOverdue: true,
+        color: '#e11d48',
+        bg: '#fff1f2'
+      };
+    }
+    if (effStatus === PAYMENT_STATUS.OVERDUE_INVESTOR) {
+      return {
+        text: 'Ban QLDA Chậm',
+        isOverdue: true,
+        color: '#be185d',
+        bg: '#fdf2f8'
+      };
+    }
     if (effStatus === PAYMENT_STATUS.OVERDUE_REVIEW) {
       return {
         text: 'Chậm phản hồi',
@@ -96,10 +112,27 @@ export default function PaymentDocumentsView({
       };
     }
 
-    if (!doc.dueDate) return { text: '---', isOverdue: false, diffDays: 0 };
-    const dueTime = new Date(doc.dueDate).getTime();
+    // Xác định mốc hạn chót đang chờ xử lý theo quy trình tuần tự:
+    // - TVGS chưa duyệt: tính theo hạn của TVGS
+    // - TVGS đã duyệt: tính theo hạn của Ban QLDA
+    const isTvgsApproved = doc.assignedTvgs?.status === 'ACCEPTED';
+    let targetDueTime = null;
+
+    if (!isTvgsApproved) {
+      targetDueTime = doc.assignedTvgs?.dueDate 
+        ? new Date(doc.assignedTvgs.dueDate).getTime() 
+        : (doc.dueDate ? new Date(doc.dueDate).getTime() : null);
+    } else {
+      const tvgsReviewedTime = doc.assignedTvgs?.reviewedAt ? new Date(doc.assignedTvgs.reviewedAt).getTime() : Date.now();
+      const invSlaDays = Number(doc.assignedInvestor?.slaDays || doc.slaDays || 3);
+      targetDueTime = doc.assignedInvestor?.dueDate && new Date(doc.assignedInvestor.dueDate).getTime() > tvgsReviewedTime
+        ? new Date(doc.assignedInvestor.dueDate).getTime()
+        : (tvgsReviewedTime + invSlaDays * 24 * 3600 * 1000);
+    }
+
+    if (!targetDueTime) return { text: '---', isOverdue: false, diffDays: 0 };
     const now = Date.now();
-    const diffMs = dueTime - now;
+    const diffMs = targetDueTime - now;
     const diffDays = Math.ceil(diffMs / (24 * 60 * 60 * 1000));
 
     if (diffMs < 0) {
@@ -139,7 +172,13 @@ export default function PaymentDocumentsView({
       const effStatus = getEffectivePaymentStatus(doc);
       if (effStatus === PAYMENT_STATUS.APPROVED) approved++;
       else if (effStatus === PAYMENT_STATUS.REJECTED) rejected++;
-      else if (effStatus === PAYMENT_STATUS.OVERDUE_ASSIGNMENT || effStatus === PAYMENT_STATUS.OVERDUE_REVIEW || effStatus === PAYMENT_STATUS.OVERDUE) overdue++;
+      else if (
+        effStatus === PAYMENT_STATUS.OVERDUE_ASSIGNMENT ||
+        effStatus === PAYMENT_STATUS.OVERDUE_REVIEW ||
+        effStatus === PAYMENT_STATUS.OVERDUE ||
+        effStatus === PAYMENT_STATUS.OVERDUE_TVGS ||
+        effStatus === PAYMENT_STATUS.OVERDUE_INVESTOR
+      ) overdue++;
       else if (effStatus === PAYMENT_STATUS.WAITING_ASSIGNMENT) waitingAssignment++;
       else sent++;
     });
@@ -187,7 +226,10 @@ export default function PaymentDocumentsView({
       if (selectedStatus !== 'ALL') {
         const effStatus = getEffectivePaymentStatus(doc);
         if (selectedStatus === PAYMENT_STATUS.OVERDUE) {
-          const isOverdue = effStatus === PAYMENT_STATUS.OVERDUE || 
+          const isOverdue = 
+            effStatus === PAYMENT_STATUS.OVERDUE_TVGS ||
+            effStatus === PAYMENT_STATUS.OVERDUE_INVESTOR ||
+            effStatus === PAYMENT_STATUS.OVERDUE || 
             effStatus === PAYMENT_STATUS.OVERDUE_ASSIGNMENT || 
             effStatus === PAYMENT_STATUS.OVERDUE_REVIEW;
           if (!isOverdue) return false;
@@ -458,7 +500,9 @@ export default function PaymentDocumentsView({
             <option value={PAYMENT_STATUS.SENT}>Đang thẩm định</option>
             <option value={PAYMENT_STATUS.APPROVED}>Đã xác nhận</option>
             <option value={PAYMENT_STATUS.REJECTED}>Cần sửa</option>
-            <option value={PAYMENT_STATUS.OVERDUE}>Chậm (Quá hạn SLA)</option>
+            <option value={PAYMENT_STATUS.OVERDUE}>Tất cả hồ sơ Chậm</option>
+            <option value={PAYMENT_STATUS.OVERDUE_TVGS}>⚠️ TVGS Chậm</option>
+            <option value={PAYMENT_STATUS.OVERDUE_INVESTOR}>⚠️ Ban QLDA Chậm</option>
           </select>
         </div>
 

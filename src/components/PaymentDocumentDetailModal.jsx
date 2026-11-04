@@ -13,6 +13,7 @@ import {
 import { openPdfInNewTab } from '../utils/pdfHelper';
 import { compressImageFile } from '../utils/storageHelper';
 import { uploadPdfDocument } from '../services/storageService';
+import ImagePreviewModal from './ImagePreviewModal';
 
 export default function PaymentDocumentDetailModal({
   isOpen,
@@ -1470,7 +1471,15 @@ export default function PaymentDocumentDetailModal({
                       </div>
                     )}
                     <div style={{ fontSize: '0.72rem', color: '#0284c7', marginTop: '2px', fontWeight: 600 }}>
-                      Thời hạn hoàn thành: {paymentDoc.assignedInvestor?.slaDays || 3} ngày (Hạn: {formatDateStr(paymentDoc.assignedInvestor?.dueDate || paymentDoc.dueDate)})
+                      Thời hạn hoàn thành: {paymentDoc.assignedInvestor?.slaDays || 3} ngày {!isTvgsApproved ? (
+                        <span style={{ color: '#d97706', fontWeight: 600 }}>(Tính {paymentDoc.assignedInvestor?.slaDays || 3} ngày kể từ khi TVGS xác nhận đạt)</span>
+                      ) : (
+                        <span>(Hạn: {formatDateStr(
+                          paymentDoc.assignedInvestor?.dueDate && new Date(paymentDoc.assignedInvestor.dueDate).getTime() > new Date(paymentDoc.assignedTvgs?.reviewedAt || 0).getTime()
+                            ? paymentDoc.assignedInvestor.dueDate
+                            : new Date(new Date(paymentDoc.assignedTvgs?.reviewedAt || Date.now()).getTime() + (paymentDoc.assignedInvestor?.slaDays || 3) * 24 * 3600 * 1000).toISOString()
+                        )})</span>
+                      )}
                     </div>
 
                     {isWithin1DayAssignment && canReassignInvestor && (
@@ -1685,15 +1694,12 @@ export default function PaymentDocumentDetailModal({
 
       </div>
 
-      {/* LIGHTBOX XEM ẢNH FULL */}
-      {activePhoto && (
-        <div 
-          onClick={() => setActivePhoto(null)} 
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}
-        >
-          <img src={activePhoto} alt="Xem đầy đủ" style={{ maxWidth: '90%', maxHeight: '90%', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }} />
-        </div>
-      )}
+      {/* MODAL PHÓNG TO XEM ẢNH */}
+      <ImagePreviewModal
+        isOpen={Boolean(activePhoto)}
+        onClose={() => setActivePhoto(null)}
+        photos={activePhoto ? [activePhoto] : []}
+      />
 
     </div>
   );

@@ -8,16 +8,22 @@ import {
   getEffectiveShopStatus,
   getShopStatusBadgeConfig,
   SHOP_STATUS,
-  calculateDueDate
+  calculateDueDate,
+  isAsBuiltDoc,
+  getShopTvgsOverdueInfo,
+  getShopInvestorOverdueInfo
 } from '../data/shopDocumentConstants';
 import { openPdfInNewTab } from '../utils/pdfHelper';
 import { compressImageFile } from '../utils/storageHelper';
 import { uploadPdfDocument } from '../services/storageService';
+import { getDocHierarchyInfo } from './ShopDocumentsView';
+import ImagePreviewModal from './ImagePreviewModal';
 
 export default function ShopDocumentDetailModal({
   isOpen,
   onClose,
   document: shopDoc,
+  projects = [],
   currentUser,
   currentRole,
   users = [],
@@ -29,6 +35,8 @@ export default function ShopDocumentDetailModal({
   showAlert
 }) {
   if (!isOpen || !shopDoc) return null;
+
+  const docHierarchy = useMemo(() => getDocHierarchyInfo(shopDoc), [shopDoc]);
 
   // Review states
   const [reviewNote, setReviewNote] = useState('');
@@ -164,8 +172,11 @@ export default function ShopDocumentDetailModal({
   const investorAssignee = shopDoc.assignedInvestor?.assignee || (shopDoc.assignedInvestor?.uid ? shopDoc.assignedInvestor : null);
   const isInvestorAssigned = Boolean(investorAssignee?.uid);
 
-  // Kiểm tra thời hạn 1 ngày (24 giờ kể từ khi nộp hồ sơ) để được phép sửa ngày, đổi người
-  const assignmentDeadlineTime = useMemo(() => {
+  // Điều kiện tuần tự: TVGS phải duyệt đạt trước thì Ban QLDA mới đến lượt
+  const isTvgsApproved = shopDoc.assignedTvgs?.status === 'ACCEPTED';
+
+  // 1. Thời hạn 1 ngày phân công của TVGS: 24h kể từ thời điểm tạo phiếu
+  const tvgsAssignmentDeadlineTime = useMemo(() => {
     if (shopDoc.assignmentDeadline) {
       return new Date(shopDoc.assignmentDeadline).getTime();
     }
@@ -176,22 +187,48 @@ export default function ShopDocumentDetailModal({
     return Date.now() + 24 * 60 * 60 * 1000;
   }, [shopDoc.assignmentDeadline, shopDoc.submittedAt, shopDoc.createdAt]);
 
-  const isWithin1DayAssignment = Date.now() <= assignmentDeadlineTime;
-
-  // Tính số giờ còn lại trong thời hạn 1 ngày
-  const remaining1DayHours = useMemo(() => {
-    const diffMs = assignmentDeadlineTime - Date.now();
+  const isWithin1DayTvgsAssignment = Date.now() <= tvgsAssignmentDeadlineTime;
+  const remainingTvgs1DayHours = useMemo(() => {
+    const diffMs = tvgsAssignmentDeadlineTime - Date.now();
     if (diffMs <= 0) return 0;
     return Math.ceil(diffMs / (60 * 60 * 1000));
-  }, [assignmentDeadlineTime]);
+  }, [tvgsAssignmentDeadlineTime]);
+
+  // 2. Thời hạn 1 ngày phân công của Ban QLDA: 24h KỂ TỪ KHI TVGS DUYỆT ĐẠT
+  const investorAssignmentDeadlineTime = useMemo(() => {
+    if (!isTvgsApproved) return null;
+    const tvgsReviewTime = shopDoc.assignedTvgs?.reviewedAt 
+      ? new Date(shopDoc.assignedTvgs.reviewedAt).getTime() 
+      : Date.now();
+    return tvgsReviewTime + 24 * 60 * 60 * 1000;
+  }, [isTvgsApproved, shopDoc.assignedTvgs?.reviewedAt]);
+
+  const isWithin1DayInvestorAssignment = !isTvgsApproved 
+    ? true 
+    : (investorAssignmentDeadlineTime ? Date.now() <= investorAssignmentDeadlineTime : true);
+
+  const remainingInvestor1DayHours = useMemo(() => {
+    if (!isTvgsApproved) return 24;
+    if (!investorAssignmentDeadlineTime) return 24;
+    const diffMs = investorAssignmentDeadlineTime - Date.now();
+    if (diffMs <= 0) return 0;
+    return Math.ceil(diffMs / (60 * 60 * 1000));
+  }, [isTvgsApproved, investorAssignmentDeadlineTime]);
+
+  // Alias để tương thích
+  const remaining1DayHours = remainingTvgs1DayHours;
+  const isWithin1DayAssignment = isWithin1DayTvgsAssignment;
+
+  // Kiểm tra hồ sơ Bản vẽ hoàn công: chỉ qua TVGS, không qua Ban QLDA
+  const isAsBuilt = isAsBuiltDoc(shopDoc);
 
   // Quyền phân công lần đầu
   const canAssignTvgs = (isLeadSupervisor || isSuperAdmin) && (!isTvgsAssigned || shopDoc.assignedTvgs?.status === 'WAITING_ASSIGNMENT');
-  const canAssignInvestor = (isLeadInvestor || isSuperAdmin) && (!isInvestorAssigned || shopDoc.assignedInvestor?.status === 'WAITING_ASSIGNMENT');
+  const canAssignInvestor = !isAsBuilt && (isLeadInvestor || isSuperAdmin) && (!isInvestorAssigned || shopDoc.assignedInvestor?.status === 'WAITING_ASSIGNMENT');
 
-  // Quyền sửa ngày, đổi người trong thời hạn 1 ngày (khi đã lỡ chọn, và hồ sơ chưa bị đóng/đạt)
-  const canReassignTvgs = (isLeadSupervisor || isSuperAdmin) && isTvgsAssigned && isWithin1DayAssignment && shopDoc.assignedTvgs?.status !== 'ACCEPTED';
-  const canReassignInvestor = (isLeadInvestor || isSuperAdmin) && isInvestorAssigned && isWithin1DayAssignment && shopDoc.assignedInvestor?.status !== 'ACCEPTED';
+  // Quyền sửa ngày, đổi người trong thời hạn 1 ngày
+  const canReassignTvgs = (isLeadSupervisor || isSuperAdmin) && isTvgsAssigned && isWithin1DayTvgsAssignment && shopDoc.assignedTvgs?.status !== 'ACCEPTED';
+  const canReassignInvestor = !isAsBuilt && (isLeadInvestor || isSuperAdmin) && isInvestorAssigned && isWithin1DayInvestorAssignment && shopDoc.assignedInvestor?.status !== 'ACCEPTED';
 
   // Danh sách cán bộ TVGS để giao việc (cho phép chọn cả cán bộ cấp dưới VÀ bản thân 2 anh trưởng)
   const availableSupervisors = useMemo(() => {
@@ -256,14 +293,11 @@ export default function ShopDocumentDetailModal({
   const isDocRejected = shopDoc.status === SHOP_STATUS.REJECTED;
   const canEditDoc = isDocRejected && (isContractorCreator || isSuperAdmin);
 
-  // Điều kiện tuần tự theo quy chuẩn xây dựng: TVGS phải duyệt đạt trước thì Ban QLDA mới được duyệt/hủy
-  const isTvgsApproved = shopDoc.assignedTvgs?.status === 'ACCEPTED';
-
   // TVGS có thể duyệt nếu đã được phân công, trạng thái đang là PENDING và hồ sơ chưa bị từ chối
   const canTvgsReview = isAssignedTvgs && isTvgsAssigned && shopDoc.assignedTvgs?.status === 'PENDING' && shopDoc.status !== SHOP_STATUS.REJECTED;
 
-  // Ban QLDA CHỈ ĐƯỢC PHÊ DUYỆT HOẶC HỦY KHI TVGS ĐÃ PHÊ DUYỆT ĐẠT TRƯỚC
-  const canInvestorReview = isAssignedInvestor && isInvestorAssigned && isTvgsApproved && shopDoc.assignedInvestor?.status === 'PENDING' && shopDoc.status !== SHOP_STATUS.REJECTED;
+  // Ban QLDA CHỈ ĐƯỢC PHÊ DUYỆT HOẶC HỦY KHI TVGS ĐÃ PHÊ DUYỆT ĐẠT TRƯỚC (và không áp dụng với Bản vẽ hoàn công)
+  const canInvestorReview = !isAsBuilt && isAssignedInvestor && isInvestorAssigned && isTvgsApproved && shopDoc.assignedInvestor?.status === 'PENDING' && shopDoc.status !== SHOP_STATUS.REJECTED;
 
   // Format date helper
   const formatDateStr = (iso) => {
@@ -625,6 +659,18 @@ export default function ShopDocumentDetailModal({
           {/* THÔNG TIN CHUNG */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', background: '#f8fafc', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
             <div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>🏢 Công Trình</div>
+              <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#0f172a' }}>{docHierarchy.projectName || 'Chung cư nhà ở xã hội 2'}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>📦 Gói Thầu</div>
+              <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#0f172a' }}>{docHierarchy.packageName || 'Chung cho dự án'}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>📑 Hạng Mục Công Việc</div>
+              <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#0f172a' }}>{docHierarchy.itemName || 'Toàn bộ hạng mục'}</div>
+            </div>
+            <div>
               <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Loại Hồ Sơ</div>
               <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#0f172a' }}>{shopDoc.typeName}</div>
             </div>
@@ -634,8 +680,18 @@ export default function ShopDocumentDetailModal({
             </div>
             <div>
               <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Hạn Phân Công (24h)</div>
-              <div style={{ fontSize: '0.85rem', fontWeight: 600, color: isTvgsAssigned && isInvestorAssigned ? '#15803d' : '#ea580c' }}>
-                {isTvgsAssigned && isInvestorAssigned ? '✓ Đã hoàn tất phân công' : formatDateStr(shopDoc.assignmentDeadline)}
+              <div style={{ fontSize: '0.85rem', fontWeight: 600, color: (isAsBuilt ? isTvgsAssigned : (isTvgsAssigned && isInvestorAssigned)) ? '#15803d' : '#ea580c' }}>
+                {isAsBuilt ? (
+                  isTvgsAssigned ? '✓ Đã hoàn tất phân công' : formatDateStr(shopDoc.assignmentDeadline)
+                ) : (isTvgsAssigned && isInvestorAssigned) ? (
+                  '✓ Đã hoàn tất phân công'
+                ) : !isTvgsAssigned ? (
+                  `TVGS: ${formatDateStr(shopDoc.assignmentDeadline)}`
+                ) : !isTvgsApproved ? (
+                  '✓ TVGS đã giao (QLDA tính sau)'
+                ) : (
+                  `QLDA: ${formatDateStr(new Date(new Date(shopDoc.assignedTvgs?.reviewedAt || Date.now()).getTime() + 24 * 3600 * 1000).toISOString())}`
+                )}
               </div>
             </div>
             <div>
@@ -1139,27 +1195,27 @@ export default function ShopDocumentDetailModal({
                     padding: '2px 8px',
                     borderRadius: '10px',
                     background: !isTvgsAssigned 
-                      ? '#fef3c7' 
+                      ? (getShopTvgsOverdueInfo(shopDoc).isOverdue ? '#fee2e2' : '#fef3c7')
                       : shopDoc.assignedTvgs?.status === 'ACCEPTED' 
                         ? '#dcfce7' 
                         : shopDoc.assignedTvgs?.status === 'REJECTED' 
                           ? '#fee2e2' 
-                          : '#eff6ff',
+                          : (getShopTvgsOverdueInfo(shopDoc).isOverdue ? '#fee2e2' : '#eff6ff'),
                     color: !isTvgsAssigned 
-                      ? '#b45309' 
+                      ? (getShopTvgsOverdueInfo(shopDoc).isOverdue ? '#b91c1c' : '#b45309')
                       : shopDoc.assignedTvgs?.status === 'ACCEPTED' 
                         ? '#15803d' 
                         : shopDoc.assignedTvgs?.status === 'REJECTED' 
                           ? '#b91c1c' 
-                          : '#1d4ed8'
+                          : (getShopTvgsOverdueInfo(shopDoc).isOverdue ? '#b91c1c' : '#1d4ed8')
                   }}>
                     {!isTvgsAssigned 
-                      ? '⏳ Chờ phân công' 
+                      ? (getShopTvgsOverdueInfo(shopDoc).isOverdue ? '⚠️ Chậm phân công' : '⏳ Chờ phân công')
                       : shopDoc.assignedTvgs?.status === 'ACCEPTED' 
                         ? '✓ Đã xác nhận' 
                         : shopDoc.assignedTvgs?.status === 'REJECTED' 
                           ? '✕ Yêu cầu sửa' 
-                          : '⏳ Đang thẩm định'}
+                          : (getShopTvgsOverdueInfo(shopDoc).isOverdue ? '⚠️ Chậm duyệt' : '⏳ Đang thẩm định')}
                   </span>
                 </div>
 
@@ -1333,44 +1389,63 @@ export default function ShopDocumentDetailModal({
 
                     {/* THAO TÁC DUYỆT DÀNH CHO CÁN BỘ TVGS ĐƯỢC CHỌN HOẶC TRƯỞNG */}
                     {canTvgsReview && !isRejecting && (
-                      <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
-                        <button
-                          type="button"
-                          onClick={() => handleConfirmApproval('SUPERVISOR')}
-                          style={{
-                            flex: 1,
-                            padding: '7px 10px',
-                            background: '#16a34a',
-                            color: '#fff',
-                            border: 'none',
+                      <div style={{ marginTop: '12px' }}>
+                        {isAsBuilt && (
+                          <div style={{
+                            marginBottom: '8px',
+                            padding: '6px 10px',
+                            background: '#ecfdf5',
+                            border: '1px solid #a7f3d0',
                             borderRadius: '6px',
-                            fontWeight: 600,
-                            fontSize: '0.78rem',
-                            cursor: 'pointer',
+                            fontSize: '0.74rem',
+                            color: '#065f46',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '4px'
-                          }}
-                        >
-                          <CheckCircle2 size={14} /> TVGS Xác Nhận Đạt
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setIsRejecting('SUPERVISOR')}
-                          style={{
-                            padding: '7px 10px',
-                            background: '#fee2e2',
-                            color: '#b91c1c',
-                            border: '1px solid #fecaca',
-                            borderRadius: '6px',
-                            fontWeight: 600,
-                            fontSize: '0.78rem',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          Cần sửa
-                        </button>
+                            gap: '6px'
+                          }}>
+                            <CheckCircle2 size={14} color="#059669" />
+                            <span>Bản vẽ hoàn công chỉ trình qua TVGS. Khi ký duyệt đạt, hồ sơ sẽ hoàn thiện ngay.</span>
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleConfirmApproval('SUPERVISOR')}
+                            style={{
+                              flex: 1,
+                              padding: '7px 10px',
+                              background: '#16a34a',
+                              color: '#fff',
+                              border: 'none',
+                              borderRadius: '6px',
+                              fontWeight: 600,
+                              fontSize: '0.78rem',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '4px'
+                            }}
+                          >
+                            <CheckCircle2 size={14} /> {isAsBuilt ? 'TVGS Ký Duyệt & Hoàn Tất' : 'TVGS Xác Nhận Đạt'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIsRejecting('SUPERVISOR')}
+                            style={{
+                              padding: '7px 10px',
+                              background: '#fee2e2',
+                              color: '#b91c1c',
+                              border: '1px solid #fecaca',
+                              borderRadius: '6px',
+                              fontWeight: 600,
+                              fontSize: '0.78rem',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Cần sửa
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1378,292 +1453,349 @@ export default function ShopDocumentDetailModal({
               </div>
 
               {/* 2. BAN QLDA CARD */}
-              <div style={{
-                border: '1px solid #cbd5e1',
-                borderRadius: '8px',
-                padding: '14px',
-                background: shopDoc.assignedInvestor?.status === 'ACCEPTED' 
-                  ? '#f0fdf4' 
-                  : shopDoc.assignedInvestor?.status === 'REJECTED' 
-                    ? '#fef2f2' 
-                    : !isInvestorAssigned 
-                      ? '#fffbeb' 
-                      : '#ffffff'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <User size={16} color="#b45309" />
-                    <strong style={{ fontSize: '0.86rem', color: '#b45309' }}>Ban Quản Lý Dự Án</strong>
-                  </div>
-                  <span style={{
-                    fontSize: '0.72rem',
-                    fontWeight: 700,
-                    padding: '2px 8px',
-                    borderRadius: '10px',
-                    background: !isInvestorAssigned 
-                      ? '#fef3c7' 
-                      : shopDoc.assignedInvestor?.status === 'ACCEPTED' 
-                        ? '#dcfce7' 
-                        : shopDoc.assignedInvestor?.status === 'REJECTED' 
-                          ? '#fee2e2' 
-                          : !isTvgsApproved 
-                            ? '#f1f5f9' 
-                            : '#eff6ff',
-                    color: !isInvestorAssigned 
-                      ? '#b45309' 
-                      : shopDoc.assignedInvestor?.status === 'ACCEPTED' 
-                        ? '#15803d' 
-                        : shopDoc.assignedInvestor?.status === 'REJECTED' 
-                          ? '#b91c1c' 
-                          : !isTvgsApproved 
-                            ? '#64748b' 
-                            : '#1d4ed8'
+              {isAsBuilt ? (
+                <div style={{
+                  border: '1.5px dashed #cbd5e1',
+                  borderRadius: '8px',
+                  padding: '24px 16px',
+                  background: '#f8fafc',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  textAlign: 'center',
+                  gap: '10px'
+                }}>
+                  <div style={{
+                    width: '42px',
+                    height: '42px',
+                    borderRadius: '50%',
+                    background: '#e0f2fe',
+                    color: '#0284c7',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 2px 6px rgba(2, 132, 199, 0.15)'
                   }}>
-                    {!isInvestorAssigned 
-                      ? '⏳ Chờ phân công' 
-                      : shopDoc.assignedInvestor?.status === 'ACCEPTED' 
-                        ? '✓ Đã xác nhận' 
-                        : shopDoc.assignedInvestor?.status === 'REJECTED' 
-                          ? '✕ Yêu cầu sửa' 
-                          : !isTvgsApproved 
-                            ? '⏳ Chờ TVGS duyệt trước' 
-                            : '⏳ Chờ Ban QLDA duyệt'}
-                  </span>
-                </div>
-
-                {/* FORM PHÂN CÔNG / ĐỔI NGƯỜI / SỬA HẠN KHI isAssigningInvestor = true */}
-                {isAssigningInvestor ? (
-                  <div style={{ background: '#ffffff', border: '1.5px solid #f59e0b', padding: '12px', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
-                    <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#b45309', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <UserCheck size={15} />
-                      {isInvestorAssigned ? 'Thay đổi cán bộ Ban QLDA / Sửa ngày (Trong hạn 1 ngày):' : 'Phân công cán bộ Ban QLDA thụ lý:'}
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 600, color: '#334155', marginBottom: '3px' }}>
-                        Chọn cán bộ Ban QLDA (kể cả bản thân Trưởng ban):
-                      </label>
-                      <select
-                        value={investorAssigneeUid}
-                        onChange={(e) => setInvestorAssigneeUid(e.target.value)}
-                        style={{ width: '100%', padding: '7px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.78rem' }}
-                      >
-                        <option value="">-- Chọn cán bộ QLDA --</option>
-                        {availableInvestors.map(u => {
-                          const isMe = u.uid === currentUser?.uid;
-                          const isLead = u.role === 'LEAD_INVESTOR' || Boolean(u.isLead) || (u.position || '').toLowerCase().includes('trưởng');
-                          return (
-                            <option key={u.uid} value={u.uid}>
-                              {u.fullName} ({u.position || 'QLDA'}) {isMe ? '⭐ (Bản thân)' : isLead ? '👑 (Trưởng ban)' : ''}
-                            </option>
-                          );
-                        })}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 600, color: '#334155', marginBottom: '3px' }}>
-                        Thời hạn phản hồi (SLA):
-                      </label>
-                      <select
-                        value={investorSlaDays}
-                        onChange={(e) => setInvestorSlaDays(e.target.value)}
-                        style={{ width: '100%', padding: '7px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.78rem' }}
-                      >
-                        <option value={1}>1 ngày</option>
-                        <option value={2}>2 ngày</option>
-                        <option value={3}>3 ngày (Quy chuẩn)</option>
-                        <option value={5}>5 ngày</option>
-                        <option value={7}>7 ngày</option>
-                      </select>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '4px' }}>
-                      <button
-                        type="button"
-                        onClick={() => setIsAssigningInvestor(false)}
-                        style={{ padding: '4px 10px', border: '1px solid #cbd5e1', background: '#fff', borderRadius: '4px', fontSize: '0.74rem', cursor: 'pointer' }}
-                      >
-                        Hủy
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleConfirmAssignInvestor}
-                        style={{ padding: '5px 14px', background: '#d97706', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '0.74rem', fontWeight: 600, cursor: 'pointer' }}
-                      >
-                        {isInvestorAssigned ? 'Lưu thay đổi' : 'Xác nhận giao việc'}
-                      </button>
-                    </div>
+                    <UserCheck size={22} />
                   </div>
-                ) : !isInvestorAssigned ? (
-                  /* NẾU CHƯA PHÂN CÔNG */
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
-                    <div style={{ fontSize: '0.78rem', color: '#92400e', background: '#fef3c7', padding: '8px 10px', borderRadius: '6px', border: '1px solid #fde68a' }}>
-                      Hồ sơ đã gửi đến <strong>Trưởng Ban QLDA (Ngô Quý Linh)</strong>. Thời hạn phân công cán bộ: 1 ngày (24h).
-                    </div>
-
-                    {/* NÚT MỞ FORM PHÂN CÔNG NẾU LÀ TRƯỞNG BAN HOẶC ADMIN */}
-                    {canAssignInvestor && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setInvestorAssigneeUid(currentUser?.uid || '');
-                          setInvestorSlaDays(shopDoc.assignedInvestor?.slaDays || 3);
-                          setIsAssigningInvestor(true);
-                        }}
-                        style={{
-                          padding: '7px 12px',
-                          background: '#d97706',
-                          color: '#fff',
-                          border: 'none',
-                          borderRadius: '6px',
-                          fontSize: '0.78rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '6px'
-                        }}
-                      >
-                        <UserCheck size={14} /> Phân công cán bộ Ban QLDA
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  /* NẾU ĐÃ PHÂN CÔNG */
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '6px', marginBottom: '4px' }}>
-                      <div style={{ fontSize: '0.82rem', color: '#334155' }}>
-                        <strong>Cán bộ thụ lý:</strong> {investorAssignee?.fullName || 'Ban Quản Lý Dự Án'} {investorAssignee?.uid === currentUser?.uid ? '⭐ (Bản thân)' : ''}
+                    <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                      Ban Quản Lý Dự Án
+                    </div>
+                    <span style={{
+                      display: 'inline-block',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      padding: '2px 10px',
+                      borderRadius: '12px',
+                      background: '#ecfdf5',
+                      color: '#059669',
+                      border: '1px solid #a7f3d0'
+                    }}>
+                      ✓ Không qua Ban QLDA
+                    </span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748b', lineHeight: 1.55, maxWidth: '300px' }}>
+                    Theo quy trình quy định, hồ sơ <strong>Bản vẽ hoàn công</strong> chỉ trình qua <strong>Tư Vấn Giám Sát (TVGS)</strong> thẩm tra & ký duyệt. Khi TVGS ký duyệt đạt, hồ sơ sẽ được hoàn thiện trực tiếp mà không cần qua Ban QLDA.
+                  </p>
+                </div>
+              ) : (
+                <div style={{
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '8px',
+                  padding: '14px',
+                  background: shopDoc.assignedInvestor?.status === 'ACCEPTED' 
+                    ? '#f0fdf4' 
+                    : shopDoc.assignedInvestor?.status === 'REJECTED' 
+                      ? '#fef2f2' 
+                      : !isInvestorAssigned 
+                        ? '#fffbeb' 
+                        : '#ffffff'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <User size={16} color="#b45309" />
+                      <strong style={{ fontSize: '0.86rem', color: '#b45309' }}>Ban Quản Lý Dự Án</strong>
+                    </div>
+                    <span style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: '10px',
+                      background: !isInvestorAssigned 
+                        ? (getShopInvestorOverdueInfo(shopDoc).isOverdue ? '#fee2e2' : '#fef3c7')
+                        : shopDoc.assignedInvestor?.status === 'ACCEPTED' 
+                          ? '#dcfce7' 
+                          : shopDoc.assignedInvestor?.status === 'REJECTED' 
+                            ? '#fee2e2' 
+                            : !isTvgsApproved 
+                              ? '#f1f5f9' 
+                              : (getShopInvestorOverdueInfo(shopDoc).isOverdue ? '#fee2e2' : '#eff6ff'),
+                      color: !isInvestorAssigned 
+                        ? (getShopInvestorOverdueInfo(shopDoc).isOverdue ? '#b91c1c' : '#b45309')
+                        : shopDoc.assignedInvestor?.status === 'ACCEPTED' 
+                          ? '#15803d' 
+                          : shopDoc.assignedInvestor?.status === 'REJECTED' 
+                            ? '#b91c1c' 
+                            : !isTvgsApproved 
+                              ? '#64748b' 
+                              : (getShopInvestorOverdueInfo(shopDoc).isOverdue ? '#b91c1c' : '#1d4ed8')
+                    }}>
+                      {!isInvestorAssigned 
+                        ? (getShopInvestorOverdueInfo(shopDoc).isOverdue ? '⚠️ Chậm phân công' : '⏳ Chờ phân công')
+                        : shopDoc.assignedInvestor?.status === 'ACCEPTED' 
+                          ? '✓ Đã xác nhận' 
+                          : shopDoc.assignedInvestor?.status === 'REJECTED' 
+                            ? '✕ Yêu cầu sửa' 
+                            : !isTvgsApproved 
+                              ? '⏳ Chờ TVGS duyệt trước' 
+                              : (getShopInvestorOverdueInfo(shopDoc).isOverdue ? '⚠️ Chậm duyệt' : '⏳ Chờ Ban QLDA duyệt')}
+                    </span>
+                  </div>
+
+                  {/* FORM PHÂN CÔNG / ĐỔI NGƯỜI / SỬA HẠN KHI isAssigningInvestor = true */}
+                  {isAssigningInvestor ? (
+                    <div style={{ background: '#ffffff', border: '1.5px solid #f59e0b', padding: '12px', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#b45309', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <UserCheck size={15} />
+                        {isInvestorAssigned ? 'Thay đổi cán bộ Ban QLDA / Sửa ngày (Trong hạn 1 ngày):' : 'Phân công cán bộ Ban QLDA thụ lý:'}
                       </div>
 
-                      {/* NÚT ĐỔI NGƯỜI / SỬA HẠN TRONG THỜI HẠN 1 NGÀY */}
-                      {canReassignInvestor && (
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 600, color: '#334155', marginBottom: '3px' }}>
+                          Chọn cán bộ Ban QLDA (kể cả bản thân Trưởng ban):
+                        </label>
+                        <select
+                          value={investorAssigneeUid}
+                          onChange={(e) => setInvestorAssigneeUid(e.target.value)}
+                          style={{ width: '100%', padding: '7px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.78rem' }}
+                        >
+                          <option value="">-- Chọn cán bộ QLDA --</option>
+                          {availableInvestors.map(u => {
+                            const isMe = u.uid === currentUser?.uid;
+                            const isLead = u.role === 'LEAD_INVESTOR' || Boolean(u.isLead) || (u.position || '').toLowerCase().includes('trưởng');
+                            return (
+                              <option key={u.uid} value={u.uid}>
+                                {u.fullName} ({u.position || 'QLDA'}) {isMe ? '⭐ (Bản thân)' : isLead ? '👑 (Trưởng ban)' : ''}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 600, color: '#334155', marginBottom: '3px' }}>
+                          Thời hạn phản hồi (SLA):
+                        </label>
+                        <select
+                          value={investorSlaDays}
+                          onChange={(e) => setInvestorSlaDays(e.target.value)}
+                          style={{ width: '100%', padding: '7px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.78rem' }}
+                        >
+                          <option value={1}>1 ngày</option>
+                          <option value={2}>2 ngày</option>
+                          <option value={3}>3 ngày (Quy chuẩn)</option>
+                          <option value={5}>5 ngày</option>
+                          <option value={7}>7 ngày</option>
+                        </select>
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '4px' }}>
+                        <button
+                          type="button"
+                          onClick={() => setIsAssigningInvestor(false)}
+                          style={{ padding: '4px 10px', border: '1px solid #cbd5e1', background: '#fff', borderRadius: '4px', fontSize: '0.74rem', cursor: 'pointer' }}
+                        >
+                          Hủy
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleConfirmAssignInvestor}
+                          style={{ padding: '5px 14px', background: '#d97706', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '0.74rem', fontWeight: 600, cursor: 'pointer' }}
+                        >
+                          {isInvestorAssigned ? 'Lưu thay đổi' : 'Xác nhận giao việc'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : !isInvestorAssigned ? (
+                    /* NẾU CHƯA PHÂN CÔNG */
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+                      <div style={{ fontSize: '0.78rem', color: '#92400e', background: '#fef3c7', padding: '8px 10px', borderRadius: '6px', border: '1px solid #fde68a', lineHeight: 1.45 }}>
+                        {!isTvgsApproved ? (
+                          <>Hồ sơ đã gửi đến <strong>Trưởng Ban QLDA (Ngô Quý Linh)</strong>. Trưởng ban có thể phân công cán bộ trước; thời hạn tính giao việc (24h) sẽ <em>chính thức tính từ khi TVGS thẩm định ĐẠT</em>.</>
+                        ) : (
+                          <>TVGS đã duyệt đạt! Thời hạn phân công cán bộ Ban QLDA (24h): còn <strong>{remainingInvestor1DayHours}h</strong>{investorAssignmentDeadlineTime ? ` (Hạn: ${formatDateStr(new Date(investorAssignmentDeadlineTime).toISOString())})` : ''}.</>
+                        )}
+                      </div>
+
+                      {/* NÚT MỞ FORM PHÂN CÔNG NẾU LÀ TRƯỞNG BAN HOẶC ADMIN */}
+                      {canAssignInvestor && (
                         <button
                           type="button"
                           onClick={() => {
-                            setInvestorAssigneeUid(investorAssignee?.uid || '');
+                            setInvestorAssigneeUid(currentUser?.uid || '');
                             setInvestorSlaDays(shopDoc.assignedInvestor?.slaDays || 3);
                             setIsAssigningInvestor(true);
                           }}
-                          title="Trong hạn 1 ngày: Được phép sửa ngày phản hồi hoặc đổi cán bộ khác"
                           style={{
-                            padding: '3px 8px',
-                            background: '#fffbeb',
-                            border: '1px solid #fde68a',
-                            borderRadius: '5px',
-                            color: '#b45309',
-                            fontSize: '0.72rem',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            flexShrink: 0
-                          }}
-                        >
-                          <RotateCcw size={11} /> Đổi người / Sửa ngày
-                        </button>
-                      )}
-                    </div>
-
-                    <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
-                      {investorAssignee?.company || 'Ban Quản Lý Dự Án An Phú'}
-                    </div>
-
-                    {shopDoc.assignedInvestor?.assignedBy && (
-                      <div style={{ fontSize: '0.72rem', color: '#b45309', marginTop: '4px' }}>
-                        Phân công bởi: {shopDoc.assignedInvestor.assignedBy.fullName} lúc {formatDateStr(shopDoc.assignedInvestor.assignedAt)}
-                      </div>
-                    )}
-                    <div style={{ fontSize: '0.72rem', color: '#0284c7', marginTop: '2px', fontWeight: 600 }}>
-                      Thời hạn hoàn thành: {shopDoc.assignedInvestor?.slaDays || 3} ngày (Hạn: {formatDateStr(shopDoc.assignedInvestor?.dueDate || shopDoc.dueDate)})
-                    </div>
-
-                    {isWithin1DayAssignment && canReassignInvestor && (
-                      <div style={{ fontSize: '0.71rem', color: '#b45309', background: '#fffbeb', padding: '3px 6px', borderRadius: '4px', border: '1px solid #fde68a', marginTop: '4px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                        ⏱️ Hạn đổi người & sửa ngày: còn <strong>{remaining1DayHours}h</strong> (trong vòng 1 ngày).
-                      </div>
-                    )}
-
-                    {shopDoc.assignedInvestor?.reviewedAt && (
-                      <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: '6px' }}>
-                        Thời gian duyệt: {formatDateStr(shopDoc.assignedInvestor.reviewedAt)}
-                      </div>
-                    )}
-
-                    {shopDoc.assignedInvestor?.note && (
-                      <div style={{ marginTop: '8px', background: 'rgba(255,255,255,0.7)', padding: '6px 8px', borderRadius: '4px', fontSize: '0.78rem', color: '#1e293b', border: '1px solid #e2e8f0' }}>
-                        <strong>Ý kiến Ban QLDA:</strong> {shopDoc.assignedInvestor.note}
-                      </div>
-                    )}
-
-                    {/* THÔNG BÁO CHỜ TVGS DUYỆT TRƯỚC */}
-                    {!isTvgsApproved && shopDoc.assignedInvestor?.status === 'PENDING' && shopDoc.status !== SHOP_STATUS.REJECTED && (
-                      <div style={{
-                        marginTop: '12px',
-                        padding: '8px 10px',
-                        background: '#fffbeb',
-                        border: '1px solid #fde68a',
-                        borderRadius: '6px',
-                        fontSize: '0.76rem',
-                        color: '#92400e',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        lineHeight: 1.4
-                      }}>
-                        <Clock size={15} style={{ flexShrink: 0, color: '#d97706' }} />
-                        <span>Chờ Tư Vấn Giám Sát kiểm tra và duyệt đạt trước, sau đó Ban QLDA mới có thể phê duyệt hoặc yêu cầu sửa.</span>
-                      </div>
-                    )}
-
-                    {/* THAO TÁC DUYỆT DÀNH CHO BAN QLDA (CHỈ KÍCH HOẠT KHI TVGS ĐÃ DUYỆT ĐẠT) */}
-                    {canInvestorReview && !isRejecting && (
-                      <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
-                        <button
-                          type="button"
-                          onClick={() => handleConfirmApproval('INVESTOR')}
-                          style={{
-                            flex: 1,
-                            padding: '7px 10px',
-                            background: '#16a34a',
+                            padding: '7px 12px',
+                            background: '#d97706',
                             color: '#fff',
                             border: 'none',
                             borderRadius: '6px',
-                            fontWeight: 600,
                             fontSize: '0.78rem',
+                            fontWeight: 700,
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            gap: '4px'
+                            gap: '6px'
                           }}
                         >
-                          <CheckCircle2 size={14} /> Ban QLDA Xác Nhận Đạt
+                          <UserCheck size={14} /> Phân công cán bộ Ban QLDA
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => setIsRejecting('INVESTOR')}
-                          style={{
-                            padding: '7px 10px',
-                            background: '#fee2e2',
-                            color: '#b91c1c',
-                            border: '1px solid #fecaca',
-                            borderRadius: '6px',
-                            fontWeight: 600,
-                            fontSize: '0.78rem',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          Cần sửa
-                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    /* NẾU ĐÃ PHÂN CÔNG */
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '6px', marginBottom: '4px' }}>
+                        <div style={{ fontSize: '0.82rem', color: '#334155' }}>
+                          <strong>Cán bộ thụ lý:</strong> {investorAssignee?.fullName || 'Ban Quản Lý Dự Án'} {investorAssignee?.uid === currentUser?.uid ? '⭐ (Bản thân)' : ''}
+                        </div>
+
+                        {/* NÚT ĐỔI NGƯỜI / SỬA HẠN TRONG THỜI HẠN 1 NGÀY */}
+                        {canReassignInvestor && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setInvestorAssigneeUid(investorAssignee?.uid || '');
+                              setInvestorSlaDays(shopDoc.assignedInvestor?.slaDays || 3);
+                              setIsAssigningInvestor(true);
+                            }}
+                            title="Trong hạn 1 ngày: Được phép sửa ngày phản hồi hoặc đổi cán bộ khác"
+                            style={{
+                              padding: '3px 8px',
+                              background: '#fffbeb',
+                              border: '1px solid #fde68a',
+                              borderRadius: '5px',
+                              color: '#b45309',
+                              fontSize: '0.72rem',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              flexShrink: 0
+                            }}
+                          >
+                            <RotateCcw size={11} /> Đổi người / Sửa ngày
+                          </button>
+                        )}
                       </div>
-                    )}
-                  </div>
-                )}
-              </div>
+
+                      <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                        {investorAssignee?.company || 'Ban Quản Lý Dự Án An Phú'}
+                      </div>
+
+                      {shopDoc.assignedInvestor?.assignedBy && (
+                        <div style={{ fontSize: '0.72rem', color: '#b45309', marginTop: '4px' }}>
+                          Phân công bởi: {shopDoc.assignedInvestor.assignedBy.fullName} lúc {formatDateStr(shopDoc.assignedInvestor.assignedAt)}
+                        </div>
+                      )}
+                      <div style={{ fontSize: '0.72rem', color: '#0284c7', marginTop: '2px', fontWeight: 600 }}>
+                        {!isTvgsApproved ? (
+                          <span>Thời hạn hoàn thành: {shopDoc.assignedInvestor?.slaDays || 3} ngày (Bắt đầu tính khi TVGS duyệt đạt)</span>
+                        ) : (
+                          <span>Thời hạn hoàn thành: {shopDoc.assignedInvestor?.slaDays || 3} ngày (Hạn: {formatDateStr(shopDoc.assignedInvestor?.dueDate || (shopDoc.assignedTvgs?.reviewedAt ? new Date(new Date(shopDoc.assignedTvgs.reviewedAt).getTime() + (shopDoc.assignedInvestor?.slaDays || 3) * 24 * 3600 * 1000).toISOString() : shopDoc.dueDate))})</span>
+                        )}
+                      </div>
+
+                      {isWithin1DayInvestorAssignment && canReassignInvestor && (
+                        <div style={{ fontSize: '0.71rem', color: '#b45309', background: '#fffbeb', padding: '3px 6px', borderRadius: '4px', border: '1px solid #fde68a', marginTop: '4px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          ⏱️ Hạn đổi người & sửa ngày: còn <strong>{remainingInvestor1DayHours}h</strong> (trong vòng 1 ngày).
+                        </div>
+                      )}
+
+                      {shopDoc.assignedInvestor?.reviewedAt && (
+                        <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: '6px' }}>
+                          Thời gian duyệt: {formatDateStr(shopDoc.assignedInvestor.reviewedAt)}
+                        </div>
+                      )}
+
+                      {shopDoc.assignedInvestor?.note && (
+                        <div style={{ marginTop: '8px', background: 'rgba(255,255,255,0.7)', padding: '6px 8px', borderRadius: '4px', fontSize: '0.78rem', color: '#1e293b', border: '1px solid #e2e8f0' }}>
+                          <strong>Ý kiến Ban QLDA:</strong> {shopDoc.assignedInvestor.note}
+                        </div>
+                      )}
+
+                      {/* THÔNG BÁO CHỜ TVGS DUYỆT TRƯỚC */}
+                      {!isTvgsApproved && shopDoc.assignedInvestor?.status === 'PENDING' && shopDoc.status !== SHOP_STATUS.REJECTED && (
+                        <div style={{
+                          marginTop: '12px',
+                          padding: '8px 10px',
+                          background: '#fffbeb',
+                          border: '1px solid #fde68a',
+                          borderRadius: '6px',
+                          fontSize: '0.76rem',
+                          color: '#92400e',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          lineHeight: 1.4
+                        }}>
+                          <Clock size={15} style={{ flexShrink: 0, color: '#d97706' }} />
+                          <span>Chờ Tư Vấn Giám Sát kiểm tra và duyệt đạt trước, sau đó Ban QLDA mới có thể phê duyệt hoặc yêu cầu sửa.</span>
+                        </div>
+                      )}
+
+                      {/* THAO TÁC DUYỆT DÀNH CHO BAN QLDA (CHỈ KÍCH HOẠT KHI TVGS ĐÃ DUYỆT ĐẠT) */}
+                      {canInvestorReview && !isRejecting && (
+                        <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleConfirmApproval('INVESTOR')}
+                            style={{
+                              flex: 1,
+                              padding: '7px 10px',
+                              background: '#16a34a',
+                              color: '#fff',
+                              border: 'none',
+                              borderRadius: '6px',
+                              fontWeight: 600,
+                              fontSize: '0.78rem',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '4px'
+                            }}
+                          >
+                            <CheckCircle2 size={14} /> Ban QLDA Xác Nhận Đạt
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIsRejecting('INVESTOR')}
+                            style={{
+                              padding: '7px 10px',
+                              background: '#fee2e2',
+                              color: '#b91c1c',
+                              border: '1px solid #fecaca',
+                              borderRadius: '6px',
+                              fontWeight: 600,
+                              fontSize: '0.78rem',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Cần sửa
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
             </div>
 
@@ -1793,15 +1925,12 @@ export default function ShopDocumentDetailModal({
 
       </div>
 
-      {/* LIGHTBOX XEM ẢNH FULL */}
-      {activePhoto && (
-        <div 
-          onClick={() => setActivePhoto(null)} 
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}
-        >
-          <img src={activePhoto} alt="Xem đầy đủ" style={{ maxWidth: '90%', maxHeight: '90%', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }} />
-        </div>
-      )}
+      {/* MODAL PHÓNG TO XEM ẢNH */}
+      <ImagePreviewModal
+        isOpen={Boolean(activePhoto)}
+        onClose={() => setActivePhoto(null)}
+        photos={activePhoto ? [activePhoto] : []}
+      />
 
     </div>
   );

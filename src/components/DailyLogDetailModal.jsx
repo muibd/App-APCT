@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
   X, Printer, CheckCircle2, ShieldCheck, Sun, CloudRain, Clock, 
-  Users, Wrench, AlertCircle, Camera, Check, FileSpreadsheet, Eye, PenTool
+  Users, Wrench, AlertCircle, Camera, Check, FileSpreadsheet, Eye, PenTool, ZoomIn
 } from 'lucide-react';
 import { getContractorChief } from '../data/mockData';
+import ImagePreviewModal from './ImagePreviewModal';
 
 export default function DailyLogDetailModal({
   isOpen,
@@ -24,6 +25,13 @@ export default function DailyLogDetailModal({
   const isSupervisorRole = currentRole === 'SUPERVISOR' || currentRole === 'LEAD_SUPERVISOR';
   const isAdmin = currentRole === 'ADMIN';
   const canConfirm = !isConfirmed && isSupervisorRole && !isAdmin;
+
+  // State xem trước ảnh
+  const [previewModalState, setPreviewModalState] = useState({
+    isOpen: false,
+    photos: [],
+    initialIndex: 0
+  });
 
   // State cho form xác nhận của TVGS (Mục 5, 6, 7)
   const [isConfirming, setIsConfirming] = useState(false);
@@ -498,16 +506,66 @@ export default function DailyLogDetailModal({
             {/* ẢNH HIỆN TRƯỜNG ĐÍNH KÈM NẾU CÓ */}
             {log.evidencePhotos && log.evidencePhotos.length > 0 && (
               <div style={{ marginBottom: '16px', pageBreakInside: 'avoid', breakInside: 'avoid' }}>
-                <strong>* Ảnh chụp hiện trường thi công ({log.evidencePhotos.length} ảnh):</strong>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px', marginTop: '6px' }}>
+                <strong style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                  <Camera size={15} color="#2563eb" />
+                  <span>Ảnh chụp hiện trường thi công ({log.evidencePhotos.length} ảnh):</span>
+                </strong>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px' }}>
                   {log.evidencePhotos.map((photo, i) => (
-                    <div key={photo.id || i} style={{ border: '1px solid #cbd5e1', borderRadius: '4px', padding: '4px', textAlign: 'center', pageBreakInside: 'avoid', breakInside: 'avoid' }}>
-                      <img 
-                        src={photo.url} 
-                        alt={photo.caption} 
-                        style={{ width: '100%', height: '110px', objectFit: 'cover', display: 'block', borderRadius: '2px' }} 
-                      />
-                      <div style={{ fontSize: '0.74rem', color: '#475569', marginTop: '4px', fontStyle: 'italic' }}>
+                    <div 
+                      key={photo.id || i} 
+                      onClick={() => setPreviewModalState({
+                        isOpen: true,
+                        photos: log.evidencePhotos,
+                        initialIndex: i
+                      })}
+                      style={{ 
+                        border: '1px solid #cbd5e1', 
+                        borderRadius: '6px', 
+                        overflow: 'hidden',
+                        background: '#ffffff',
+                        textAlign: 'center', 
+                        pageBreakInside: 'avoid', 
+                        breakInside: 'avoid',
+                        cursor: 'zoom-in',
+                        transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'translateY(-2px)';
+                        e.currentTarget.style.boxShadow = '0 6px 14px rgba(37,99,235,0.18)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.boxShadow = 'none';
+                      }}
+                    >
+                      <div style={{ position: 'relative' }}>
+                        <img 
+                          src={photo.url} 
+                          alt={photo.caption} 
+                          style={{ width: '100%', height: '120px', objectFit: 'cover', display: 'block' }} 
+                        />
+                        <div style={{
+                          position: 'absolute',
+                          top: '4px',
+                          right: '4px',
+                          background: 'rgba(15, 23, 42, 0.75)',
+                          backdropFilter: 'blur(4px)',
+                          color: '#fff',
+                          padding: '2px 6px',
+                          borderRadius: '12px',
+                          fontSize: '0.62rem',
+                          fontWeight: 600,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          pointerEvents: 'none'
+                        }}>
+                          <ZoomIn size={10} />
+                          <span>Xem lớn</span>
+                        </div>
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#475569', padding: '6px 4px', fontStyle: 'italic', fontWeight: 500 }}>
                         {photo.caption || `Ảnh ${i + 1}`}
                       </div>
                     </div>
@@ -659,6 +717,14 @@ export default function DailyLogDetailModal({
           </div>
         </div>
       </div>
+
+      {/* Modal phóng to xem ảnh nhật ký */}
+      <ImagePreviewModal
+        isOpen={previewModalState.isOpen}
+        onClose={() => setPreviewModalState(prev => ({ ...prev, isOpen: false }))}
+        photos={previewModalState.photos}
+        initialIndex={previewModalState.initialIndex}
+      />
     </div>
   );
 }

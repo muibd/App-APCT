@@ -2,10 +2,11 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   X, Send, Users, Calendar, MapPin, CheckSquare, Square,
   AlertCircle, Building, Camera, ImagePlus, Zap, Trash2, Plus, Clock,
-  FileSpreadsheet, Package, Hash, ChevronRight, Check, Layers, Building2
+  FileSpreadsheet, Package, Hash, ChevronRight, Check, Layers, Building2, Loader2
 } from 'lucide-react';
 import { MOCK_PROJECT, MOCK_USERS } from '../data/mockData';
-import { compressImageFile } from '../utils/storageHelper';
+import { compressImageFile, compressImageToBlob } from '../utils/storageHelper';
+import { uploadEvidenceImage } from '../services/storageService';
 import {
   CONSTRUCTION_WORK_STANDARDS,
   MATERIAL_STANDARDS,
@@ -420,6 +421,7 @@ export default function CreateRequestModal({
 
   // Ảnh hiện trường đính kèm
   const [evidencePhotos, setEvidencePhotos] = useState([]);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
 
@@ -427,23 +429,47 @@ export default function CreateRequestModal({
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
 
-    for (const file of files) {
-      const compressedUrl = await compressImageFile(file);
-      if (!compressedUrl) continue;
-      const now = new Date();
-      const timeStr = `${now.toLocaleTimeString('vi-VN')} ngày ${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
-      setEvidencePhotos(prev => [
-        ...prev,
-        {
-          id: `photo_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-          url: compressedUrl,
-          caption: file.name ? file.name.replace(/\.[^/.]+$/, '') : 'Hiện trường trước nghiệm thu',
-          gps: '10.0076° N, 105.7823° E (P. Thường Thạnh, Cần Thơ)',
-          time: timeStr
+    setUploadingPhotos(true);
+    const newPhotos = [];
+    try {
+      for (const file of files) {
+        let photoUrl = '';
+        const now = new Date();
+        const timeStr = `${now.toLocaleTimeString('vi-VN')} ngày ${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
+        const caption = file.name ? file.name.replace(/\.[^/.]+$/, '') : 'Hiện trường trước nghiệm thu';
+        const gps = '10.0076° N, 105.7823° E (P. Thường Thạnh, Cần Thơ)';
+
+        try {
+          const blob = await compressImageToBlob(file, 1400, 1400, 0.8);
+          const res = await uploadEvidenceImage(blob || file, {
+            projectId: selectedProject?.code || '2203',
+            caption,
+            gps,
+            time: timeStr
+          });
+          photoUrl = res.url || res.secure_url;
+        } catch (err) {
+          photoUrl = await compressImageFile(file, 600, 600, 0.45);
         }
-      ]);
+
+        if (photoUrl) {
+          newPhotos.push({
+            id: `photo_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            url: photoUrl,
+            caption,
+            gps,
+            time: timeStr
+          });
+        }
+      }
+
+      if (newPhotos.length > 0) {
+        setEvidencePhotos(prev => [...prev, ...newPhotos]);
+      }
+    } finally {
+      setUploadingPhotos(false);
+      e.target.value = '';
     }
-    e.target.value = '';
   };
 
   const handleDeletePhoto = (photoId) => {
@@ -1155,6 +1181,13 @@ export default function CreateRequestModal({
                 </button>
               </div>
             </div>
+
+            {uploadingPhotos && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: '#eff6ff', borderRadius: '8px', color: '#1d4ed8', fontSize: '0.82rem', marginBottom: '10px' }}>
+                <Loader2 className="animate-spin" size={16} />
+                <span>Đang tải ảnh lên Google Cloud Storage... Vui lòng chờ...</span>
+              </div>
+            )}
 
             {evidencePhotos.length > 0 && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px' }}>
