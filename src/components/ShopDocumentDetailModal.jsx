@@ -18,6 +18,7 @@ import { compressImageFile } from '../utils/storageHelper';
 import { uploadPdfDocument } from '../services/storageService';
 import { getDocHierarchyInfo } from './ShopDocumentsView';
 import ImagePreviewModal from './ImagePreviewModal';
+import { isSupervisorLeadOrDeputy, isInvestorLeadOrDeputy } from '../data/mockData';
 
 export default function ShopDocumentDetailModal({
   isOpen,
@@ -157,13 +158,8 @@ export default function ShopDocumentDetailModal({
 
   // Phân quyền người xem
   const isSuperAdmin = currentRole === 'ADMIN';
-  const isLeadSupervisor = currentRole === 'LEAD_SUPERVISOR' || 
-    Boolean(currentUser?.isLead && currentRole === 'SUPERVISOR') ||
-    (currentRole === 'SUPERVISOR' && (currentUser?.position || '').toLowerCase().includes('giám sát trưởng'));
-  
-  const isLeadInvestor = currentRole === 'LEAD_INVESTOR' || 
-    Boolean(currentUser?.isLead && currentRole === 'INVESTOR') ||
-    (currentRole === 'INVESTOR' && (currentUser?.position || '').toLowerCase().includes('trưởng ban'));
+  const isLeadSupervisor = isSupervisorLeadOrDeputy(currentUser);
+  const isLeadInvestor = isInvestorLeadOrDeputy(currentUser);
 
   // Kiểm tra cán bộ đã được phân công chưa
   const tvgsAssignee = shopDoc.assignedTvgs?.assignee || (shopDoc.assignedTvgs?.uid ? shopDoc.assignedTvgs : null);

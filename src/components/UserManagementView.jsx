@@ -5,6 +5,7 @@ import {
   KeyRound, Check, Copy, AlertTriangle, X, ShieldAlert, CheckCircle2,
   ToggleLeft, ToggleRight, Sparkles, RefreshCw, Award
 } from 'lucide-react';
+import { isSupervisorLeadOrDeputy, isInvestorLeadOrDeputy } from '../data/mockData';
 
 export default function UserManagementView({ 
   users = [], 
@@ -430,37 +431,54 @@ export default function UserManagementView({
                       </div>
 
                       {/* Hiển thị quan hệ Trưởng - Cấp dưới trực thuộc */}
-                      {user.role === 'LEAD_SUPERVISOR' && (
+                      {/* Hiển thị quan hệ Trưởng/Phó - Cấp dưới trực thuộc */}
+                      {(user.role === 'LEAD_SUPERVISOR' || (user.role === 'SUPERVISOR' && isSupervisorLeadOrDeputy(user))) && (
                         <div style={{ marginTop: '5px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                           <span style={{ fontSize: '0.73rem', background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', padding: '2px 8px', borderRadius: '6px', fontWeight: 700 }}>
                             👥 Quản lý: {
-                              users.filter(u => (user.subordinateIds && user.subordinateIds.includes(u.uid)) || u.leaderId === user.uid).length
+                              (() => {
+                                const subIds = Array.isArray(user.subordinateIds) ? user.subordinateIds : [];
+                                const count = users.filter(u => (subIds.length > 0 && subIds.includes(u.uid)) || u.leaderId === user.uid || (subIds.length === 0 && u.role === 'SUPERVISOR' && !isSupervisorLeadOrDeputy(u) && u.uid !== user.uid)).length;
+                                return count;
+                              })()
                             } TVGS dưới quyền
                           </span>
                           <span style={{ fontSize: '0.73rem', color: '#64748b' }}>
                             ({
-                              users.filter(u => (user.subordinateIds && user.subordinateIds.includes(u.uid)) || u.leaderId === user.uid).map(u => u.fullName).join(', ') || 'Chưa gán cán bộ'
+                              (() => {
+                                const subIds = Array.isArray(user.subordinateIds) ? user.subordinateIds : [];
+                                const names = users.filter(u => (subIds.length > 0 && subIds.includes(u.uid)) || u.leaderId === user.uid || (subIds.length === 0 && u.role === 'SUPERVISOR' && !isSupervisorLeadOrDeputy(u) && u.uid !== user.uid)).map(u => u.fullName).join(', ');
+                                return names || 'Tất cả TVGS cấp dưới';
+                              })()
                             })
                           </span>
                         </div>
                       )}
 
-                      {user.role === 'LEAD_INVESTOR' && (
+                      {(user.role === 'LEAD_INVESTOR' || (user.role === 'INVESTOR' && isInvestorLeadOrDeputy(user))) && (
                         <div style={{ marginTop: '5px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                           <span style={{ fontSize: '0.73rem', background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', padding: '2px 8px', borderRadius: '6px', fontWeight: 700 }}>
                             👥 Quản lý: {
-                              users.filter(u => (user.subordinateIds && user.subordinateIds.includes(u.uid)) || u.leaderId === user.uid).length
+                              (() => {
+                                const subIds = Array.isArray(user.subordinateIds) ? user.subordinateIds : [];
+                                const count = users.filter(u => (subIds.length > 0 && subIds.includes(u.uid)) || u.leaderId === user.uid || (subIds.length === 0 && u.role === 'INVESTOR' && !isInvestorLeadOrDeputy(u) && u.uid !== user.uid)).length;
+                                return count;
+                              })()
                             } CĐT dưới quyền
                           </span>
                           <span style={{ fontSize: '0.73rem', color: '#64748b' }}>
                             ({
-                              users.filter(u => (user.subordinateIds && user.subordinateIds.includes(u.uid)) || u.leaderId === user.uid).map(u => u.fullName).join(', ') || 'Chưa gán cán bộ'
+                              (() => {
+                                const subIds = Array.isArray(user.subordinateIds) ? user.subordinateIds : [];
+                                const names = users.filter(u => (subIds.length > 0 && subIds.includes(u.uid)) || u.leaderId === user.uid || (subIds.length === 0 && u.role === 'INVESTOR' && !isInvestorLeadOrDeputy(u) && u.uid !== user.uid)).map(u => u.fullName).join(', ');
+                                return names || 'Tất cả CĐT cấp dưới';
+                              })()
                             })
                           </span>
                         </div>
                       )}
 
-                      {user.role === 'SUPERVISOR' && (
+                      {(user.role === 'SUPERVISOR' && !isSupervisorLeadOrDeputy(user)) && (
                         <div style={{ marginTop: '5px' }}>
                           {(() => {
                             const leader = users.find(u => u.uid === user.leaderId || (u.subordinateIds && u.subordinateIds.includes(user.uid)));
@@ -477,7 +495,7 @@ export default function UserManagementView({
                         </div>
                       )}
 
-                      {user.role === 'INVESTOR' && (
+                      {(user.role === 'INVESTOR' && !isInvestorLeadOrDeputy(user)) && (
                         <div style={{ marginTop: '5px' }}>
                           {(() => {
                             const leader = users.find(u => u.uid === user.leaderId || (u.subordinateIds && u.subordinateIds.includes(user.uid)));
@@ -735,20 +753,24 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
   const [leaderId, setLeaderId] = useState('');
   const [subordinateIds, setSubordinateIds] = useState([]);
 
+  const isSupervisorLeadership = isSupervisorLeadOrDeputy({ role, position });
+  const isInvestorLeadership = isInvestorLeadOrDeputy({ role, position });
+  const isLeadership = isSupervisorLeadership || isInvestorLeadership;
+
   const candidateSupervisors = useMemo(() => {
-    return (existingUsers || []).filter(u => u.role === 'SUPERVISOR');
+    return (existingUsers || []).filter(u => u.role === 'SUPERVISOR' && !isSupervisorLeadOrDeputy(u));
   }, [existingUsers]);
 
   const candidateInvestors = useMemo(() => {
-    return (existingUsers || []).filter(u => u.role === 'INVESTOR');
+    return (existingUsers || []).filter(u => u.role === 'INVESTOR' && !isInvestorLeadOrDeputy(u));
   }, [existingUsers]);
 
   const leadSupervisors = useMemo(() => {
-    return (existingUsers || []).filter(u => u.role === 'LEAD_SUPERVISOR');
+    return (existingUsers || []).filter(u => isSupervisorLeadOrDeputy(u));
   }, [existingUsers]);
 
   const leadInvestors = useMemo(() => {
-    return (existingUsers || []).filter(u => u.role === 'LEAD_INVESTOR');
+    return (existingUsers || []).filter(u => isInvestorLeadOrDeputy(u));
   }, [existingUsers]);
 
   if (!isOpen) return null;
@@ -758,8 +780,10 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
     { label: 'CĐT (Admin)', name: 'Chủ đầu tư An Phú', role: 'ADMIN', pos: 'Chủ đầu tư' },
     { label: 'Ban QLDA: CONINCO-MI', name: 'Công ty cổ phần CONINCO Máy xây dựng và Công trình công nghiệp (CONINCO-MI)', role: 'INVESTOR', pos: 'Cán bộ Ban QLDA' },
     { label: 'Trưởng Ban QLDA: CONINCO-MI', name: 'Công ty cổ phần CONINCO Máy xây dựng và Công trình công nghiệp (CONINCO-MI)', role: 'LEAD_INVESTOR', pos: 'Trưởng Ban QLDA' },
+    { label: 'Phó Ban QLDA: CONINCO-MI', name: 'Công ty cổ phần CONINCO Máy xây dựng và Công trình công nghiệp (CONINCO-MI)', role: 'INVESTOR', pos: 'Phó Ban QLDA' },
     { label: 'TVGS: GELICON', name: 'CÔNG TY CỔ PHẦN TƯ VẤN XÂY DỰNG VÀ THƯƠNG MẠI GELICON', role: 'SUPERVISOR', pos: 'Cán bộ tư vấn giám sát' },
     { label: 'TVGS Trưởng: GELICON', name: 'CÔNG TY CỔ PHẦN TƯ VẤN XÂY DỰNG VÀ THƯƠNG MẠI GELICON', role: 'LEAD_SUPERVISOR', pos: 'Tư vấn giám sát trưởng' },
+    { label: 'Phó đoàn TVGS: GELICON', name: 'CÔNG TY CỔ PHẦN TƯ VẤN XÂY DỰNG VÀ THƯƠNG MẠI GELICON', role: 'SUPERVISOR', pos: 'Phó đoàn TVGS' },
     { label: 'ĐVTC: Cty TNHH Gia Huy Vĩnh Phúc', name: 'Công ty TNHH Gia Huy Vĩnh Phúc', role: 'CONTRACTOR', pos: 'Kỹ thuật hiện trường' },
     { label: 'ĐV PCCC (NOXH2): Phan Lê', name: 'Công ty TNHH Phát Triển Xây Dựng Phan Lê', role: 'CONTRACTOR', pos: 'Kỹ thuật thi công PCCC' },
     { label: 'ĐV PCCC (NOTM): Bình Hoà', name: 'Cty tnhh tư vấn thiết kế Bình Hoà', role: 'CONTRACTOR', pos: 'Chỉ huy trưởng' }
@@ -769,8 +793,12 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
     setCompany(preset.name);
     setRole(preset.role);
     setPosition(preset.pos);
-    if (preset.role !== 'SUPERVISOR' && preset.role !== 'INVESTOR') setLeaderId('');
-    if (preset.role !== 'LEAD_SUPERVISOR' && preset.role !== 'LEAD_INVESTOR') setSubordinateIds([]);
+    const isLeadOrDep = isSupervisorLeadOrDeputy({ role: preset.role, position: preset.pos }) || isInvestorLeadOrDeputy({ role: preset.role, position: preset.pos });
+    if (isLeadOrDep) {
+      setLeaderId('');
+    } else {
+      setSubordinateIds([]);
+    }
   };
 
   const handleGeneratePassword = () => {
@@ -834,8 +862,8 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
       status,
       avatar,
       createdAt: new Date().toISOString(),
-      ...((role === 'SUPERVISOR' || role === 'INVESTOR') && leaderId ? { leaderId } : {}),
-      ...((role === 'LEAD_SUPERVISOR' || role === 'LEAD_INVESTOR') ? { subordinateIds } : {})
+      ...((!isLeadership && (role === 'SUPERVISOR' || role === 'INVESTOR') && leaderId) ? { leaderId } : {}),
+      ...(isLeadership ? { subordinateIds } : {})
     };
 
     onSave(newUser);
@@ -1051,11 +1079,11 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
               </div>
 
               {/* 1. NẾU TẠO CÁN BỘ TVGS THƯỜNG -> CHỌN TVGS TRƯỞNG PHỤ TRÁCH */}
-              {role === 'SUPERVISOR' && (
+              {role === 'SUPERVISOR' && !isSupervisorLeadership && (
                 <div className="form-group" style={{ gridColumn: 'span 2', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '10px', padding: '12px 14px' }}>
                   <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 700, color: '#15803d', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
                     <Award size={15} color="#16a34a" />
-                    <span>Chỉ định TVGS Trưởng trực tiếp quản lý cán bộ này:</span>
+                    <span>Chỉ định Trưởng/Phó đoàn TVGS trực tiếp quản lý cán bộ này:</span>
                   </label>
                   <select
                     className="form-select"
@@ -1071,17 +1099,17 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
                     ))}
                   </select>
                   <div style={{ fontSize: '0.74rem', color: '#166534', marginTop: '4px' }}>
-                    💡 Khi cán bộ này được chỉ định kiểm tra nghiệm thu, vị TVGS Trưởng được chọn ở trên sẽ tự động xem được phiếu.
+                    💡 Khi cán bộ này được chỉ định kiểm tra nghiệm thu, vị Trưởng/Phó đoàn TVGS được chọn ở trên sẽ tự động xem được phiếu.
                   </div>
                 </div>
               )}
 
               {/* 2. NẾU TẠO CÁN BỘ BAN QLDA THƯỜNG -> CHỌN TRƯỞNG BAN QLDA PHỤ TRÁCH */}
-              {role === 'INVESTOR' && (
+              {role === 'INVESTOR' && !isInvestorLeadership && (
                 <div className="form-group" style={{ gridColumn: 'span 2', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', padding: '12px 14px' }}>
                   <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 700, color: '#b45309', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
                     <Award size={15} color="#d97706" />
-                    <span>Chỉ định Trưởng Ban QLDA trực tiếp quản lý cán bộ này:</span>
+                    <span>Chỉ định Trưởng/Phó Ban QLDA trực tiếp quản lý cán bộ này:</span>
                   </label>
                   <select
                     className="form-select"
@@ -1097,13 +1125,13 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
                     ))}
                   </select>
                   <div style={{ fontSize: '0.74rem', color: '#92400e', marginTop: '4px' }}>
-                    💡 Khi cán bộ này được chỉ định phê duyệt nghiệm thu, vị Trưởng Ban QLDA được chọn ở trên sẽ tự động xem được phiếu.
+                    💡 Khi cán bộ này được chỉ định phê duyệt nghiệm thu, vị Trưởng/Phó Ban QLDA được chọn ở trên sẽ tự động xem được phiếu.
                   </div>
                 </div>
               )}
 
-              {/* 3. NẾU TẠO TVGS TRƯỞNG -> TICK CÁC CHECKBOX TVGS DƯỚI QUYỀN */}
-              {role === 'LEAD_SUPERVISOR' && (
+              {/* 3. NẾU TẠO TRƯỞNG/PHÓ ĐOÀN TVGS -> TICK CÁC CHECKBOX TVGS DƯỚI QUYỀN */}
+              {isSupervisorLeadership && (
                 <div className="form-group" style={{ gridColumn: 'span 2', background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: '12px', padding: '14px 16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
                     <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: 700, color: '#15803d', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1127,7 +1155,7 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
                     )}
                   </div>
                   <div style={{ fontSize: '0.74rem', color: '#475569', marginBottom: '10px' }}>
-                    💡 TVGS Trưởng này sẽ xem được tất cả các phiếu yêu cầu & biên bản nghiệm thu do những cán bộ được tick chọn dưới đây phụ trách:
+                    💡 Trưởng/Phó đoàn TVGS này sẽ xem và nhận thông báo tất cả các phiếu yêu cầu & biên bản nghiệm thu do những cán bộ được chọn phụ trách (để trống: mặc định phụ trách tất cả cấp dưới TVGS):
                   </div>
                   {candidateSupervisors.length === 0 ? (
                     <div style={{ padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px dashed #86efac', fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic' }}>
@@ -1178,8 +1206,8 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
                 </div>
               )}
 
-              {/* 4. NẾU TẠO TRƯỞNG BAN QLDA -> TICK CÁC CHECKBOX CÁN BỘ BAN QLDA DƯỚI QUYỀN */}
-              {role === 'LEAD_INVESTOR' && (
+              {/* 4. NẾU TẠO TRƯỞNG/PHÓ BAN QLDA -> TICK CÁC CHECKBOX CÁN BỘ BAN QLDA DƯỚI QUYỀN */}
+              {isInvestorLeadership && (
                 <div className="form-group" style={{ gridColumn: 'span 2', background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: '12px', padding: '14px 16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
                     <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: 700, color: '#b45309', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1203,7 +1231,7 @@ function AddUserModal({ isOpen, onClose, onSave, existingUsers = [] }) {
                     )}
                   </div>
                   <div style={{ fontSize: '0.74rem', color: '#475569', marginBottom: '10px' }}>
-                    💡 Trưởng Ban QLDA này sẽ xem được tất cả các phiếu yêu cầu & biên bản nghiệm thu do những cán bộ được tick chọn dưới đây phụ trách:
+                    💡 Trưởng/Phó Ban QLDA này sẽ xem và nhận thông báo tất cả các phiếu yêu cầu & biên bản nghiệm thu do những cán bộ được chọn phụ trách (để trống: mặc định phụ trách tất cả cấp dưới Ban QLDA):
                   </div>
                   {candidateInvestors.length === 0 ? (
                     <div style={{ padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px dashed #fde68a', fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic' }}>
@@ -1331,20 +1359,24 @@ function EditUserModal({ user, onClose, onSave, existingUsers = [] }) {
 
   const [subordinateIds, setSubordinateIds] = useState(initialSubordinates);
 
+  const isSupervisorLeadership = isSupervisorLeadOrDeputy({ role, position });
+  const isInvestorLeadership = isInvestorLeadOrDeputy({ role, position });
+  const isLeadership = isSupervisorLeadership || isInvestorLeadership;
+
   const candidateSupervisors = useMemo(() => {
-    return (existingUsers || []).filter(u => u.role === 'SUPERVISOR' && u.uid !== user.uid);
+    return (existingUsers || []).filter(u => u.role === 'SUPERVISOR' && u.uid !== user.uid && !isSupervisorLeadOrDeputy(u));
   }, [existingUsers, user]);
 
   const candidateInvestors = useMemo(() => {
-    return (existingUsers || []).filter(u => u.role === 'INVESTOR' && u.uid !== user.uid);
+    return (existingUsers || []).filter(u => u.role === 'INVESTOR' && u.uid !== user.uid && !isInvestorLeadOrDeputy(u));
   }, [existingUsers, user]);
 
   const leadSupervisors = useMemo(() => {
-    return (existingUsers || []).filter(u => u.role === 'LEAD_SUPERVISOR' && u.uid !== user.uid);
+    return (existingUsers || []).filter(u => isSupervisorLeadOrDeputy(u) && u.uid !== user.uid);
   }, [existingUsers, user]);
 
   const leadInvestors = useMemo(() => {
-    return (existingUsers || []).filter(u => u.role === 'LEAD_INVESTOR' && u.uid !== user.uid);
+    return (existingUsers || []).filter(u => isInvestorLeadOrDeputy(u) && u.uid !== user.uid);
   }, [existingUsers, user]);
 
   const handleSubmit = (e) => {
@@ -1384,8 +1416,8 @@ function EditUserModal({ user, onClose, onSave, existingUsers = [] }) {
       position: position.trim(),
       phone: phone.trim(),
       status,
-      leaderId: (role === 'SUPERVISOR' || role === 'INVESTOR') ? (leaderId || null) : null,
-      subordinateIds: (role === 'LEAD_SUPERVISOR' || role === 'LEAD_INVESTOR') ? subordinateIds : []
+      leaderId: (!isLeadership && (role === 'SUPERVISOR' || role === 'INVESTOR')) ? (leaderId || null) : null,
+      subordinateIds: isLeadership ? subordinateIds : []
     };
 
     onSave(updatedUser);
@@ -1558,11 +1590,11 @@ function EditUserModal({ user, onClose, onSave, existingUsers = [] }) {
               </div>
 
               {/* 1. NẾU SỬA CÁN BỘ TVGS THƯỜNG -> CHỌN TVGS TRƯỞNG PHỤ TRÁCH */}
-              {role === 'SUPERVISOR' && (
+              {role === 'SUPERVISOR' && !isSupervisorLeadership && (
                 <div className="form-group" style={{ gridColumn: 'span 2', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '10px', padding: '12px 14px' }}>
                   <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 700, color: '#15803d', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
                     <Award size={15} color="#16a34a" />
-                    <span>Chỉ định TVGS Trưởng trực tiếp quản lý cán bộ này:</span>
+                    <span>Chỉ định Trưởng/Phó đoàn TVGS trực tiếp quản lý cán bộ này:</span>
                   </label>
                   <select
                     className="form-select"
@@ -1578,17 +1610,17 @@ function EditUserModal({ user, onClose, onSave, existingUsers = [] }) {
                     ))}
                   </select>
                   <div style={{ fontSize: '0.74rem', color: '#166534', marginTop: '4px' }}>
-                    💡 Khi cán bộ này được chỉ định kiểm tra nghiệm thu, vị TVGS Trưởng được chọn ở trên sẽ tự động xem được phiếu.
+                    💡 Khi cán bộ này được chỉ định kiểm tra nghiệm thu, vị Trưởng/Phó đoàn TVGS được chọn ở trên sẽ tự động xem được phiếu.
                   </div>
                 </div>
               )}
 
               {/* 2. NẾU SỬA CÁN BỘ BAN QLDA THƯỜNG -> CHỌN TRƯỞNG BAN QLDA PHỤ TRÁCH */}
-              {role === 'INVESTOR' && (
+              {role === 'INVESTOR' && !isInvestorLeadership && (
                 <div className="form-group" style={{ gridColumn: 'span 2', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', padding: '12px 14px' }}>
                   <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 700, color: '#b45309', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
                     <Award size={15} color="#d97706" />
-                    <span>Chỉ định Trưởng Ban QLDA trực tiếp quản lý cán bộ này:</span>
+                    <span>Chỉ định Trưởng/Phó Ban QLDA trực tiếp quản lý cán bộ này:</span>
                   </label>
                   <select
                     className="form-select"
@@ -1604,13 +1636,13 @@ function EditUserModal({ user, onClose, onSave, existingUsers = [] }) {
                     ))}
                   </select>
                   <div style={{ fontSize: '0.74rem', color: '#92400e', marginTop: '4px' }}>
-                    💡 Khi cán bộ này được chỉ định phê duyệt nghiệm thu, vị Trưởng Ban QLDA được chọn ở trên sẽ tự động xem được phiếu.
+                    💡 Khi cán bộ này được chỉ định phê duyệt nghiệm thu, vị Trưởng/Phó Ban QLDA được chọn ở trên sẽ tự động xem được phiếu.
                   </div>
                 </div>
               )}
 
-              {/* 3. NẾU SỬA TVGS TRƯỞNG -> TICK CÁC CHECKBOX TVGS DƯỚI QUYỀN */}
-              {role === 'LEAD_SUPERVISOR' && (
+              {/* 3. NẾU SỬA TVGS TRƯỞNG / PHÓ ĐOÀN -> TICK CÁC CHECKBOX TVGS DƯỚI QUYỀN */}
+              {isSupervisorLeadership && (
                 <div className="form-group" style={{ gridColumn: 'span 2', background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: '12px', padding: '14px 16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
                     <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: 700, color: '#15803d', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1634,7 +1666,7 @@ function EditUserModal({ user, onClose, onSave, existingUsers = [] }) {
                     )}
                   </div>
                   <div style={{ fontSize: '0.74rem', color: '#475569', marginBottom: '10px' }}>
-                    💡 TVGS Trưởng này sẽ xem được tất cả các phiếu yêu cầu & biên bản nghiệm thu do những cán bộ được tick chọn dưới đây phụ trách:
+                    💡 Trưởng/Phó đoàn TVGS này sẽ xem và nhận thông báo tất cả các phiếu yêu cầu & biên bản nghiệm thu do những cán bộ được tick chọn dưới đây phụ trách (để trống: mặc định phụ trách tất cả cấp dưới TVGS):
                   </div>
                   {candidateSupervisors.length === 0 ? (
                     <div style={{ padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px dashed #86efac', fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic' }}>
@@ -1685,8 +1717,8 @@ function EditUserModal({ user, onClose, onSave, existingUsers = [] }) {
                 </div>
               )}
 
-              {/* 4. NẾU SỬA TRƯỞNG BAN QLDA -> TICK CÁC CHECKBOX CÁN BỘ BAN QLDA DƯỚI QUYỀN */}
-              {role === 'LEAD_INVESTOR' && (
+              {/* 4. NẾU SỬA TRƯỞNG/PHÓ BAN QLDA -> TICK CÁC CHECKBOX CÁN BỘ BAN QLDA DƯỚI QUYỀN */}
+              {isInvestorLeadership && (
                 <div className="form-group" style={{ gridColumn: 'span 2', background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: '12px', padding: '14px 16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
                     <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: 700, color: '#b45309', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1710,7 +1742,7 @@ function EditUserModal({ user, onClose, onSave, existingUsers = [] }) {
                     )}
                   </div>
                   <div style={{ fontSize: '0.74rem', color: '#475569', marginBottom: '10px' }}>
-                    💡 Trưởng Ban QLDA này sẽ xem được tất cả các phiếu yêu cầu & biên bản nghiệm thu do những cán bộ được tick chọn dưới đây phụ trách:
+                    💡 Trưởng/Phó Ban QLDA này sẽ xem và nhận thông báo tất cả các phiếu yêu cầu & biên bản nghiệm thu do những cán bộ được chọn phụ trách (để trống: mặc định phụ trách tất cả cấp dưới Ban QLDA):
                   </div>
                   {candidateInvestors.length === 0 ? (
                     <div style={{ padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px dashed #fde68a', fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic' }}>

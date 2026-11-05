@@ -4,7 +4,7 @@ import {
   AlertCircle, Building, Camera, ImagePlus, Zap, Trash2, Plus, Clock,
   FileSpreadsheet, Package, Hash, ChevronRight, Check, Layers, Building2, Loader2
 } from 'lucide-react';
-import { MOCK_PROJECT, MOCK_USERS } from '../data/mockData';
+import { MOCK_PROJECT, MOCK_USERS, isSupervisorLeadOrDeputy, isInvestorLeadOrDeputy } from '../data/mockData';
 import { compressImageFile, compressImageToBlob } from '../utils/storageHelper';
 import { uploadEvidenceImage } from '../services/storageService';
 import {
@@ -37,17 +37,16 @@ export default function CreateRequestModal({
   const activeMandatory = (standardsData?.mandatory && standardsData.mandatory.length > 0) ? standardsData.mandatory : GENERAL_MANDATORY_STANDARDS;
 
   // Lọc danh sách cán bộ tiếp nhận nghiệm thu:
-  // QUY TẮC NGHIỆP VỤ: KHÔNG hiển thị các anh Trưởng (TVGS Trưởng, Trưởng Ban QLDA) để chọn.
+  // QUY TẮC NGHIỆP VỤ: KHÔNG hiển thị các anh Trưởng/Phó (TVGS Trưởng, Phó đoàn TVGS, Trưởng Ban QLDA, Phó Ban QLDA) để chọn.
   // Chỉ hiển thị các cán bộ cấp dưới trực tiếp nghiệm thu tại hiện trường.
-  // Các anh Trưởng sẽ tự động theo dõi / quản lý hồ sơ của cấp dưới mình.
+  // Các anh Trưởng và Phó sẽ tự động theo dõi / quản lý hồ sơ của cấp dưới mình.
   const supervisorList = useMemo(() => {
     return (users || []).filter(u => {
       if (u.status === 'INACTIVE') return false;
+      if (isSupervisorLeadOrDeputy(u)) return false;
       const roleStr = (u.role || '').toUpperCase();
       if (roleStr !== 'SUPERVISOR') return false;
-      if (roleStr === 'LEAD_SUPERVISOR' || Boolean(u.isLead)) return false;
       const pos = (u.position || '').toLowerCase();
-      if (pos.includes('trưởng') || pos.includes('chỉ huy') || pos.includes('giám đốc')) return false;
       if (pos.includes('thi công') || pos.includes('nhà thầu') || pos.includes('quản lý dự án') || pos.includes('ban qlda')) return false;
       const comp = (u.company || '').toLowerCase();
       if (comp.includes('an phú gia') || comp.includes('bình hoà') || comp.includes('gia huy') || comp.includes('an phú cần thơ')) return false;
@@ -58,11 +57,10 @@ export default function CreateRequestModal({
   const investorList = useMemo(() => {
     return (users || []).filter(u => {
       if (u.status === 'INACTIVE') return false;
+      if (isInvestorLeadOrDeputy(u)) return false;
       const roleStr = (u.role || '').toUpperCase();
       if (roleStr !== 'INVESTOR') return false;
-      if (roleStr === 'LEAD_INVESTOR' || Boolean(u.isLead)) return false;
       const pos = (u.position || '').toLowerCase();
-      if (pos.includes('trưởng') || pos.includes('giám đốc') || pos.includes('chỉ huy')) return false;
       if (pos.includes('tư vấn') || pos.includes('giám sát') || pos.includes('thi công')) return false;
       const comp = (u.company || '').toLowerCase();
       if (comp.includes('gelicon') || comp.includes('an phú gia') || comp.includes('bình hoà') || comp.includes('gia huy')) return false;

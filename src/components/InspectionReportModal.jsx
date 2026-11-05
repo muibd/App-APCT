@@ -5,7 +5,7 @@ import {
   Zap, RotateCcw, FileWarning, Eye, User, Wrench, Send, ChevronRight, XCircle,
   ArrowLeftRight, Calendar, ArrowRight, Ban, UserCheck, FileText, Check, Loader2, ZoomIn
 } from 'lucide-react';
-import { STANDARD_CRITERIA_LIST, getContractorChief, isMepContext } from '../data/mockData';
+import { STANDARD_CRITERIA_LIST, getContractorChief, isMepContext, isSupervisorLeadOrDeputy, isInvestorLeadOrDeputy } from '../data/mockData';
 import { getSuggestedStandards, GENERAL_MANDATORY_STANDARDS } from '../data/standardsRules';
 import { triggerSafeConfetti } from '../utils/confettiHelper';
 import { compressImageFile, compressImageToBlob, dataUrlToBlob } from '../utils/storageHelper';
@@ -2405,8 +2405,8 @@ export default function InspectionReportModal({
 
                           {(() => {
                             const isSup = rec.role === 'SUPERVISOR' || rec.role === 'LEAD_SUPERVISOR';
-                            const isLeadSup = currentRole === 'LEAD_SUPERVISOR' || Boolean(currentUser?.isLead && currentRole === 'SUPERVISOR');
-                            const isLeadInv = currentRole === 'LEAD_INVESTOR' || Boolean(currentUser?.isLead && currentRole === 'INVESTOR');
+                            const isLeadSup = currentRole !== 'ADMIN' && isSupervisorLeadOrDeputy(currentUser);
+                            const isLeadInv = currentRole !== 'ADMIN' && isInvestorLeadOrDeputy(currentUser);
                             const canReassign = onReassign && !isCompleted && !isCancelled && (isAdmin || (isSup && isLeadSup) || (!isSup && isLeadInv));
 
                             if (!canReassign) return null;
@@ -4309,7 +4309,7 @@ export default function InspectionReportModal({
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <Eye size={16} color="#15803d" />
                           <span>
-                            👁️ Phiếu do <strong>{supAttendee?.person || 'Cán bộ TVGS'}</strong> phụ trách duyệt • Bạn đang xem với quyền TVGS Trưởng
+                            👁️ Phiếu do <strong>{supAttendee?.person || 'Cán bộ TVGS'}</strong> phụ trách duyệt • Bạn đang xem với quyền {currentUser?.position || (currentRole === 'LEAD_SUPERVISOR' ? 'TVGS Trưởng' : 'Lãnh đạo TVGS')}
                           </span>
                         </div>
                         {onReassign && (
@@ -4387,7 +4387,7 @@ export default function InspectionReportModal({
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               <Eye size={16} color="#d97706" />
                               <span>
-                                👁️ Phiếu do <strong>{invAttendee?.person || 'Cán bộ Ban QLDA'}</strong> phụ trách phê duyệt • Bạn đang xem với quyền Trưởng Ban QLDA
+                                👁️ Phiếu do <strong>{invAttendee?.person || 'Cán bộ Ban QLDA'}</strong> phụ trách phê duyệt • Bạn đang xem với quyền {currentUser?.position || (currentRole === 'LEAD_INVESTOR' ? 'Trưởng Ban QLDA' : 'Lãnh đạo Ban QLDA')}
                               </span>
                             </div>
                             {onReassign && (

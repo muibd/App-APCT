@@ -4,6 +4,8 @@
 // Hoạt động trên cả iPhone (iOS 16.4+ PWA) và Android / Desktop Chrome
 // ============================================================================
 
+import { isSupervisorLeadOrDeputy, isInvestorLeadOrDeputy, isContractorLeadOrDeputy } from '../data/mockData';
+
 const ONESIGNAL_APP_ID = import.meta.env.VITE_ONESIGNAL_APP_ID || "";
 const ONESIGNAL_REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY || "";
 
@@ -66,10 +68,19 @@ export const loginOneSignalUser = (user) => {
       if (user.fullName) {
         await OneSignal.User.addTag("fullName", user.fullName);
       }
-      if (user.isLead || user.role === 'LEAD_SUPERVISOR' || user.role === 'LEAD_INVESTOR') {
+      const isLeadSup = isSupervisorLeadOrDeputy(user);
+      const isLeadInv = isInvestorLeadOrDeputy(user);
+      const isLeadContr = isContractorLeadOrDeputy(user);
+      if (user.isLead || user.role === 'LEAD_SUPERVISOR' || user.role === 'LEAD_INVESTOR' || isLeadSup || isLeadInv || isLeadContr) {
         await OneSignal.User.addTag("isLead", "true");
       }
-      console.log('[OneSignal User Tagged]', user.fullName, 'Role:', user.role);
+      if (isLeadSup) {
+        await OneSignal.User.addTag("isLeadSupervisor", "true");
+      }
+      if (isLeadInv) {
+        await OneSignal.User.addTag("isLeadInvestor", "true");
+      }
+      console.log('[OneSignal User Tagged]', user.fullName, 'Role:', user.role, 'isLeadSup:', isLeadSup, 'isLeadInv:', isLeadInv);
     } catch (err) {
       console.warn('[OneSignal Tag Error]', err);
     }
@@ -126,9 +137,19 @@ export const sendOneSignalPush = async ({ title, message, targetRoles = [], url 
     // Nếu có chỉ định vai trò nhận thông báo
     if (targetRoles.length > 0) {
       const filters = [];
-      targetRoles.forEach((role, idx) => {
-        if (idx > 0) filters.push({ operator: 'OR' });
-        filters.push({ field: 'tag', key: 'role', relation: '=', value: role });
+      const addFilter = (filterObj) => {
+        if (filters.length > 0) filters.push({ operator: 'OR' });
+        filters.push(filterObj);
+      };
+
+      targetRoles.forEach((role) => {
+        addFilter({ field: 'tag', key: 'role', relation: '=', value: role });
+        if (role === 'LEAD_SUPERVISOR') {
+          addFilter({ field: 'tag', key: 'isLeadSupervisor', relation: '=', value: 'true' });
+        }
+        if (role === 'LEAD_INVESTOR') {
+          addFilter({ field: 'tag', key: 'isLeadInvestor', relation: '=', value: 'true' });
+        }
       });
       payload.filters = filters;
     } else {

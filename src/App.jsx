@@ -44,7 +44,10 @@ import {
   INITIAL_NOTIFICATIONS,
   INITIAL_DAILY_LOGS,
   INITIAL_COMPLETION_REPORTS,
-  getContractorChief
+  getContractorChief,
+  isSupervisorLeadOrDeputy,
+  isInvestorLeadOrDeputy,
+  isContractorLeadOrDeputy
 } from './data/mockData';
 import { getSuggestedStandards, loadStoredStandards, STANDARDS_STORAGE_KEY, INITIAL_STANDARDS_DATA } from './data/standardsRules';
 import { 
@@ -329,7 +332,7 @@ export default function App() {
               ...u,
               role: u.role || mock?.role || 'CONTRACTOR',
               leaderId: u.leaderId !== undefined ? u.leaderId : mock?.leaderId,
-              subordinateIds: u.subordinateIds !== undefined ? u.subordinateIds : mock?.subordinateIds,
+              subordinateIds: (Array.isArray(u.subordinateIds) && u.subordinateIds.length > 0) ? u.subordinateIds : (mock?.subordinateIds || u.subordinateIds || []),
               password: u.password || '123456',
               status: u.status || 'ACTIVE'
             };
@@ -562,7 +565,7 @@ export default function App() {
     }
 
     // 3. Phân hệ Tư Vấn Giám Sát (SUPERVISOR & LEAD_SUPERVISOR):
-    const isSupervisorLead = role === 'LEAD_SUPERVISOR' || Boolean(user.isLead && role === 'SUPERVISOR') || (role === 'SUPERVISOR' && (user.position || '').toLowerCase().includes('trưởng'));
+    const isSupervisorLead = isSupervisorLeadOrDeputy(user);
     if (role === 'SUPERVISOR' || role === 'LEAD_SUPERVISOR') {
       const recipients = req?.assignedRecipients || rep?.assignedRecipients || [];
       const supPerson = (rep?.attendees?.supervisor?.person || '').trim().toLowerCase();
@@ -595,15 +598,24 @@ export default function App() {
         return Boolean(isDirectlyAssigned || isDirectAttendee);
       }
 
-      // Nếu là TVGS Trưởng: xem nếu chỉ định cho mình HOẶC cho các cán bộ TVGS cấp dưới quyền
+      // Nếu là TVGS Trưởng hoặc Phó đoàn TVGS: xem nếu chỉ định cho mình HOẶC cho các cán bộ TVGS cấp dưới quyền
       const subIds = Array.isArray(user.subordinateIds) ? user.subordinateIds : [];
-      const hasExplicitSubs = subIds.length > 0 || (allUsers || []).some(u => u.leaderId === curUid);
+      let effectiveSubIds = [...subIds];
+      if (effectiveSubIds.length === 0) {
+        const myLeader = (allUsers || []).find(u => u.uid === user.leaderId || (u.role === 'LEAD_SUPERVISOR' && u.uid !== curUid));
+        if (myLeader && Array.isArray(myLeader.subordinateIds)) {
+          effectiveSubIds = myLeader.subordinateIds.filter(id => id !== curUid);
+        }
+      }
+      const hasExplicitSubs = effectiveSubIds.length > 0 || (allUsers || []).some(u => u.leaderId === curUid || (user.leaderId && u.leaderId === user.leaderId && u.uid !== curUid));
       const mySubordinates = (allUsers || []).filter(u => {
         if (u.uid === curUid) return false;
         if (u.role !== 'SUPERVISOR') return false;
-        if ((u.position || '').toLowerCase().includes('trưởng')) return false;
+        if (isSupervisorLeadOrDeputy(u)) return false;
         if (hasExplicitSubs) {
-          return u.leaderId === curUid || subIds.includes(u.uid);
+          return u.leaderId === curUid || 
+                 (user.leaderId && u.leaderId === user.leaderId) || 
+                 effectiveSubIds.includes(u.uid);
         }
         return true;
       });
@@ -618,7 +630,7 @@ export default function App() {
         const rNormName = normalizePersonName(rec.fullName);
         const rLeader = rec.leaderId;
 
-        if (rLeader && rLeader === curUid) return true;
+        if (rLeader && (rLeader === curUid || (user.leaderId && rLeader === user.leaderId))) return true;
         if (rUid && subUids.includes(rUid)) return true;
         if (rEmail && subEmails.includes(rEmail)) return true;
         if (rNormName && subNormNames.includes(rNormName)) return true;
@@ -626,6 +638,7 @@ export default function App() {
       });
 
       const isSubAttendee = Boolean(
+        (supUid && subUids.includes(supUid)) ||
         (supPersonNorm && subNormNames.includes(supPersonNorm)) ||
         (supEmail && subEmails.includes(supEmail))
       );
@@ -634,7 +647,7 @@ export default function App() {
     }
 
     // 4. Phân hệ Chủ Đầu Tư (INVESTOR & LEAD_INVESTOR):
-    const isInvestorLead = role === 'LEAD_INVESTOR' || Boolean(user.isLead && role === 'INVESTOR') || (role === 'INVESTOR' && ((user.position || '').toLowerCase().includes('trưởng') || (user.position || '').toLowerCase().includes('giám đốc')));
+    const isInvestorLead = isInvestorLeadOrDeputy(user);
     if (role === 'INVESTOR' || role === 'LEAD_INVESTOR') {
       const recipients = req?.assignedRecipients || rep?.assignedRecipients || [];
       const invPerson = (rep?.attendees?.investor?.person || '').trim().toLowerCase();
@@ -667,15 +680,24 @@ export default function App() {
         return Boolean(isDirectlyAssigned || isDirectAttendee);
       }
 
-      // Nếu là CĐT Trưởng: xem nếu chỉ định cho mình HOẶC cho các cán bộ CĐT cấp dưới quyền
+      // Nếu là CĐT Trưởng hoặc Phó Ban QLDA: xem nếu chỉ định cho mình HOẶC cho các cán bộ CĐT cấp dưới quyền
       const subIds = Array.isArray(user.subordinateIds) ? user.subordinateIds : [];
-      const hasExplicitSubs = subIds.length > 0 || (allUsers || []).some(u => u.leaderId === curUid);
+      let effectiveSubIds = [...subIds];
+      if (effectiveSubIds.length === 0) {
+        const myLeader = (allUsers || []).find(u => u.uid === user.leaderId || (u.role === 'LEAD_INVESTOR' && u.uid !== curUid));
+        if (myLeader && Array.isArray(myLeader.subordinateIds)) {
+          effectiveSubIds = myLeader.subordinateIds.filter(id => id !== curUid);
+        }
+      }
+      const hasExplicitSubs = effectiveSubIds.length > 0 || (allUsers || []).some(u => u.leaderId === curUid || (user.leaderId && u.leaderId === user.leaderId && u.uid !== curUid));
       const mySubordinates = (allUsers || []).filter(u => {
         if (u.uid === curUid) return false;
         if (u.role !== 'INVESTOR') return false;
-        if ((u.position || '').toLowerCase().includes('trưởng') || (u.position || '').toLowerCase().includes('giám đốc')) return false;
+        if (isInvestorLeadOrDeputy(u)) return false;
         if (hasExplicitSubs) {
-          return u.leaderId === curUid || subIds.includes(u.uid);
+          return u.leaderId === curUid || 
+                 (user.leaderId && u.leaderId === user.leaderId) || 
+                 effectiveSubIds.includes(u.uid);
         }
         return true;
       });
@@ -690,7 +712,7 @@ export default function App() {
         const rNormName = normalizePersonName(rec.fullName);
         const rLeader = rec.leaderId;
 
-        if (rLeader && rLeader === curUid) return true;
+        if (rLeader && (rLeader === curUid || (user.leaderId && rLeader === user.leaderId))) return true;
         if (rUid && subUids.includes(rUid)) return true;
         if (rEmail && subEmails.includes(rEmail)) return true;
         if (rNormName && subNormNames.includes(rNormName)) return true;
@@ -698,6 +720,7 @@ export default function App() {
       });
 
       const isSubAttendee = Boolean(
+        (invUid && subUids.includes(invUid)) ||
         (invPersonNorm && subNormNames.includes(invPersonNorm)) ||
         (invEmail && subEmails.includes(invEmail))
       );
@@ -720,8 +743,8 @@ export default function App() {
     if (notif?.recipientUid && notif.recipientUid === curUid) return true;
     if (Array.isArray(notif?.extraRecipientUids) && notif.extraRecipientUids.includes(curUid)) return true;
 
-    const isSupervisorLead = user.role === 'LEAD_SUPERVISOR' || Boolean(user.isLead && user.role === 'SUPERVISOR') || (user.role === 'SUPERVISOR' && (user.position || '').toLowerCase().includes('giám sát trưởng'));
-    const isInvestorLead = user.role === 'LEAD_INVESTOR' || Boolean(user.isLead && user.role === 'INVESTOR') || (user.role === 'INVESTOR' && ((user.position || '').toLowerCase().includes('trưởng ban') || (user.position || '').toLowerCase().includes('giám đốc')));
+    const isSupervisorLead = isSupervisorLeadOrDeputy(user);
+    const isInvestorLead = isInvestorLeadOrDeputy(user);
 
     if (isSupervisorLead || isInvestorLead) return true;
 
@@ -757,8 +780,8 @@ export default function App() {
     if (notif?.recipientUid && notif.recipientUid === curUid) return true;
     if (Array.isArray(notif?.extraRecipientUids) && notif.extraRecipientUids.includes(curUid)) return true;
 
-    const isSupervisorLead = user.role === 'LEAD_SUPERVISOR' || Boolean(user.isLead && user.role === 'SUPERVISOR') || (user.role === 'SUPERVISOR' && (user.position || '').toLowerCase().includes('giám sát trưởng'));
-    const isInvestorLead = user.role === 'LEAD_INVESTOR' || Boolean(user.isLead && user.role === 'INVESTOR') || (user.role === 'INVESTOR' && ((user.position || '').toLowerCase().includes('trưởng ban') || (user.position || '').toLowerCase().includes('giám đốc')));
+    const isSupervisorLead = isSupervisorLeadOrDeputy(user);
+    const isInvestorLead = isInvestorLeadOrDeputy(user);
 
     if (isSupervisorLead || isInvestorLead) return true;
 
@@ -794,8 +817,8 @@ export default function App() {
     if (notif?.recipientUid && notif.recipientUid === curUid) return true;
     if (Array.isArray(notif?.extraRecipientUids) && notif.extraRecipientUids.includes(curUid)) return true;
 
-    const isSupervisorLead = user.role === 'LEAD_SUPERVISOR' || Boolean(user.isLead && user.role === 'SUPERVISOR');
-    const isInvestorLead = user.role === 'LEAD_INVESTOR' || Boolean(user.isLead && user.role === 'INVESTOR');
+    const isSupervisorLead = isSupervisorLeadOrDeputy(user);
+    const isInvestorLead = isInvestorLeadOrDeputy(user);
     if (isSupervisorLead || isInvestorLead) return true;
 
     const creatorUid = log?.createdByUid || log?.contractorUid || notif?.createdByUid;
@@ -822,8 +845,8 @@ export default function App() {
     if (notif?.recipientUid && notif.recipientUid === curUid) return true;
     if (Array.isArray(notif?.extraRecipientUids) && notif.extraRecipientUids.includes(curUid)) return true;
 
-    const isSupervisorLead = user.role === 'LEAD_SUPERVISOR' || Boolean(user.isLead && user.role === 'SUPERVISOR');
-    const isInvestorLead = user.role === 'LEAD_INVESTOR' || Boolean(user.isLead && user.role === 'INVESTOR');
+    const isSupervisorLead = isSupervisorLeadOrDeputy(user);
+    const isInvestorLead = isInvestorLeadOrDeputy(user);
     if (isSupervisorLead || isInvestorLead) return true;
 
     const creatorUid = cr?.createdByUid || cr?.contractorUid || notif?.createdByUid;
@@ -936,8 +959,8 @@ export default function App() {
         );
       }
 
-      const isSupervisorLead = role === 'LEAD_SUPERVISOR' || Boolean(user.isLead && role === 'SUPERVISOR') || (role === 'SUPERVISOR' && (user.position || '').toLowerCase().includes('trưởng'));
-      const isInvestorLead = role === 'LEAD_INVESTOR' || Boolean(user.isLead && role === 'INVESTOR') || (role === 'INVESTOR' && ((user.position || '').toLowerCase().includes('trưởng') || (user.position || '').toLowerCase().includes('giám đốc')));
+      const isSupervisorLead = isSupervisorLeadOrDeputy(user);
+      const isInvestorLead = isInvestorLeadOrDeputy(user);
 
       // Trưởng bộ phận phụ trách cấp dưới liên quan
       if (isSupervisorLead) {
@@ -3627,8 +3650,9 @@ export default function App() {
     setUsers(prev => {
       let updatedUsers = [newUser, ...prev];
 
-      // Nếu tạo Trưởng có danh sách cấp dưới (subordinateIds) -> cập nhật leaderId cho các cấp dưới đó
-      if ((newUser.role === 'LEAD_SUPERVISOR' || newUser.role === 'LEAD_INVESTOR') && Array.isArray(newUser.subordinateIds)) {
+      // Nếu tạo Trưởng hoặc Phó có danh sách cấp dưới (subordinateIds) -> cập nhật leaderId cho các cấp dưới đó
+      const isNewLeadOrDeputy = (newUser.role === 'LEAD_SUPERVISOR' || newUser.role === 'LEAD_INVESTOR' || isSupervisorLeadOrDeputy(newUser) || isInvestorLeadOrDeputy(newUser));
+      if (isNewLeadOrDeputy && Array.isArray(newUser.subordinateIds)) {
         updatedUsers = updatedUsers.map(u => {
           if (u.uid === newUser.uid) return u;
           if (newUser.subordinateIds.includes(u.uid)) {
@@ -3666,8 +3690,9 @@ export default function App() {
     setUsers(prev => {
       let updatedUsers = prev.map(u => u.uid === updatedUser.uid ? updatedUser : u);
 
-      // Nếu cập nhật Trưởng -> đồng bộ hai chiều với các cấp dưới
-      if (updatedUser.role === 'LEAD_SUPERVISOR' || updatedUser.role === 'LEAD_INVESTOR') {
+      // Nếu cập nhật Trưởng hoặc Phó -> đồng bộ hai chiều với các cấp dưới
+      const isUpdatedLeadOrDeputy = (updatedUser.role === 'LEAD_SUPERVISOR' || updatedUser.role === 'LEAD_INVESTOR' || isSupervisorLeadOrDeputy(updatedUser) || isInvestorLeadOrDeputy(updatedUser));
+      if (isUpdatedLeadOrDeputy) {
         const newSubs = Array.isArray(updatedUser.subordinateIds) ? updatedUser.subordinateIds : [];
         updatedUsers = updatedUsers.map(u => {
           if (u.uid === updatedUser.uid) return u;
@@ -6081,28 +6106,9 @@ export default function App() {
   // - TVGS thường (như trắc đạc, kỹ sư GS): chỉ xem phiếu mình được chỉ định tiếp nhận
   // - Trưởng Ban QLDA (LEAD_INVESTOR): xem toàn bộ phiếu/biên bản gửi Ban QLDA CĐT
   // - Cán bộ CĐT thường: chỉ xem phiếu mình được chỉ định
-  const isContractorLead = 
-    currentRole === 'CONTRACTOR' && (
-      (currentUser?.position || '').toLowerCase().includes('chỉ huy') ||
-      (currentUser?.position || '').toLowerCase().includes('trưởng') ||
-      Boolean(currentUser?.isLead)
-    );
-
-  const isSupervisorLead = 
-    currentRole === 'LEAD_SUPERVISOR' ||
-    (currentRole === 'SUPERVISOR' && (
-      (currentUser?.position || '').toLowerCase().includes('giám sát trưởng') ||
-      (currentUser?.position || '').toLowerCase().includes('trưởng') ||
-      Boolean(currentUser?.isLead)
-    ));
-
-  const isInvestorLead = 
-    currentRole === 'LEAD_INVESTOR' ||
-    (currentRole === 'INVESTOR' && (
-      (currentUser?.position || '').toLowerCase().includes('trưởng ban') ||
-      (currentUser?.position || '').toLowerCase().includes('giám đốc') ||
-      Boolean(currentUser?.isLead)
-    ));
+  const isContractorLead = isContractorLeadOrDeputy(currentUser);
+  const isSupervisorLead = isSupervisorLeadOrDeputy(currentUser);
+  const isInvestorLead = isInvestorLeadOrDeputy(currentUser);
 
   // 5. Hàm điều hướng khi click chọn thông báo trong trung tâm thông báo hoặc popup toast
   const handleSelectNotification = (notif) => {
@@ -7138,8 +7144,8 @@ export default function App() {
                     );
                     const canModify = !isConfirmed && !isCancelled && isCreator;
 
-                    const isLeadSupervisor = currentRole !== 'ADMIN' && (currentRole === 'LEAD_SUPERVISOR' || Boolean(currentUser?.isLead && currentRole === 'SUPERVISOR'));
-                    const isLeadInvestor = currentRole !== 'ADMIN' && (currentRole === 'LEAD_INVESTOR' || Boolean(currentUser?.isLead && currentRole === 'INVESTOR'));
+                    const isLeadSupervisor = currentRole !== 'ADMIN' && isSupervisorLeadOrDeputy(currentUser);
+                    const isLeadInvestor = currentRole !== 'ADMIN' && isInvestorLeadOrDeputy(currentUser);
 
                     return (
                       <div 

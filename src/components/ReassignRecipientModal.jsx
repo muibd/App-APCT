@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, ArrowLeftRight, UserCheck, CheckCircle2, Shield, Users, Phone, AlertCircle, Sparkles } from 'lucide-react';
+import { isSupervisorLeadOrDeputy, isInvestorLeadOrDeputy } from '../data/mockData';
 
 export default function ReassignRecipientModal({
   isOpen,
@@ -22,18 +23,21 @@ export default function ReassignRecipientModal({
       : (r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR')
   );
 
-  // Danh sách ứng viên hợp lệ (chỉ chọn cán bộ cấp dưới trực tiếp nghiệm thu, không chọn các anh Trưởng)
+  // Danh sách ứng viên hợp lệ (chỉ chọn cán bộ cấp dưới trực tiếp nghiệm thu, không chọn các anh Trưởng/Phó)
   const candidateList = users.filter(u => {
     if (u.status === 'INACTIVE') return false;
-    const roleStr = (u.role || '').toUpperCase();
-    const pos = (u.position || '').toLowerCase();
-    if (pos.includes('trưởng') || pos.includes('chỉ huy') || pos.includes('giám đốc') || Boolean(u.isLead)) return false;
     if (isSupervisor) {
-      if (roleStr !== 'SUPERVISOR' || roleStr === 'LEAD_SUPERVISOR') return false;
+      if (isSupervisorLeadOrDeputy(u)) return false;
+      const roleStr = (u.role || '').toUpperCase();
+      if (roleStr !== 'SUPERVISOR') return false;
+      const pos = (u.position || '').toLowerCase();
       if (pos.includes('thi công') || pos.includes('nhà thầu') || pos.includes('quản lý dự án') || pos.includes('ban qlda')) return false;
       return true;
     } else {
-      if (roleStr !== 'INVESTOR' || roleStr === 'LEAD_INVESTOR') return false;
+      if (isInvestorLeadOrDeputy(u)) return false;
+      const roleStr = (u.role || '').toUpperCase();
+      if (roleStr !== 'INVESTOR') return false;
+      const pos = (u.position || '').toLowerCase();
       if (pos.includes('tư vấn') || pos.includes('giám sát') || pos.includes('thi công')) return false;
       return true;
     }

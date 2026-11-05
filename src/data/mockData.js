@@ -93,9 +93,15 @@ export const MOCK_USERS = [
     "uid": "uid_cdt_02",
     "fullName": "Nguyễn Thành Trung",
     "role": "INVESTOR",
-    "leaderId": "uid_cdt_01",
+    "leaderId": null,
+    "subordinateIds": [
+      "uid_cdt_03",
+      "uid_cdt_04",
+      "uid_cdt_05",
+      "uid_cdt_06"
+    ],
     "company": "Công ty cổ phần CONINCO Máy xây dựng và Công trình công nghiệp (CONINCO-MI)",
-    "position": "Cán bộ ban QLDA",
+    "position": "Phó Ban QLDA",
     "avatar": "TT",
     "phone": "0932989091",
     "email": "trungnguyenme1984@gmail.com",
@@ -180,9 +186,17 @@ export const MOCK_USERS = [
     "uid": "uid_tvgs_02",
     "fullName": "Nguyễn Đông Vũ",
     "role": "SUPERVISOR",
-    "leaderId": "uid_tvgs_01",
+    "leaderId": null,
+    "subordinateIds": [
+      "uid_tvgs_03",
+      "uid_tvgs_04",
+      "uid_tvgs_05",
+      "uid_tvgs_06",
+      "uid_tvgs_07",
+      "uid_tvgs_08"
+    ],
     "company": "Công ty CP Tư vấn Xây dựng và Thương mại GELICON",
-    "position": "Cán bộ tư vấn giám sát",
+    "position": "Phó đoàn TVGS",
     "avatar": "ĐV",
     "phone": "0942569652",
     "email": "dongvug@gmail.com",
@@ -1032,3 +1046,73 @@ export function getContractorChief(companyName, usersList = [], context = {}) {
     };
   }
 }
+
+/**
+ * Chuẩn hóa chuỗi loại bỏ dấu tiếng Việt để đối soát chức vụ/vai trò chính xác tuyệt đối
+ */
+export const normalizeRoleString = (str) => {
+  if (!str || typeof str !== 'string') return '';
+  return str.toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .trim();
+};
+
+/**
+ * Kiểm tra xem người dùng có phải là Lãnh đạo TVGS (Trưởng đoàn hoặc Phó đoàn TVGS) hay không:
+ * - Role là LEAD_SUPERVISOR
+ * - Hoặc Role SUPERVISOR có isLead / isDeputy = true
+ * - Hoặc Chức vụ chứa: "trưởng", "phó đoàn", "phó giám sát", "phó tư vấn", "phó trưởng", "phó", "giám sát trưởng"
+ */
+export const isSupervisorLeadOrDeputy = (user) => {
+  if (!user) return false;
+  const role = user.role;
+  if (role !== 'SUPERVISOR' && role !== 'LEAD_SUPERVISOR') return false;
+  if (role === 'LEAD_SUPERVISOR') return true;
+  if (user.isLead || user.isDeputy) return true;
+  const pos = normalizeRoleString(user.position);
+  return (
+    pos.includes('truong') ||
+    pos.includes('pho') ||
+    pos.includes('giam sat truong') ||
+    pos.includes('doan truong') ||
+    pos.includes('pho doan') ||
+    pos.includes('pho ban')
+  );
+};
+
+/**
+ * Kiểm tra xem người dùng có phải là Lãnh đạo Chủ đầu tư / Ban QLDA (Trưởng Ban hoặc Phó Ban QLDA) hay không:
+ * - Role là LEAD_INVESTOR
+ * - Hoặc Role INVESTOR có isLead / isDeputy = true
+ * - Hoặc Chức vụ chứa: "trưởng ban", "phó ban", "giám đốc", "phó giám đốc", "phó trưởng", "phó"
+ */
+export const isInvestorLeadOrDeputy = (user) => {
+  if (!user) return false;
+  const role = user.role;
+  if (role !== 'INVESTOR' && role !== 'LEAD_INVESTOR') return false;
+  if (role === 'LEAD_INVESTOR') return true;
+  if (user.isLead || user.isDeputy) return true;
+  const pos = normalizeRoleString(user.position);
+  return (
+    pos.includes('truong') ||
+    pos.includes('pho') ||
+    pos.includes('giam doc') ||
+    pos.includes('pho ban') ||
+    pos.includes('pho giam doc')
+  );
+};
+
+/**
+ * Kiểm tra xem người dùng có phải là Lãnh đạo ĐVTC (Chỉ huy trưởng hoặc Chỉ huy phó) hay không
+ */
+export const isContractorLeadOrDeputy = (user) => {
+  if (!user) return false;
+  const role = user.role;
+  if (role !== 'CONTRACTOR') return false;
+  if (user.isLead || user.isDeputy) return true;
+  const pos = normalizeRoleString(user.position);
+  return pos.includes('chi huy') || pos.includes('truong') || pos.includes('pho');
+};
+

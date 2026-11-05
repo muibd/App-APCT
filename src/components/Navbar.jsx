@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Building2, Bell, ShieldCheck, UserCircle, LogOut, BellRing } from 'lucide-react';
 import NotificationDropdown from './NotificationDropdown';
 
+import { isSupervisorLeadOrDeputy, isInvestorLeadOrDeputy } from '../data/mockData';
+
 export default function Navbar({
   currentRole,
   currentUser,
@@ -20,7 +22,13 @@ export default function Navbar({
 }) {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
 
-  const getRoleBadgeStyle = (role) => {
+  const getRoleBadgeStyle = (role, user) => {
+    if (isSupervisorLeadOrDeputy(user) && role === 'SUPERVISOR') {
+      return { bg: '#f0fdf4', color: '#15803d', text: 'Phó TVGS', fullText: 'Phó Đoàn TVGS' };
+    }
+    if (isInvestorLeadOrDeputy(user) && role === 'INVESTOR') {
+      return { bg: '#fef3c7', color: '#b45309', text: 'Phó Ban QLDA', fullText: 'Phó Ban Quản Lý Dự Án' };
+    }
     switch (role) {
       case 'ADMIN': return { bg: '#f3e8ff', color: '#7e22ce', text: 'CĐT', fullText: 'Chủ Đầu Tư (CĐT)' };
       case 'CONTRACTOR': return { bg: '#eff6ff', color: '#1d4ed8', text: 'ĐVTC', fullText: 'Đơn Vị Thi Công (ĐVTC)' };
@@ -32,7 +40,7 @@ export default function Navbar({
     }
   };
 
-  const badge = getRoleBadgeStyle(currentRole);
+  const badge = getRoleBadgeStyle(currentRole, currentUser);
 
   return (
     <header className="app-header">

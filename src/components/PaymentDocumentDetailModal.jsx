@@ -14,6 +14,7 @@ import { openPdfInNewTab } from '../utils/pdfHelper';
 import { compressImageFile } from '../utils/storageHelper';
 import { uploadPdfDocument } from '../services/storageService';
 import ImagePreviewModal from './ImagePreviewModal';
+import { isSupervisorLeadOrDeputy, isInvestorLeadOrDeputy } from '../data/mockData';
 
 export default function PaymentDocumentDetailModal({
   isOpen,
@@ -150,13 +151,8 @@ export default function PaymentDocumentDetailModal({
 
   // Phân quyền người xem
   const isSuperAdmin = currentRole === 'ADMIN';
-  const isLeadSupervisor = currentRole === 'LEAD_SUPERVISOR' || 
-    Boolean(currentUser?.isLead && currentRole === 'SUPERVISOR') ||
-    (currentRole === 'SUPERVISOR' && (currentUser?.position || '').toLowerCase().includes('giám sát trưởng'));
-  
-  const isLeadInvestor = currentRole === 'LEAD_INVESTOR' || 
-    Boolean(currentUser?.isLead && currentRole === 'INVESTOR') ||
-    (currentRole === 'INVESTOR' && (currentUser?.position || '').toLowerCase().includes('trưởng ban'));
+  const isLeadSupervisor = isSupervisorLeadOrDeputy(currentUser);
+  const isLeadInvestor = isInvestorLeadOrDeputy(currentUser);
 
   // Kiểm tra cán bộ đã được phân công chưa
   const tvgsAssignee = paymentDoc.assignedTvgs?.assignee || (paymentDoc.assignedTvgs?.uid ? paymentDoc.assignedTvgs : null);

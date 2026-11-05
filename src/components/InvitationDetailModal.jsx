@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { getDocumentRevisionNumber } from '../data/projectCatalog';
 import ImagePreviewModal from './ImagePreviewModal';
+import { isSupervisorLeadOrDeputy, isInvestorLeadOrDeputy } from '../data/mockData';
 
 export default function InvitationDetailModal({
   isOpen,
@@ -682,8 +683,8 @@ export default function InvitationDetailModal({
 
                     {(() => {
                       const isSup = rec.role === 'SUPERVISOR' || rec.role === 'LEAD_SUPERVISOR';
-                      const isLeadSup = currentRole === 'LEAD_SUPERVISOR' || Boolean(currentUser?.isLead && currentRole === 'SUPERVISOR');
-                      const isLeadInv = currentRole === 'LEAD_INVESTOR' || Boolean(currentUser?.isLead && currentRole === 'INVESTOR');
+                      const isLeadSup = currentRole !== 'ADMIN' && isSupervisorLeadOrDeputy(currentUser);
+                      const isLeadInv = currentRole !== 'ADMIN' && isInvestorLeadOrDeputy(currentUser);
                       const canReassignByCreator = canModify;
                       const canReassignByLead = !isCancelled && request.status !== 'COMPLETED' && currentRole !== 'ADMIN' && ((isSup && isLeadSup) || (!isSup && isLeadInv));
                       const canReassign = canReassignByCreator || canReassignByLead;

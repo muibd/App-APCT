@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import { isIOSDevice, isStandalonePWA } from '../services/notificationService';
 
+import { isSupervisorLeadOrDeputy, isInvestorLeadOrDeputy } from '../data/mockData';
+
 export default function MobileProfileSheet({
   isOpen,
   onClose,
@@ -20,7 +22,25 @@ export default function MobileProfileSheet({
 }) {
   if (!isOpen) return null;
 
-  const getRoleDetails = (role) => {
+  const getRoleDetails = (role, user) => {
+    if (isSupervisorLeadOrDeputy(user) && role === 'SUPERVISOR') {
+      return {
+        name: 'Phó Đoàn TVGS',
+        icon: Award,
+        bg: '#f0fdf4',
+        color: '#15803d',
+        desc: 'Xem tất cả phiếu thuộc TVGS & điều chuyển cán bộ giám sát'
+      };
+    }
+    if (isInvestorLeadOrDeputy(user) && role === 'INVESTOR') {
+      return {
+        name: 'Phó Ban Quản Lý Dự Án',
+        icon: Award,
+        bg: '#fef3c7',
+        color: '#b45309',
+        desc: 'Xem tất cả phiếu thuộc Ban QLDA & điều chuyển cán bộ phụ trách'
+      };
+    }
     switch (role) {
       case 'ADMIN':
         return {
@@ -81,7 +101,7 @@ export default function MobileProfileSheet({
     }
   };
 
-  const currentRoleInfo = getRoleDetails(currentRole);
+  const currentRoleInfo = getRoleDetails(currentRole, currentUser);
   const CurrentIcon = currentRoleInfo.icon;
 
   return (
@@ -202,7 +222,7 @@ export default function MobileProfileSheet({
 
             <div className="sheet-users-list">
               {users.map((u) => {
-                const info = getRoleDetails(u.role);
+                const info = getRoleDetails(u.role, u);
                 const isCurrent = u.uid === currentUser?.uid;
                 const RoleIcon = info.icon;
 
