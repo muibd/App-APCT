@@ -29,7 +29,7 @@ import PushGuideModal from './components/PushGuideModal';
 import ConfirmDialogModal from './components/ConfirmDialogModal';
 import StandardsManagementView from './components/StandardsManagementView';
 import ProjectManagementView from './components/ProjectManagementView';
-import ShopDocumentsView from './components/ShopDocumentsView';
+import ShopDocumentsView, { getDocHierarchyInfo } from './components/ShopDocumentsView';
 import CreateShopDocumentModal from './components/CreateShopDocumentModal';
 import ShopDocumentDetailModal from './components/ShopDocumentDetailModal';
 import PaymentDocumentsView from './components/PaymentDocumentsView';
@@ -107,6 +107,7 @@ import {
   seedOfficialUsersToCloud,
   clearAllCloudInspectionData,
   subscribeToDailyLogs,
+  getDailyLogsOnce,
   saveDailyLog,
   updateDailyLog,
   deleteDailyLog,
@@ -3481,6 +3482,10 @@ export default function App() {
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [reqSelectedDate, setReqSelectedDate] = useState('');
+  const [reqSelectedProject, setReqSelectedProject] = useState('ALL');
+  const [reqSelectedPackage, setReqSelectedPackage] = useState('ALL');
+  const [reqSelectedItem, setReqSelectedItem] = useState('ALL');
   const [activeTab, setActiveTab] = useState('REQUESTS'); // 'REQUESTS' | 'INVITATIONS' | 'REPORTS' | 'ADMIN_USERS' | 'ADMIN_STANDARDS'
 
   // Modals state
@@ -4057,6 +4062,35 @@ export default function App() {
     setIsDailyLogDetailModalOpen(true);
   };
 
+  const handleRefreshDailyLogs = async () => {
+    try {
+      const freshLogs = await getDailyLogsOnce();
+      if (Array.isArray(freshLogs) && freshLogs.length > 0) {
+        setDailyLogs(freshLogs);
+        safeSaveLocalStorage(DAILY_LOGS_STORAGE_KEY, freshLogs);
+        if (showAlert) {
+          showAlert({
+            type: 'success',
+            title: 'Đồng Bộ Thành Công',
+            message: `Đã cập nhật ${freshLogs.length} nhật ký thi công mới nhất từ Cloud!`,
+            confirmText: 'Đóng'
+          });
+        }
+      } else {
+        if (showAlert) {
+          showAlert({
+            type: 'info',
+            title: 'Đồng Bộ Hoàn Tất',
+            message: 'Đã kiểm tra Cloud. Hiện tại chưa có bản ghi nhật ký mới.',
+            confirmText: 'Đóng'
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('Lỗi refresh daily logs:', e);
+    }
+  };
+
   // ============================================================================
   // HANDLERS CHO BIÊN BẢN NGHIỆM THU HOÀN THÀNH (COMPLETION INSPECTION REPORTS)
   // ============================================================================
@@ -4442,6 +4476,10 @@ export default function App() {
 
     // Nếu đã tìm thấy report hiện có -> Luôn luôn mở report đó, TUYỆT ĐỐI không khởi tạo đè lên làm mất dữ liệu!
     if (rep) {
+      const isCompleted = rep.status === 'COMPLETED' || 
+        (Boolean(rep.attendees?.supervisor?.signed) && Boolean(rep.attendees?.investor?.signed));
+      const isWaitingInv = !isCompleted && (targetReq?.status === 'WAITING_INVESTOR' || rep.status === 'WAITING_INVESTOR');
+
       // ĐỒNG BỘ CÁN BỘ ĐƯỢC CHỈ ĐỊNH TỪ PHIẾU YÊU CẦU:
       if (targetReq?.assignedRecipients && targetReq.assignedRecipients.length > 0) {
         const assignedSup = targetReq.assignedRecipients.find(r => r.role === 'SUPERVISOR' || r.role === 'LEAD_SUPERVISOR');
@@ -4471,8 +4509,6 @@ export default function App() {
           });
           saveInspectionRequest({ ...targetReq, contractorCompany: effectiveContCompany }).catch(console.warn);
         }
-
-        const isWaitingInv = !isCompleted && (targetReq.status === 'WAITING_INVESTOR' || rep.status === 'WAITING_INVESTOR');
 
         rep = {
           ...rep,
@@ -4528,8 +4564,6 @@ export default function App() {
       }
 
       // ĐỒNG BỘ TRẠNG THÁI KHẮC PHỤC:
-      const isCompleted = rep.status === 'COMPLETED' || 
-        (Boolean(rep.attendees?.supervisor?.signed) && Boolean(rep.attendees?.investor?.signed));
       if (!isCompleted) {
         if (rep.status === 'RECTIFIED' || targetReq?.status === 'RECTIFIED') {
           const actualPhotos = (Array.isArray(rep.rectification?.photos) && rep.rectification.photos.length > 0)
@@ -4558,7 +4592,6 @@ export default function App() {
         }
       }
 
-      const isWaitingInv = !isCompleted && (targetReq?.status === 'WAITING_INVESTOR' || rep.status === 'WAITING_INVESTOR');
       if (isWaitingInv && !rep.attendees?.supervisor?.signed) {
         rep = {
           ...rep,
@@ -4575,6 +4608,7 @@ export default function App() {
 
       setSelectedReport(rep);
       setSelectedReportRequest(targetReq || null);
+      setInitialOpenRectify(false);
       setReportInitialTab(defaultTab);
       return;
     }
@@ -4691,12 +4725,34 @@ export default function App() {
       })(),
       standardsApplied: appliedStandards,
       qualityAssessment: { matchDesign: true, matchStandards: true, matchTechnical: true, otherOpinions: 'Không' },
-      conclusion: { isAccepted: true, repairRequired: 'Không có', otherRequirements: 'Không có' },
-      status: targetReq.status === 'COMPLETED' ? 'COMPLETED' : (targetReq.status === 'WAITING_INVESTOR' ? 'WAITING_INVESTOR' : 'PENDING_APPROVAL'),
-      defectPhotos: [],
+      conclusion: { 
+        isAccepted: targetReq.status !== 'HAS_REJECTIONS', 
+        rejectionReason: targetReq.rejectionNotes || '',
+        repairRequired: targetReq.rejectionNotes || 'Không có', 
+        otherRequirements: 'Không có' 
+      },
+      status: targetReq.status === 'COMPLETED' 
+        ? 'COMPLETED' 
+        : (targetReq.status === 'WAITING_INVESTOR' 
+          ? 'WAITING_INVESTOR' 
+          : (targetReq.status === 'HAS_REJECTIONS' 
+            ? 'REJECTED' 
+            : (targetReq.status === 'RECTIFIED' ? 'RECTIFIED' : 'PENDING_APPROVAL'))),
+      defectPhotos: targetReq.defectPhotos || [],
       evidencePhotos: targetReq.evidencePhotos || [],
-      rectification: null,
-      createdAt: new Date().toISOString(),
+      rectification: targetReq.rectificationNotes ? {
+        description: targetReq.rectificationNotes,
+        photos: targetReq.rectificationPhotos || [],
+        suggestedTime: '16h30 ngày hôm nay',
+        submittedBy: {
+          name: targetReq.createdByName || 'KS. Lê Văn Kỹ Thuật',
+          role: 'CONTRACTOR',
+          roleTitle: 'Kỹ Thuật Đơn Vị Thi Công',
+          company: resolveCleanContractorCompany(targetReq.contractorCompany, targetReq.createdByName),
+          timestamp: targetReq.updatedAt || new Date().toISOString()
+        }
+      } : null,
+      createdAt: targetReq.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
 
@@ -4730,6 +4786,7 @@ export default function App() {
 
     setSelectedReport(newReport);
     setSelectedReportRequest(updatedReq);
+    setInitialOpenRectify(false);
     setReportInitialTab(defaultTab);
   };
 
@@ -6142,23 +6199,153 @@ export default function App() {
     });
   }, [reports, requests, currentUser, users]);
 
-  const filteredRequests = accessibleRequests.filter(req => {
-    if (!req) return false;
-    const q = (searchQuery || '').toLowerCase().trim();
-    const task = String(req.taskContent || req.itemName || req.inspectionObject || '').toLowerCase();
-    const num = String(req.requestNumber || req.referenceDocNumber || '').toLowerCase();
-    const building = String(req.buildingName || req.projectInfo?.buildingName || '').toLowerCase();
+  // Danh sách Công trình cho Phiếu yêu cầu (Level 1)
+  const reqProjectOptions = useMemo(() => {
+    const list = [];
+    (projectsList || []).forEach(p => {
+      const code = p.code || p.id;
+      const name = p.name || p.projectName || `Công trình ${code}`;
+      if (!list.some(x => x.name === name)) {
+        list.push({ code, name, id: p.id });
+      }
+    });
+    (accessibleRequests || []).forEach(r => {
+      const { projectName } = getDocHierarchyInfo(r);
+      if (projectName && !list.some(x => x.name === projectName)) {
+        list.push({ code: r.projectCode || projectName, name: projectName, id: projectName });
+      }
+    });
+    return list;
+  }, [projectsList, accessibleRequests]);
 
-    const matchesSearch = !q || task.includes(q) || num.includes(q) || building.includes(q);
+  // Danh sách Gói thầu cho Phiếu yêu cầu (Level 2)
+  const reqPackageOptions = useMemo(() => {
+    const list = [];
+    (projectsList || []).forEach(p => {
+      const projCode = p.code || p.id;
+      const projName = p.name || p.projectName;
+      if (reqSelectedProject !== 'ALL' && reqSelectedProject !== projCode && reqSelectedProject !== projName && reqSelectedProject !== p.id) {
+        return;
+      }
+      (p.contractors || []).forEach(c => {
+        (c.packages || []).forEach(pkg => {
+          if (!list.some(x => x.name === pkg.name)) {
+            list.push({ id: pkg.id, name: pkg.name });
+          }
+        });
+      });
+    });
+    (accessibleRequests || []).forEach(r => {
+      const { projectName, packageName } = getDocHierarchyInfo(r);
+      if (packageName && !list.some(x => x.name === packageName)) {
+        if (reqSelectedProject === 'ALL' || reqSelectedProject === projectName || (projectsList || []).some(p => (p.code === reqSelectedProject || p.id === reqSelectedProject) && p.name === projectName)) {
+          list.push({ id: packageName, name: packageName });
+        }
+      }
+    });
+    return list;
+  }, [projectsList, accessibleRequests, reqSelectedProject]);
 
-    let matchesStatus = true;
-    if (statusFilter === 'SENT') matchesStatus = req.status === 'SENT' || !req.status;
-    if (statusFilter === 'HAS_REJECTIONS') matchesStatus = req.status === 'HAS_REJECTIONS';
-    if (statusFilter === 'RECTIFIED') matchesStatus = req.status === 'RECTIFIED';
-    if (statusFilter === 'COMPLETED') matchesStatus = req.status === 'COMPLETED';
+  // Danh sách Hạng mục / Công tác cho Phiếu yêu cầu (Level 3)
+  const reqItemOptions = useMemo(() => {
+    const list = [];
+    (projectsList || []).forEach(p => {
+      const projCode = p.code || p.id;
+      const projName = p.name || p.projectName;
+      if (reqSelectedProject !== 'ALL' && reqSelectedProject !== projCode && reqSelectedProject !== projName && reqSelectedProject !== p.id) {
+        return;
+      }
+      (p.contractors || []).forEach(c => {
+        (c.packages || []).forEach(pkg => {
+          if (reqSelectedPackage !== 'ALL' && pkg.id !== reqSelectedPackage && pkg.name !== reqSelectedPackage) {
+            return;
+          }
+          (pkg.tasks || []).forEach(t => {
+            const taskName = typeof t === 'string' ? t : (t.name || t.taskName);
+            if (taskName && !list.includes(taskName)) {
+              list.push(taskName);
+            }
+          });
+        });
+      });
+    });
+    (accessibleRequests || []).forEach(r => {
+      const { projectName, packageName, itemName } = getDocHierarchyInfo(r);
+      if (itemName && !list.includes(itemName)) {
+        const matchProj = reqSelectedProject === 'ALL' || reqSelectedProject === projectName || (projectsList || []).some(p => (p.code === reqSelectedProject || p.id === reqSelectedProject) && p.name === projectName);
+        const matchPkg = reqSelectedPackage === 'ALL' || reqSelectedPackage === packageName;
+        if (matchProj && matchPkg) {
+          list.push(itemName);
+        }
+      }
+    });
+    return list;
+  }, [projectsList, accessibleRequests, reqSelectedProject, reqSelectedPackage]);
 
-    return matchesSearch && matchesStatus;
-  });
+  const filteredRequests = useMemo(() => {
+    return accessibleRequests.filter(req => {
+      if (!req) return false;
+      const { projectName: docProjName, packageName: docPkgName, itemName: docItemName } = getDocHierarchyInfo(req);
+      const q = (searchQuery || '').toLowerCase().trim();
+      const task = String(req.taskContent || req.itemName || req.inspectionObject || docItemName || '').toLowerCase();
+      const num = String(req.requestNumber || req.referenceDocNumber || '').toLowerCase();
+      const building = String(req.buildingName || req.projectInfo?.buildingName || docProjName || '').toLowerCase();
+      const pkg = String(req.packageName || docPkgName || '').toLowerCase();
+
+      // 1. Tìm kiếm theo từ khóa
+      const matchesSearch = !q || task.includes(q) || num.includes(q) || building.includes(q) || pkg.includes(q);
+      if (!matchesSearch) return false;
+
+      // 2. Lọc theo ngày
+      if (reqSelectedDate) {
+        const reqDate = (req.inspectionDate || req.scheduledDate || req.createdAt || '').slice(0, 10);
+        const dateTokens = reqSelectedDate.split('-');
+        const formattedDateSlash = `${dateTokens[2]}/${dateTokens[1]}/${dateTokens[0]}`;
+        const matchDate = reqDate.includes(reqSelectedDate) || (req.scheduledTime && req.scheduledTime.includes(formattedDateSlash));
+        if (!matchDate) return false;
+      }
+
+      // 3. Lọc theo trạng thái
+      let matchesStatus = true;
+      if (statusFilter === 'SENT') matchesStatus = req.status === 'SENT' || !req.status;
+      if (statusFilter === 'HAS_REJECTIONS') matchesStatus = req.status === 'HAS_REJECTIONS';
+      if (statusFilter === 'RECTIFIED') matchesStatus = req.status === 'RECTIFIED';
+      if (statusFilter === 'COMPLETED') matchesStatus = req.status === 'COMPLETED';
+      if (!matchesStatus) return false;
+
+      // 4. Lọc theo Công trình
+      if (reqSelectedProject !== 'ALL') {
+        const projObj = reqProjectOptions.find(p => p.code === reqSelectedProject || p.id === reqSelectedProject || p.name === reqSelectedProject);
+        const targetName = projObj?.name || reqSelectedProject;
+        const targetCode = projObj?.code || reqSelectedProject;
+        const matchProj = docProjName === targetName ||
+          req.buildingName === targetName ||
+          req.projectName === targetName ||
+          req.projectCode === targetCode ||
+          (req.buildingName && req.buildingName.toLowerCase().includes(targetName.toLowerCase()));
+        if (!matchProj) return false;
+      }
+
+      // 5. Lọc theo Gói thầu
+      if (reqSelectedPackage !== 'ALL') {
+        const matchPkg = docPkgName === reqSelectedPackage ||
+          req.packageName === reqSelectedPackage ||
+          (req.taskContent && req.taskContent.toLowerCase().includes(reqSelectedPackage.toLowerCase()));
+        if (!matchPkg) return false;
+      }
+
+      // 6. Lọc theo Hạng mục / Công tác
+      if (reqSelectedItem !== 'ALL') {
+        const matchItem = docItemName === reqSelectedItem ||
+          req.itemName === reqSelectedItem ||
+          req.taskContent === reqSelectedItem ||
+          (req.taskContent && req.taskContent.toLowerCase().includes(reqSelectedItem.toLowerCase()));
+        if (!matchItem) return false;
+      }
+
+      return true;
+    });
+  }, [accessibleRequests, searchQuery, reqSelectedDate, statusFilter, reqSelectedProject, reqSelectedPackage, reqSelectedItem, reqProjectOptions]);
 
   // Lọc thông báo phù hợp: CHỈ người được chọn + các Trưởng liên quan + Admin mới nhận được
   const userNotifications = notifications.filter(notif => 
@@ -6382,6 +6569,7 @@ export default function App() {
           ) : activeTab === 'PAYMENT_DOCUMENTS' ? (
             <PaymentDocumentsView 
               paymentDocuments={paymentDocuments}
+              projects={projectsList}
               currentUser={currentUser}
               currentRole={currentRole}
               onOpenCreateModal={() => setIsCreatePaymentModalOpen(true)}
@@ -6391,6 +6579,7 @@ export default function App() {
           ) : activeTab === 'REPORTS' ? (
             <ReportsListView 
               reports={accessibleReports}
+              projects={projectsList}
               currentRole={currentRole}
               currentUser={currentUser}
               onOpenReport={handleOpenReport}
@@ -6398,8 +6587,11 @@ export default function App() {
           ) : activeTab === 'DAILY_LOGS' ? (
             <DailyLogsListView 
               dailyLogs={dailyLogs}
+              projects={projectsList}
               currentUser={currentUser}
               currentRole={currentRole}
+              onRefreshDailyLogs={handleRefreshDailyLogs}
+              onRefreshLogs={handleRefreshDailyLogs}
               onCreateDailyLog={() => setIsCreateDailyLogModalOpen(true)}
               onCreateLog={() => setIsCreateDailyLogModalOpen(true)}
               onOpenDailyLog={handleOpenDailyLog}
@@ -6411,6 +6603,7 @@ export default function App() {
             <CompletionReportsListView 
               reports={completionReports}
               completionReports={completionReports}
+              projects={projectsList}
               currentUser={currentUser}
               currentRole={currentRole}
               onCreateReport={() => setIsCreateCompletionModalOpen(true)}
@@ -6668,52 +6861,220 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* SEARCH & FILTERS */}
-                <div className="toolbar-row">
-                  <div className="search-input-box">
-                    <Search size={18} />
-                    <input 
-                      type="text" 
-                      className="search-input"
-                      placeholder="Tìm theo nội dung công tác, số hiệu phiếu..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
+                {/* SEARCH & FILTERS (HÀNG 1 + HÀNG 2 PHÂN CẤP CÔNG TRÌNH - GÓI THẦU - CÔNG TÁC) */}
+                <div style={{
+                  marginTop: '16px',
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '12px',
+                  padding: '14px 18px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                }}>
+                  {/* HÀNG 1: TÌM KIẾM, NGÀY, TRẠNG THÁI */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px' }}>
+                    <div className="search-input-box" style={{ flex: '2 1 260px' }}>
+                      <Search size={18} />
+                      <input 
+                        type="text" 
+                        className="search-input"
+                        placeholder="Tìm theo nội dung công tác, số hiệu phiếu, công trình..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                      />
+                    </div>
+
+                    {/* LỌC THEO NGÀY */}
+                    <div style={{ flex: '1 1 160px', position: 'relative' }}>
+                      <input
+                        type="date"
+                        value={reqSelectedDate}
+                        onChange={(e) => setReqSelectedDate(e.target.value)}
+                        title="Lọc theo ngày hẹn nghiệm thu"
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          border: reqSelectedDate ? '1.5px solid #0284c7' : '1.5px solid #e2e8f0',
+                          borderRadius: '8px',
+                          fontSize: '0.86rem',
+                          color: reqSelectedDate ? '#0369a1' : '#334155',
+                          background: reqSelectedDate ? '#f0f9ff' : '#fff',
+                          fontWeight: reqSelectedDate ? 600 : 400,
+                          outline: 'none',
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+
+                    <div className="filter-pills" style={{ margin: 0, flexWrap: 'wrap' }}>
+                      <button 
+                        className={`filter-pill ${statusFilter === 'ALL' ? 'active' : ''}`}
+                        onClick={() => setStatusFilter('ALL')}
+                      >
+                        Tất cả ({stats.total})
+                      </button>
+                      <button 
+                        className={`filter-pill ${statusFilter === 'SENT' ? 'active' : ''}`}
+                        onClick={() => setStatusFilter('SENT')}
+                      >
+                        Chờ nghiệm thu ({stats.sent})
+                      </button>
+                      <button 
+                        className={`filter-pill ${statusFilter === 'HAS_REJECTIONS' ? 'active' : ''}`}
+                        style={statusFilter === 'HAS_REJECTIONS' ? { background: '#ef4444', borderColor: '#ef4444', color: '#fff' } : {}}
+                        onClick={() => setStatusFilter('HAS_REJECTIONS')}
+                      >
+                        ⚠️ Chưa đạt ({stats.rejected})
+                      </button>
+                      <button 
+                        className={`filter-pill ${statusFilter === 'RECTIFIED' ? 'active' : ''}`}
+                        style={statusFilter === 'RECTIFIED' ? { background: '#7c3aed', borderColor: '#7c3aed', color: '#fff' } : {}}
+                        onClick={() => setStatusFilter('RECTIFIED')}
+                      >
+                        🔄 Đã sửa ({stats.rectified})
+                      </button>
+                      <button 
+                        className={`filter-pill ${statusFilter === 'COMPLETED' ? 'active' : ''}`}
+                        onClick={() => setStatusFilter('COMPLETED')}
+                      >
+                        Đã hoàn thành ({stats.completed})
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="filter-pills">
-                    <button 
-                      className={`filter-pill ${statusFilter === 'ALL' ? 'active' : ''}`}
-                      onClick={() => setStatusFilter('ALL')}
-                    >
-                      Tất cả ({stats.total})
-                    </button>
-                    <button 
-                      className={`filter-pill ${statusFilter === 'SENT' ? 'active' : ''}`}
-                      onClick={() => setStatusFilter('SENT')}
-                    >
-                      Chờ nghiệm thu ({stats.sent})
-                    </button>
-                    <button 
-                      className={`filter-pill ${statusFilter === 'HAS_REJECTIONS' ? 'active' : ''}`}
-                      style={statusFilter === 'HAS_REJECTIONS' ? { background: '#ef4444', borderColor: '#ef4444', color: '#fff' } : {}}
-                      onClick={() => setStatusFilter('HAS_REJECTIONS')}
-                    >
-                      ⚠️ Chưa đạt ({stats.rejected})
-                    </button>
-                    <button 
-                      className={`filter-pill ${statusFilter === 'RECTIFIED' ? 'active' : ''}`}
-                      style={statusFilter === 'RECTIFIED' ? { background: '#7c3aed', borderColor: '#7c3aed', color: '#fff' } : {}}
-                      onClick={() => setStatusFilter('RECTIFIED')}
-                    >
-                      🔄 Đã sửa ({stats.rectified})
-                    </button>
-                    <button 
-                      className={`filter-pill ${statusFilter === 'COMPLETED' ? 'active' : ''}`}
-                      onClick={() => setStatusFilter('COMPLETED')}
-                    >
-                      Đã hoàn thành ({stats.completed})
-                    </button>
+                  {/* HÀNG 2: PHÂN CẤP CÔNG TRÌNH - GÓI THẦU - HẠNG MỤC / CÔNG TÁC */}
+                  <div style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                    gap: '12px',
+                    paddingTop: '10px',
+                    borderTop: '1px dashed #e2e8f0'
+                  }}>
+                    {/* LỌC THEO CÔNG TRÌNH */}
+                    <div style={{ flex: '1 1 200px' }}>
+                      <select
+                        value={reqSelectedProject}
+                        onChange={(e) => {
+                          setReqSelectedProject(e.target.value);
+                          setReqSelectedPackage('ALL');
+                          setReqSelectedItem('ALL');
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '9px 12px',
+                          border: reqSelectedProject !== 'ALL' ? '1.5px solid #059669' : '1.5px solid #cbd5e1',
+                          borderRadius: '8px',
+                          fontSize: '0.86rem',
+                          fontWeight: reqSelectedProject !== 'ALL' ? 700 : 500,
+                          color: reqSelectedProject !== 'ALL' ? '#047857' : '#334155',
+                          background: reqSelectedProject !== 'ALL' ? '#f0fdf4' : '#fff',
+                          outline: 'none',
+                          cursor: 'pointer',
+                          boxSizing: 'border-box'
+                        }}
+                      >
+                        <option value="ALL">🏢 Tất cả công trình</option>
+                        {reqProjectOptions.map(p => (
+                          <option key={p.id || p.code} value={p.name}>
+                            🏢 {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* LỌC THEO GÓI THẦU */}
+                    <div style={{ flex: '1 1 220px' }}>
+                      <select
+                        value={reqSelectedPackage}
+                        onChange={(e) => {
+                          setReqSelectedPackage(e.target.value);
+                          setReqSelectedItem('ALL');
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '9px 12px',
+                          border: reqSelectedPackage !== 'ALL' ? '1.5px solid #d97706' : '1.5px solid #cbd5e1',
+                          borderRadius: '8px',
+                          fontSize: '0.86rem',
+                          fontWeight: reqSelectedPackage !== 'ALL' ? 700 : 500,
+                          color: reqSelectedPackage !== 'ALL' ? '#b45309' : '#334155',
+                          background: reqSelectedPackage !== 'ALL' ? '#fffbeb' : '#fff',
+                          outline: 'none',
+                          cursor: 'pointer',
+                          boxSizing: 'border-box'
+                        }}
+                      >
+                        <option value="ALL">📦 Tất cả gói thầu</option>
+                        {reqPackageOptions.map(pkg => (
+                          <option key={pkg.id || pkg.name} value={pkg.name}>
+                            📦 {pkg.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* LỌC THEO HẠNG MỤC CÔNG VIỆC / CÔNG TÁC */}
+                    <div style={{ flex: '1 1 200px' }}>
+                      <select
+                        value={reqSelectedItem}
+                        onChange={(e) => setReqSelectedItem(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '9px 12px',
+                          border: reqSelectedItem !== 'ALL' ? '1.5px solid #4f46e5' : '1.5px solid #cbd5e1',
+                          borderRadius: '8px',
+                          fontSize: '0.86rem',
+                          fontWeight: reqSelectedItem !== 'ALL' ? 700 : 500,
+                          color: reqSelectedItem !== 'ALL' ? '#4338ca' : '#334155',
+                          background: reqSelectedItem !== 'ALL' ? '#eef2ff' : '#fff',
+                          outline: 'none',
+                          cursor: 'pointer',
+                          boxSizing: 'border-box'
+                        }}
+                      >
+                        <option value="ALL">📑 Tất cả công tác</option>
+                        {reqItemOptions.map((item, idx) => (
+                          <option key={idx} value={item}>
+                            📑 {item}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* NÚT XÓA BỘ LỌC */}
+                    {(searchQuery || reqSelectedDate || statusFilter !== 'ALL' || reqSelectedProject !== 'ALL' || reqSelectedPackage !== 'ALL' || reqSelectedItem !== 'ALL') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchQuery('');
+                          setReqSelectedDate('');
+                          setStatusFilter('ALL');
+                          setReqSelectedProject('ALL');
+                          setReqSelectedPackage('ALL');
+                          setReqSelectedItem('ALL');
+                        }}
+                        style={{
+                          border: '1px solid #cbd5e1',
+                          background: '#f8fafc',
+                          color: '#475569',
+                          borderRadius: '8px',
+                          padding: '8px 14px',
+                          fontSize: '0.84rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <RotateCcw size={14} />
+                        <span>Xóa lọc</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -6794,7 +7155,16 @@ export default function App() {
                             : isCompleted 
                             ? '1.5px solid #a7f3d0' 
                             : '1px solid #e2e8f0',
-                          background: (isRejected || isCancelled) ? '#fffafa' : '#ffffff'
+                          background: (isRejected || isCancelled) ? '#fffafa' : '#ffffff',
+                          cursor: 'pointer'
+                        }}
+                        onClick={() => {
+                          const tab = isRejected ? 'DEFECTS' : (isRectified ? 'RECTIFIED' : 'INVITATION');
+                          if (matchingRep) {
+                            handleOpenReport(matchingRep, { initialTab: tab }, req);
+                          } else {
+                            handleOpenOrCreateReport(req.reportId || req.id, false, tab, req);
+                          }
                         }}
                       >
                         <div className="card-top-bar">
@@ -7042,7 +7412,8 @@ export default function App() {
                             <button 
                               className="btn-secondary" 
                               style={{ color: '#64748b', padding: '7px 18px', fontSize: '0.86rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 if (matchingRep) {
                                   handleOpenReport(matchingRep, { initialTab: 'INVITATION' }, req);
                                 } else {
@@ -7058,7 +7429,8 @@ export default function App() {
                               <button 
                                 className="btn-primary" 
                                 style={{ background: '#7c3aed', padding: '7px 18px', fontSize: '0.86rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   if (matchingRep) {
                                     handleOpenReport(matchingRep, { openRectify: true, initialTab: 'DEFECTS' }, req);
                                   } else {
@@ -7073,7 +7445,14 @@ export default function App() {
                               <button 
                                 className="btn-secondary" 
                                 style={{ borderColor: '#fca5a5', color: '#b91c1c', background: '#fff', padding: '7px 18px', fontSize: '0.86rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                                onClick={() => handleOpenOrCreateReport(req.reportId || req.id, false, 'DEFECTS', req)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (matchingRep) {
+                                    handleOpenReport(matchingRep, { initialTab: 'DEFECTS' }, req);
+                                  } else {
+                                    handleOpenOrCreateReport(req.reportId || req.id, false, 'DEFECTS', req);
+                                  }
+                                }}
                               >
                                 <AlertTriangle size={16} color="#dc2626" />
                                 <span>Xem</span>
@@ -7083,7 +7462,14 @@ export default function App() {
                             <button 
                               className="btn-primary" 
                               style={{ background: '#7c3aed', padding: '7px 18px', fontSize: '0.86rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                              onClick={() => handleOpenOrCreateReport(req.reportId || req.id, false, 'RECTIFIED', req)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (matchingRep) {
+                                  handleOpenReport(matchingRep, { initialTab: 'RECTIFIED' }, req);
+                                } else {
+                                  handleOpenOrCreateReport(req.reportId || req.id, false, 'RECTIFIED', req);
+                                }
+                              }}
                             >
                               <RotateCcw size={16} />
                               <span>Xem</span>
@@ -7092,7 +7478,8 @@ export default function App() {
                             <button 
                               className="btn-primary" 
                               style={{ background: '#059669', padding: '7px 20px', fontSize: '0.88rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 if (matchingRep) {
                                   handleOpenReport(matchingRep, { initialTab: 'INVITATION' }, req);
                                 } else {

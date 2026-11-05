@@ -167,7 +167,7 @@ export default function ProjectManagementView({
     const newPkg = {
       id: `pkg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       name: pkgName,
-      tasks: tasksList.length > 0 ? tasksList : ['Hạng mục công việc 1']
+      tasks: tasksList.length > 0 ? tasksList : ['Công tác 1']
     };
 
     const updatedProjects = projects.map(p => {
@@ -259,7 +259,7 @@ export default function ProjectManagementView({
     onSaveProjects(updatedProjects);
     setNewTaskInput('');
     setAddingTaskForPkgId(null);
-    if (showAlert) showAlert('success', `Đã thêm ${newTasks.length} hạng mục công việc vào gói thầu!`);
+    if (showAlert) showAlert('success', `Đã thêm ${newTasks.length} công tác vào gói thầu!`);
   };
 
   const handleStartEditTask = (pkgId, taskIdx, taskName) => {
@@ -270,7 +270,7 @@ export default function ProjectManagementView({
   const handleSaveEditTask = (pkgId, taskIdx) => {
     const trimmed = editingTaskInput.trim();
     if (!trimmed) {
-      if (showAlert) showAlert('warning', 'Tên hạng mục công việc không được rỗng!');
+      if (showAlert) showAlert('warning', 'Tên công tác không được rỗng!');
       return;
     }
 
@@ -292,11 +292,11 @@ export default function ProjectManagementView({
     onSaveProjects(updatedProjects);
     setEditingTaskKey(null);
     setEditingTaskInput('');
-    if (showAlert) showAlert('success', 'Đã cập nhật hạng mục công việc!');
+    if (showAlert) showAlert('success', 'Đã cập nhật công tác!');
   };
 
   const handleDeleteTask = (pkgId, taskIdx, taskName) => {
-    if (!window.confirm(`Xóa hạng mục công việc "${taskName}" khỏi gói thầu?`)) return;
+    if (!window.confirm(`Xóa công tác "${taskName}" khỏi gói thầu?`)) return;
 
     const updatedProjects = projects.map(p => ({
       ...p,
@@ -783,14 +783,14 @@ export default function ProjectManagementView({
                                     cursor: 'pointer'
                                   }}
                                 >
-                                  <FolderTree size={13} /> Quản lý Gói thầu & Công việc (L3 & L4) ➔
+                                  <FolderTree size={13} /> Quản lý Gói thầu & Công tác (L3 & L4) ➔
                                 </button>
                               </div>
                               <div style={{ paddingLeft: '16px', marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '0.82rem', color: '#475569' }}>
                                 {(cont.packages || []).map((pkg, pIdx) => (
                                   <div key={pkg.id || pIdx}>
                                     • <strong style={{ color: '#0369a1' }}>{pkg.name}</strong> 
-                                    <span style={{ color: '#64748b', fontSize: '0.78rem' }}> ({pkg.tasks?.length || 0} hạng mục công việc)</span>
+                                    <span style={{ color: '#64748b', fontSize: '0.78rem' }}> ({pkg.tasks?.length || 0} công tác)</span>
                                   </div>
                                 ))}
                               </div>
@@ -807,7 +807,7 @@ export default function ProjectManagementView({
         </div>
       )}
 
-      {/* SUB-TAB 2: PHÂN CẤP GÓI THẦU (LEVEL 3) & HẠNG MỤC CÔNG VIỆC (LEVEL 4) */}
+      {/* SUB-TAB 2: PHÂN CẤP GÓI THẦU (LEVEL 3) & CÔNG TÁC (LEVEL 4) */}
       {activeSubTab === 'PACKAGES_TASKS' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           
@@ -826,10 +826,10 @@ export default function ProjectManagementView({
               <div>
                 <h4 style={{ margin: 0, fontSize: '1.1rem', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <FolderTree size={20} color="#2563eb" />
-                  Quản Lý Phân Cấp: Gói Thầu (Level 3) & Hạng Mục Công Việc (Level 4)
+                  Quản Lý Phân Cấp: Gói Thầu (Level 3) & Công Tác (Level 4)
                 </h4>
                 <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: '#64748b' }}>
-                  Cấu hình các Gói thầu thi công thực tế và danh sách Hạng mục công việc trực thuộc để tự động liên kết khi Lập phiếu nghiệm thu
+                  Cấu hình các Gói thầu thi công thực tế và danh sách Công tác trực thuộc để tự động liên kết khi Lập phiếu nghiệm thu
                 </p>
               </div>
 
@@ -1016,7 +1016,7 @@ export default function ProjectManagementView({
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: '4px' }}>
-                  Danh Sách Hạng Mục Công Việc Đi Kèm Ban Đầu (Level 4) (Mỗi dòng một công việc):
+                  Danh Sách Công Tác Đi Kèm Ban Đầu (Level 4) (Mỗi dòng một công tác):
                 </label>
                 <textarea
                   className="form-textarea"
@@ -1027,7 +1027,7 @@ export default function ProjectManagementView({
                   style={{ width: '100%', padding: '8px 12px', fontSize: '0.84rem' }}
                 />
                 <span style={{ fontSize: '0.74rem', color: '#64748b' }}>
-                  💡 Bạn có thể dán danh sách công việc theo dòng, hoặc bổ sung từng công việc sau khi tạo gói thầu.
+                  💡 Bạn có thể dán danh sách công tác theo dòng, hoặc bổ sung từng công tác sau khi tạo gói thầu.
                 </span>
               </div>
 
@@ -1060,7 +1060,7 @@ export default function ProjectManagementView({
               <input
                 type="text"
                 className="form-input"
-                placeholder="Tìm công việc hoặc gói thầu..."
+                placeholder="Tìm công tác hoặc gói thầu..."
                 value={taskSearchQuery}
                 onChange={(e) => setTaskSearchQuery(e.target.value)}
                 style={{ width: '100%', padding: '6px 10px 6px 30px', fontSize: '0.82rem', borderRadius: '8px' }}
@@ -1159,7 +1159,7 @@ export default function ProjectManagementView({
                               </span>
                               <strong style={{ fontSize: '0.98rem', color: '#0f172a' }}>{pkg.name}</strong>
                               <span style={{ fontSize: '0.76rem', color: '#0369a1', background: '#f0f9ff', border: '1px solid #bae6fd', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
-                                {tasks.length} hạng mục công việc
+                                {tasks.length} công tác
                               </span>
                             </div>
                           </div>
@@ -1187,9 +1187,9 @@ export default function ProjectManagementView({
                             fontWeight: 700,
                             cursor: 'pointer'
                           }}
-                          title="Thêm công việc vào gói này"
+                          title="Thêm công tác vào gói này"
                         >
-                          <Plus size={13} /> Thêm công việc (L4)
+                          <Plus size={13} /> Thêm công tác (L4)
                         </button>
 
                         <button
@@ -1212,15 +1212,15 @@ export default function ProjectManagementView({
                       </div>
                     </div>
 
-                    {/* DANH SÁCH CÔNG VIỆC TRỰC THUỘC (LEVEL 4) */}
+                    {/* DANH SÁCH CÔNG TÁC TRỰC THUỘC (LEVEL 4) */}
                     {isExpanded && (
                       <div style={{ padding: '14px 16px', background: '#ffffff' }}>
-                        {/* FORM NHẬP THÊM CÔNG VIỆC */}
+                        {/* FORM NHẬP THÊM CÔNG TÁC */}
                         {isAddingTaskThisPkg && (
                           <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: '8px', padding: '10px 12px', marginBottom: '12px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                               <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#166534' }}>
-                                Nhập Tên Hạng Mục Công Việc Mới (Level 4):
+                                Nhập Tên Công Tác Mới (Level 4):
                               </label>
                               <button
                                 type="button"
@@ -1265,14 +1265,14 @@ export default function ProjectManagementView({
                               </button>
                             </div>
                             <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '4px', display: 'block' }}>
-                              💡 Có thể nhập nhiều công việc cùng lúc, phân cách bởi dấu phẩy hoặc xuống dòng.
+                              💡 Có thể nhập nhiều công tác cùng lúc, phân cách bởi dấu phẩy hoặc xuống dòng.
                             </span>
                           </div>
                         )}
 
                         {filteredTasks.length === 0 ? (
                           <div style={{ textAlign: 'center', padding: '16px', color: '#94a3b8', fontSize: '0.82rem' }}>
-                            Chưa có hạng mục công việc nào. Bấm <strong>"+ Thêm công việc"</strong> ở trên để thêm.
+                            Chưa có công tác nào. Bấm <strong>"+ Thêm công tác"</strong> ở trên để thêm.
                           </div>
                         ) : (
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '8px' }}>
@@ -1342,7 +1342,7 @@ export default function ProjectManagementView({
                                           type="button"
                                           onClick={() => handleStartEditTask(pkg.id, originalIdx, taskName)}
                                           style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', padding: '3px' }}
-                                          title="Sửa tên công việc"
+                                          title="Sửa tên công tác"
                                         >
                                           <Edit3 size={13} />
                                         </button>
@@ -1350,7 +1350,7 @@ export default function ProjectManagementView({
                                           type="button"
                                           onClick={() => handleDeleteTask(pkg.id, originalIdx, taskName)}
                                           style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '3px' }}
-                                          title="Xóa công việc"
+                                          title="Xóa công tác"
                                         >
                                           <Trash2 size={13} />
                                         </button>

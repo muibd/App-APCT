@@ -2,16 +2,19 @@ import React, { useState, useMemo } from 'react';
 import {
   Search, Plus, Calendar, Filter, Clock, FileText, CheckCircle2,
   AlertTriangle, XCircle, Eye, Download, UserCheck, ShieldAlert,
-  ArrowUpDown, RefreshCw, Layers, FileSpreadsheet, Paperclip, CreditCard, Trash2
+  ArrowUpDown, RefreshCw, Layers, FileSpreadsheet, Paperclip, CreditCard, Trash2,
+  RotateCcw
 } from 'lucide-react';
 import {
   getEffectivePaymentStatus,
   getPaymentStatusBadgeConfig,
   PAYMENT_STATUS
 } from '../data/paymentDocumentConstants';
+import { getDocHierarchyInfo } from './ShopDocumentsView';
 
 export default function PaymentDocumentsView({
   paymentDocuments = [],
+  projects = [],
   currentUser,
   currentRole,
   onOpenCreateModal,
@@ -23,6 +26,9 @@ export default function PaymentDocumentsView({
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('ALL'); // 'ALL' | 'SENT' | 'APPROVED' | 'REJECTED' | 'OVERDUE'
   const [selectedType, setSelectedType] = useState('ALL');
+  const [selectedProject, setSelectedProject] = useState('ALL');
+  const [selectedPackage, setSelectedPackage] = useState('ALL');
+  const [selectedItem, setSelectedItem] = useState('ALL');
 
   // Format date helper
   const formatDateDisplay = (iso) => {
@@ -193,10 +199,98 @@ export default function PaymentDocumentsView({
     };
   }, [paymentDocuments]);
 
+  // Danh sách Công trình (Level 1)
+  const projectOptions = useMemo(() => {
+    const list = [];
+    (projects || []).forEach(p => {
+      const code = p.code || p.id;
+      const name = p.name || p.projectName || `Công trình ${code}`;
+      if (!list.some(x => x.name === name)) {
+        list.push({ code, name, id: p.id });
+      }
+    });
+    // Bổ sung từ paymentDocuments nếu có
+    (paymentDocuments || []).forEach(d => {
+      const { projectName } = getDocHierarchyInfo(d);
+      if (projectName && !list.some(x => x.name === projectName)) {
+        list.push({ code: d.projectCode || projectName, name: projectName, id: projectName });
+      }
+    });
+    return list;
+  }, [projects, paymentDocuments]);
+
+  // Danh sách Gói thầu (Level 2 - phụ thuộc vào Công trình nếu có chọn)
+  const packageOptions = useMemo(() => {
+    const list = [];
+    (projects || []).forEach(p => {
+      const projCode = p.code || p.id;
+      const projName = p.name || p.projectName;
+      if (selectedProject !== 'ALL' && selectedProject !== projCode && selectedProject !== projName && selectedProject !== p.id) {
+        return;
+      }
+      (p.contractors || []).forEach(c => {
+        (c.packages || []).forEach(pkg => {
+          if (!list.some(x => x.name === pkg.name)) {
+            list.push({ id: pkg.id, name: pkg.name });
+          }
+        });
+      });
+    });
+    // Bổ sung từ paymentDocuments
+    (paymentDocuments || []).forEach(d => {
+      const { projectName, packageName } = getDocHierarchyInfo(d);
+      if (packageName && !list.some(x => x.name === packageName)) {
+        if (selectedProject === 'ALL' || selectedProject === projectName || (projects || []).some(p => (p.code === selectedProject || p.id === selectedProject) && p.name === projectName)) {
+          list.push({ id: packageName, name: packageName });
+        }
+      }
+    });
+    return list;
+  }, [projects, paymentDocuments, selectedProject]);
+
+  // Danh sách Hạng mục/Công tác (Level 3 - phụ thuộc vào Công trình & Gói thầu nếu có chọn)
+  const itemOptions = useMemo(() => {
+    const list = [];
+    (projects || []).forEach(p => {
+      const projCode = p.code || p.id;
+      const projName = p.name || p.projectName;
+      if (selectedProject !== 'ALL' && selectedProject !== projCode && selectedProject !== projName && selectedProject !== p.id) {
+        return;
+      }
+      (p.contractors || []).forEach(c => {
+        (c.packages || []).forEach(pkg => {
+          if (selectedPackage !== 'ALL' && pkg.id !== selectedPackage && pkg.name !== selectedPackage) {
+            return;
+          }
+          (pkg.tasks || []).forEach(t => {
+            const taskName = typeof t === 'string' ? t : (t.name || t.taskName);
+            if (taskName && !list.includes(taskName)) {
+              list.push(taskName);
+            }
+          });
+        });
+      });
+    });
+    // Bổ sung từ paymentDocuments
+    (paymentDocuments || []).forEach(d => {
+      const { projectName, packageName, itemName } = getDocHierarchyInfo(d);
+      if (itemName && !list.includes(itemName)) {
+        const matchProj = selectedProject === 'ALL' || selectedProject === projectName || (projects || []).some(p => (p.code === selectedProject || p.id === selectedProject) && p.name === projectName);
+        const matchPkg = selectedPackage === 'ALL' || selectedPackage === packageName;
+        if (matchProj && matchPkg) {
+          list.push(itemName);
+        }
+      }
+    });
+    return list;
+  }, [projects, paymentDocuments, selectedProject, selectedPackage]);
+
   // Lọc danh sách hồ sơ
   const filteredDocuments = useMemo(() => {
     return paymentDocuments.filter(doc => {
-      // 1. Lọc theo text search (tên hồ sơ, mã số, người tạo, loại hồ sơ)
+      const { projectName: docProjName, packageName: docPkgName, itemName: docItemName } = getDocHierarchyInfo(doc);
+
+      // 1. Lọc theo text search (tên hồ sơ, mã số, người tạo, loại hồ sơ, công trình, gói thầu, hạng mục)
       if (searchTerm.trim()) {
         const query = searchTerm.toLowerCase().trim();
         const title = (doc.title || '').toLowerCase();
@@ -205,13 +299,19 @@ export default function PaymentDocumentsView({
         const creator = (doc.createdByName || '').toLowerCase();
         const tvgs = (doc.assignedTvgs?.assignee?.fullName || doc.assignedTvgs?.fullName || '').toLowerCase();
         const investor = (doc.assignedInvestor?.assignee?.fullName || doc.assignedInvestor?.fullName || '').toLowerCase();
+        const pName = docProjName.toLowerCase();
+        const pkgName = docPkgName.toLowerCase();
+        const iName = docItemName.toLowerCase();
 
         const match = title.includes(query) ||
           docCode.includes(query) ||
           typeName.includes(query) ||
           creator.includes(query) ||
           tvgs.includes(query) ||
-          investor.includes(query);
+          investor.includes(query) ||
+          pName.includes(query) ||
+          pkgName.includes(query) ||
+          iName.includes(query);
 
         if (!match) return false;
       }
@@ -243,9 +343,43 @@ export default function PaymentDocumentsView({
         if (doc.typeCode !== selectedType) return false;
       }
 
+      // 5. Lọc theo Công trình
+      if (selectedProject !== 'ALL') {
+        const projObj = projectOptions.find(p => p.code === selectedProject || p.id === selectedProject || p.name === selectedProject);
+        const targetName = projObj?.name || selectedProject;
+        const targetCode = projObj?.code || selectedProject;
+
+        const match = docProjName === targetName ||
+          doc.projectId === selectedProject ||
+          doc.projectCode === targetCode ||
+          (doc.projectName && doc.projectName.toLowerCase().includes(targetName.toLowerCase()));
+
+        if (!match) return false;
+      }
+
+      // 6. Lọc theo Gói thầu
+      if (selectedPackage !== 'ALL') {
+        const match = docPkgName === selectedPackage ||
+          doc.packageId === selectedPackage ||
+          (doc.packageName && doc.packageName.toLowerCase().includes(selectedPackage.toLowerCase()));
+
+        if (!match) return false;
+      }
+
+      // 7. Lọc theo Hạng mục / Công tác
+      if (selectedItem !== 'ALL') {
+        const match = docItemName === selectedItem ||
+          doc.itemId === selectedItem ||
+          doc.itemName === selectedItem ||
+          doc.taskName === selectedItem ||
+          (doc.title && doc.title.toLowerCase().includes(selectedItem.toLowerCase()));
+
+        if (!match) return false;
+      }
+
       return true;
     });
-  }, [paymentDocuments, searchTerm, selectedDate, selectedStatus, selectedType]);
+  }, [paymentDocuments, searchTerm, selectedDate, selectedStatus, selectedType, selectedProject, selectedPackage, selectedItem, projectOptions]);
 
   return (
     <div className="payment-documents-view" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -424,112 +558,229 @@ export default function PaymentDocumentsView({
 
       </div>
 
-      {/* 2. THANH TÌM KIẾM & BỘ LỌC */}
+      {/* 2. THANH TÌM KIẾM & BỘ LỌC (HÀNG 1 + HÀNG 2 PHÂN CẤP CÔNG TRÌNH - GÓI THẦU - CÔNG TÁC) */}
       <div style={{
         background: '#ffffff',
         border: '1px solid #e2e8f0',
         borderRadius: '10px',
         padding: '14px 18px',
         display: 'flex',
-        flexWrap: 'wrap',
-        alignItems: 'center',
+        flexDirection: 'column',
         gap: '12px',
         boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
       }}>
-        
-        {/* TÌM KIẾM THEO TÊN HỒ SƠ / MÃ */}
-        <div style={{ flex: '2 1 240px', position: 'relative' }}>
-          <Search size={17} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-          <input
-            type="text"
-            placeholder="Tìm theo tên hồ sơ, mã số, người lập, cán bộ..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '9px 12px 9px 36px',
-              border: '1.5px solid #e2e8f0',
-              borderRadius: '8px',
-              fontSize: '0.86rem',
-              outline: 'none',
-              boxSizing: 'border-box'
-            }}
-          />
+        {/* HÀNG 1: TÌM KIẾM, NGÀY, TRẠNG THÁI */}
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: '12px'
+        }}>
+          {/* TÌM KIẾM THEO TÊN HỒ SƠ / MÃ */}
+          <div style={{ flex: '2 1 240px', position: 'relative' }}>
+            <Search size={17} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+            <input
+              type="text"
+              placeholder="Tìm theo tên hồ sơ, mã số, người lập, cán bộ, công trình..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '9px 12px 9px 36px',
+                border: '1.5px solid #e2e8f0',
+                borderRadius: '8px',
+                fontSize: '0.86rem',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+
+          {/* LỌC THEO NGÀY TẠO */}
+          <div style={{ flex: '1 1 160px', position: 'relative' }}>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              title="Lọc theo ngày tạo hồ sơ"
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: selectedDate ? '1.5px solid #0284c7' : '1.5px solid #e2e8f0',
+                borderRadius: '8px',
+                fontSize: '0.86rem',
+                color: selectedDate ? '#0369a1' : '#334155',
+                background: selectedDate ? '#f0f9ff' : '#fff',
+                fontWeight: selectedDate ? 600 : 400,
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+
+          {/* LỌC THEO TRẠNG THÁI */}
+          <div style={{ flex: '1 1 180px' }}>
+            <select
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                border: selectedStatus !== 'ALL' ? '1.5px solid #0284c7' : '1.5px solid #e2e8f0',
+                borderRadius: '8px',
+                fontSize: '0.86rem',
+                color: selectedStatus !== 'ALL' ? '#0369a1' : '#334155',
+                background: selectedStatus !== 'ALL' ? '#f0f9ff' : '#fff',
+                fontWeight: selectedStatus !== 'ALL' ? 600 : 400,
+                outline: 'none',
+                cursor: 'pointer',
+                boxSizing: 'border-box'
+              }}
+            >
+              <option value="ALL">Tất cả trạng thái</option>
+              <option value={PAYMENT_STATUS.WAITING_ASSIGNMENT}>Chờ phân công (24h)</option>
+              <option value={PAYMENT_STATUS.SENT}>Đang thẩm định</option>
+              <option value={PAYMENT_STATUS.APPROVED}>Đã xác nhận</option>
+              <option value={PAYMENT_STATUS.REJECTED}>Cần sửa</option>
+              <option value={PAYMENT_STATUS.OVERDUE}>Tất cả hồ sơ Chậm</option>
+              <option value={PAYMENT_STATUS.OVERDUE_TVGS}>⚠️ TVGS Chậm</option>
+              <option value={PAYMENT_STATUS.OVERDUE_INVESTOR}>⚠️ Ban QLDA Chậm</option>
+            </select>
+          </div>
         </div>
 
-        {/* LỌC THEO NGÀY TẠO */}
-        <div style={{ flex: '1 1 160px', position: 'relative' }}>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            title="Lọc theo ngày tạo hồ sơ"
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              border: '1.5px solid #e2e8f0',
-              borderRadius: '8px',
-              fontSize: '0.86rem',
-              color: '#334155',
-              outline: 'none',
-              boxSizing: 'border-box'
-            }}
-          />
+        {/* HÀNG 2: PHÂN CẤP CÔNG TRÌNH - GÓI THẦU - HẠNG MỤC / CÔNG TÁC */}
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: '12px',
+          paddingTop: '10px',
+          borderTop: '1px dashed #e2e8f0'
+        }}>
+          {/* LỌC THEO CÔNG TRÌNH */}
+          <div style={{ flex: '1 1 200px' }}>
+            <select
+              value={selectedProject}
+              onChange={(e) => {
+                setSelectedProject(e.target.value);
+                setSelectedPackage('ALL');
+                setSelectedItem('ALL');
+              }}
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                border: selectedProject !== 'ALL' ? '1.5px solid #059669' : '1.5px solid #cbd5e1',
+                borderRadius: '8px',
+                fontSize: '0.86rem',
+                fontWeight: selectedProject !== 'ALL' ? 700 : 500,
+                color: selectedProject !== 'ALL' ? '#047857' : '#334155',
+                background: selectedProject !== 'ALL' ? '#f0fdf4' : '#fff',
+                outline: 'none',
+                cursor: 'pointer',
+                boxSizing: 'border-box'
+              }}
+            >
+              <option value="ALL">🏢 Tất cả công trình</option>
+              {projectOptions.map(p => (
+                <option key={p.id || p.code} value={p.name}>
+                  🏢 {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* LỌC THEO GÓI THẦU */}
+          <div style={{ flex: '1 1 220px' }}>
+            <select
+              value={selectedPackage}
+              onChange={(e) => {
+                setSelectedPackage(e.target.value);
+                setSelectedItem('ALL');
+              }}
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                border: selectedPackage !== 'ALL' ? '1.5px solid #d97706' : '1.5px solid #cbd5e1',
+                borderRadius: '8px',
+                fontSize: '0.86rem',
+                fontWeight: selectedPackage !== 'ALL' ? 700 : 500,
+                color: selectedPackage !== 'ALL' ? '#b45309' : '#334155',
+                background: selectedPackage !== 'ALL' ? '#fffbeb' : '#fff',
+                outline: 'none',
+                cursor: 'pointer',
+                boxSizing: 'border-box'
+              }}
+            >
+              <option value="ALL">📦 Tất cả gói thầu</option>
+              {packageOptions.map(pkg => (
+                <option key={pkg.id || pkg.name} value={pkg.name}>
+                  📦 {pkg.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* LỌC THEO HẠNG MỤC CÔNG VIỆC / CÔNG TÁC */}
+          <div style={{ flex: '1 1 200px' }}>
+            <select
+              value={selectedItem}
+              onChange={(e) => setSelectedItem(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                border: selectedItem !== 'ALL' ? '1.5px solid #4f46e5' : '1.5px solid #cbd5e1',
+                borderRadius: '8px',
+                fontSize: '0.86rem',
+                fontWeight: selectedItem !== 'ALL' ? 700 : 500,
+                color: selectedItem !== 'ALL' ? '#4338ca' : '#334155',
+                background: selectedItem !== 'ALL' ? '#eef2ff' : '#fff',
+                outline: 'none',
+                cursor: 'pointer',
+                boxSizing: 'border-box'
+              }}
+            >
+              <option value="ALL">📑 Tất cả công tác</option>
+              {itemOptions.map((item, idx) => (
+                <option key={idx} value={item}>
+                  📑 {item}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* NÚT XÓA BỘ LỌC */}
+          {(searchTerm || selectedDate || selectedStatus !== 'ALL' || selectedProject !== 'ALL' || selectedPackage !== 'ALL' || selectedItem !== 'ALL') && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchTerm('');
+                setSelectedDate('');
+                setSelectedStatus('ALL');
+                setSelectedProject('ALL');
+                setSelectedPackage('ALL');
+                setSelectedItem('ALL');
+              }}
+              style={{
+                border: '1px solid #cbd5e1',
+                background: '#f8fafc',
+                color: '#475569',
+                borderRadius: '8px',
+                padding: '8px 14px',
+                fontSize: '0.84rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <RotateCcw size={14} />
+              <span>Xóa lọc</span>
+            </button>
+          )}
         </div>
-
-        {/* LỌC THEO TRẠNG THÁI */}
-        <div style={{ flex: '1 1 180px' }}>
-          <select
-            value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '9px 12px',
-              border: '1.5px solid #e2e8f0',
-              borderRadius: '8px',
-              fontSize: '0.86rem',
-              color: '#334155',
-              background: '#fff',
-              outline: 'none',
-              cursor: 'pointer',
-              boxSizing: 'border-box'
-            }}
-          >
-            <option value="ALL">Tất cả trạng thái</option>
-            <option value={PAYMENT_STATUS.WAITING_ASSIGNMENT}>Chờ phân công (24h)</option>
-            <option value={PAYMENT_STATUS.SENT}>Đang thẩm định</option>
-            <option value={PAYMENT_STATUS.APPROVED}>Đã xác nhận</option>
-            <option value={PAYMENT_STATUS.REJECTED}>Cần sửa</option>
-            <option value={PAYMENT_STATUS.OVERDUE}>Tất cả hồ sơ Chậm</option>
-            <option value={PAYMENT_STATUS.OVERDUE_TVGS}>⚠️ TVGS Chậm</option>
-            <option value={PAYMENT_STATUS.OVERDUE_INVESTOR}>⚠️ Ban QLDA Chậm</option>
-          </select>
-        </div>
-
-        {/* NÚT XÓA BỘ LỌC */}
-        {(searchTerm || selectedDate || selectedStatus !== 'ALL') && (
-          <button
-            type="button"
-            onClick={() => {
-              setSearchTerm('');
-              setSelectedDate('');
-              setSelectedStatus('ALL');
-            }}
-            style={{
-              border: 'none',
-              background: '#f1f5f9',
-              color: '#475569',
-              borderRadius: '6px',
-              padding: '8px 12px',
-              fontSize: '0.8rem',
-              fontWeight: 600,
-              cursor: 'pointer'
-            }}
-          >
-            Xóa lọc
-          </button>
-        )}
-
       </div>
 
       {/* 3. BẢNG HIỂN THỊ DỮ LIỆU */}
@@ -568,6 +819,7 @@ export default function PaymentDocumentsView({
                   const effectiveStatus = getEffectivePaymentStatus(doc);
                   const badgeConfig = getPaymentStatusBadgeConfig(effectiveStatus);
                   const slaInfo = getSlaRemainingInfo(doc);
+                  const { projectName: docProjName, packageName: docPkgName, itemName: docItemName } = getDocHierarchyInfo(doc);
 
                   const tvgsUser = doc.assignedTvgs?.assignee || (doc.assignedTvgs?.uid ? doc.assignedTvgs : null);
                   const isTvgsAssigned = Boolean(tvgsUser?.uid);
@@ -618,6 +870,27 @@ export default function PaymentDocumentsView({
                                 </span>
                               )}
                             </div>
+
+                            {/* BADGES PHÂN CẤP CÔNG TRÌNH / GÓI THẦU / HẠNG MỤC */}
+                            {(docProjName || docPkgName || docItemName) && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '4px', flexWrap: 'wrap' }}>
+                                {docProjName && (
+                                  <span style={{ fontSize: '0.7rem', color: '#0f766e', background: '#f0fdfa', border: '1px solid #ccfbf1', padding: '1px 5px', borderRadius: '4px', fontWeight: 600 }}>
+                                    🏢 {docProjName}
+                                  </span>
+                                )}
+                                {docPkgName && (
+                                  <span style={{ fontSize: '0.7rem', color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', padding: '1px 5px', borderRadius: '4px', fontWeight: 600 }}>
+                                    📦 {docPkgName}
+                                  </span>
+                                )}
+                                {docItemName && (
+                                  <span style={{ fontSize: '0.7rem', color: '#4338ca', background: '#eef2ff', border: '1px solid #c7d2fe', padding: '1px 5px', borderRadius: '4px', fontWeight: 600 }}>
+                                    📑 {docItemName}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>

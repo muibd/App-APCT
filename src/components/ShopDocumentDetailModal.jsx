@@ -667,8 +667,8 @@ export default function ShopDocumentDetailModal({
               <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#0f172a' }}>{docHierarchy.packageName || 'Chung cho dự án'}</div>
             </div>
             <div>
-              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>📑 Hạng Mục Công Việc</div>
-              <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#0f172a' }}>{docHierarchy.itemName || 'Toàn bộ hạng mục'}</div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>📑 Công Tác</div>
+              <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#0f172a' }}>{docHierarchy.itemName || 'Toàn bộ công tác'}</div>
             </div>
             <div>
               <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Loại Hồ Sơ</div>

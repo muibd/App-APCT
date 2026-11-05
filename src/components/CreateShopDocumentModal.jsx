@@ -634,10 +634,10 @@ export default function CreateShopDocumentModal({
                 )}
               </div>
 
-              {/* 3. HẠNG MỤC */}
+              {/* 3. CÔNG TÁC */}
               <div>
                 <label style={{ display: 'block', fontWeight: 600, fontSize: '0.82rem', color: '#1e293b', marginBottom: '5px' }}>
-                  📑 Hạng mục công việc <span style={{ color: '#dc2626' }}>*</span>
+                  📑 Công tác <span style={{ color: '#dc2626' }}>*</span>
                 </label>
                 <select
                   value={selectedTaskName}

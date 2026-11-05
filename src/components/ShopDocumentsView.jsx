@@ -14,13 +14,13 @@ import {
   getShopInvestorOverdueInfo
 } from '../data/shopDocumentConstants';
 
-// Hàm trích xuất / suy luận Công trình, Gói thầu, Hạng mục của hồ sơ shop
+// Hàm trích xuất / suy luận Công trình, Gói thầu, Hạng mục/Công tác của hồ sơ, biên bản, nhật ký
 export const getDocHierarchyInfo = (doc) => {
   if (!doc) return { projectName: '', packageName: '', itemName: '' };
-  const content = `${(doc.title || '').toLowerCase()} ${(doc.notes || '').toLowerCase()}`;
+  const content = `${(doc.title || '')} ${(doc.notes || '')} ${(doc.inspectionObject || '')} ${(doc.taskContent || '')} ${(doc.workContent || '')} ${(doc.buildingName || '')} ${(doc.itemName || '')}`.toLowerCase();
 
   // 1. Tên công trình
-  let projectName = doc.projectName || '';
+  let projectName = doc.projectName || doc.buildingName || doc.projectInfo?.buildingName || doc.projectInfo?.projectName || '';
   if (!projectName) {
     if (content.includes('noxh2') || content.includes('nhà ở xã hội 2') || content.includes('2203')) {
       projectName = 'Chung cư nhà ở xã hội 2';
@@ -30,23 +30,23 @@ export const getDocHierarchyInfo = (doc) => {
   }
 
   // 2. Tên gói thầu
-  let packageName = doc.packageName || '';
+  let packageName = doc.packageName || doc.contractorInfo?.packageName || '';
   if (!packageName) {
-    if (content.includes('xt-lt-bt') || content.includes('hoàn thiện') || content.includes('xây trát')) {
+    if (content.includes('xt-lt-bt') || content.includes('hoàn thiện') || content.includes('xây trát') || content.includes('ốp lát') || content.includes('trát tường') || content.includes('cán nền') || content.includes('sơn lót')) {
       packageName = 'Thi công phần hoàn thiện Tòa A và Tòa B';
-    } else if (content.includes('hạ tầng')) {
+    } else if (content.includes('hạ tầng') || content.includes('sân đường') || content.includes('cảnh quan')) {
       packageName = 'Thi công cảnh quan sân vườn và hạ tầng kỹ thuật';
-    } else if (content.includes('kết cấu')) {
+    } else if (content.includes('kết cấu') || content.includes('cột') || content.includes('dầm') || content.includes('sàn') || content.includes('móng') || content.includes('hầm') || content.includes('cốt thép') || content.includes('bê tông')) {
       packageName = 'Thi công phần kết cấu – Tòa A và Tòa B';
-    } else if (content.includes('mep') || content.includes('điện nước')) {
+    } else if (content.includes('mep') || content.includes('điện') || content.includes('nước') || content.includes('thoát nước')) {
       packageName = 'Thi công hệ thống Mep Tòa A và Tòa B';
-    } else if (content.includes('pccc')) {
+    } else if (content.includes('pccc') || content.includes('chữa cháy') || content.includes('báo cháy')) {
       packageName = 'Thi công hệ thống PCCC trong và ngoài nhà';
     }
   }
 
-  // 3. Tên hạng mục công việc
-  let itemName = doc.itemName || doc.taskName || '';
+  // 3. Tên hạng mục / công tác công việc
+  let itemName = doc.itemName || doc.taskName || doc.inspectionObject || doc.taskContent || doc.projectInfo?.itemName || '';
   if (!itemName) {
     if (content.includes('xt-lt-bt') || (content.includes('xây') && content.includes('trát'))) {
       itemName = 'Xây trát tường & Ốp lát gạch';
@@ -773,7 +773,7 @@ export default function ShopDocumentsView({
                 boxSizing: 'border-box'
               }}
             >
-              <option value="ALL">📑 Tất cả hạng mục</option>
+              <option value="ALL">📑 Tất cả công tác</option>
               {itemOptions.map((item, idx) => (
                 <option key={idx} value={item}>
                   📑 {item}

@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Award, Plus, Search, Filter, CheckCircle2, Clock, 
-  FileText, Building, MapPin, Calendar, Layers, Eye, Trash2, Printer, Check, ChevronRight
+  FileText, Building, MapPin, Calendar, Layers, Eye, Trash2, Printer, Check, ChevronRight,
+  RotateCcw
 } from 'lucide-react';
+import { getDocHierarchyInfo } from './ShopDocumentsView';
 
 export default function CompletionReportsListView({
   reports = [],
+  projects = [],
   currentUser,
   currentRole,
   onCreateReport,
@@ -13,42 +16,177 @@ export default function CompletionReportsListView({
   onDeleteReport
 }) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedDate, setSelectedDate] = useState('');
   const [templateFilter, setTemplateFilter] = useState('ALL'); // 'ALL' | 'PROJECT_USE' | 'STAGE' | 'DOSSIER'
   const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'COMPLETED' | 'PENDING'
+  const [selectedProject, setSelectedProject] = useState('ALL');
+  const [selectedPackage, setSelectedPackage] = useState('ALL');
+  const [selectedItem, setSelectedItem] = useState('ALL');
 
-  const filteredReports = reports.filter(rep => {
-    const query = searchQuery.toLowerCase().trim();
-    const matchesSearch = 
-      rep.reportNumber?.toLowerCase().includes(query) ||
-      rep.inspectionObject?.toLowerCase().includes(query) ||
-      rep.buildingName?.toLowerCase().includes(query) ||
-      rep.itemName?.toLowerCase().includes(query) ||
-      rep.stageName?.toLowerCase().includes(query);
+  // Danh sách Công trình (Level 1)
+  const projectOptions = useMemo(() => {
+    const list = [];
+    (projects || []).forEach(p => {
+      const code = p.code || p.id;
+      const name = p.name || p.projectName || `Công trình ${code}`;
+      if (!list.some(x => x.name === name)) {
+        list.push({ code, name, id: p.id });
+      }
+    });
+    (reports || []).forEach(r => {
+      const { projectName } = getDocHierarchyInfo(r);
+      if (projectName && !list.some(x => x.name === projectName)) {
+        list.push({ code: r.projectCategoryCode || projectName, name: projectName, id: projectName });
+      }
+    });
+    return list;
+  }, [projects, reports]);
 
-    const matchesTemplate = templateFilter === 'ALL' || rep.completionType === templateFilter;
+  // Danh sách Gói thầu (Level 2)
+  const packageOptions = useMemo(() => {
+    const list = [];
+    (projects || []).forEach(p => {
+      const projCode = p.code || p.id;
+      const projName = p.name || p.projectName;
+      if (selectedProject !== 'ALL' && selectedProject !== projCode && selectedProject !== projName && selectedProject !== p.id) {
+        return;
+      }
+      (p.contractors || []).forEach(c => {
+        (c.packages || []).forEach(pkg => {
+          if (!list.some(x => x.name === pkg.name)) {
+            list.push({ id: pkg.id, name: pkg.name });
+          }
+        });
+      });
+    });
+    (reports || []).forEach(r => {
+      const { projectName, packageName } = getDocHierarchyInfo(r);
+      if (packageName && !list.some(x => x.name === packageName)) {
+        if (selectedProject === 'ALL' || selectedProject === projectName || (projects || []).some(p => (p.code === selectedProject || p.id === selectedProject) && p.name === projectName)) {
+          list.push({ id: packageName, name: packageName });
+        }
+      }
+    });
+    return list;
+  }, [projects, reports, selectedProject]);
 
-    const isCompleted = rep.status === 'COMPLETED' || (
-      rep.signatures?.investor?.signed && 
-      rep.signatures?.supervisor?.signed && 
-      rep.signatures?.contractor?.signed
-    );
+  // Danh sách Hạng mục / Công tác (Level 3)
+  const itemOptions = useMemo(() => {
+    const list = [];
+    (projects || []).forEach(p => {
+      const projCode = p.code || p.id;
+      const projName = p.name || p.projectName;
+      if (selectedProject !== 'ALL' && selectedProject !== projCode && selectedProject !== projName && selectedProject !== p.id) {
+        return;
+      }
+      (p.contractors || []).forEach(c => {
+        (c.packages || []).forEach(pkg => {
+          if (selectedPackage !== 'ALL' && pkg.id !== selectedPackage && pkg.name !== selectedPackage) {
+            return;
+          }
+          (pkg.tasks || []).forEach(t => {
+            const taskName = typeof t === 'string' ? t : (t.name || t.taskName);
+            if (taskName && !list.includes(taskName)) {
+              list.push(taskName);
+            }
+          });
+        });
+      });
+    });
+    (reports || []).forEach(r => {
+      const { projectName, packageName, itemName } = getDocHierarchyInfo(r);
+      if (itemName && !list.includes(itemName)) {
+        const matchProj = selectedProject === 'ALL' || selectedProject === projectName || (projects || []).some(p => (p.code === selectedProject || p.id === selectedProject) && p.name === projectName);
+        const matchPkg = selectedPackage === 'ALL' || selectedPackage === packageName;
+        if (matchProj && matchPkg) {
+          list.push(itemName);
+        }
+      }
+    });
+    return list;
+  }, [projects, reports, selectedProject, selectedPackage]);
 
-    const matchesStatus = 
-      statusFilter === 'ALL' ||
-      (statusFilter === 'COMPLETED' && isCompleted) ||
-      (statusFilter === 'PENDING' && !isCompleted);
+  const filteredReports = useMemo(() => {
+    return reports.filter(rep => {
+      const { projectName: docProjName, packageName: docPkgName, itemName: docItemName } = getDocHierarchyInfo(rep);
+      const query = searchQuery.toLowerCase().trim();
+      const matchesSearch = !query || 
+        rep.reportNumber?.toLowerCase().includes(query) ||
+        rep.inspectionObject?.toLowerCase().includes(query) ||
+        rep.buildingName?.toLowerCase().includes(query) ||
+        rep.itemName?.toLowerCase().includes(query) ||
+        rep.stageName?.toLowerCase().includes(query) ||
+        docProjName.toLowerCase().includes(query) ||
+        docPkgName.toLowerCase().includes(query) ||
+        docItemName.toLowerCase().includes(query);
 
-    return matchesSearch && matchesTemplate && matchesStatus;
-  });
+      if (!matchesSearch) return false;
 
-  const stats = {
+      // Lọc theo ngày
+      if (selectedDate) {
+        const repDate = (rep.date || rep.inspectionDate || rep.createdAt || '').slice(0, 10);
+        if (!repDate.includes(selectedDate)) return false;
+      }
+
+      // Lọc theo template
+      const matchesTemplate = templateFilter === 'ALL' || rep.completionType === templateFilter;
+      if (!matchesTemplate) return false;
+
+      // Lọc theo trạng thái
+      const isCompleted = rep.status === 'COMPLETED' || (
+        rep.signatures?.investor?.signed && 
+        rep.signatures?.supervisor?.signed && 
+        rep.signatures?.contractor?.signed
+      );
+
+      const matchesStatus = 
+        statusFilter === 'ALL' ||
+        (statusFilter === 'COMPLETED' && isCompleted) ||
+        (statusFilter === 'PENDING' && !isCompleted);
+
+      if (!matchesStatus) return false;
+
+      // Lọc theo Công trình
+      if (selectedProject !== 'ALL') {
+        const projObj = projectOptions.find(p => p.code === selectedProject || p.id === selectedProject || p.name === selectedProject);
+        const targetName = projObj?.name || selectedProject;
+        const targetCode = projObj?.code || selectedProject;
+        const matchProj = docProjName === targetName ||
+          rep.buildingName === targetName ||
+          rep.projectName === targetName ||
+          (rep.buildingName && rep.buildingName.toLowerCase().includes(targetName.toLowerCase()));
+        if (!matchProj) return false;
+      }
+
+      // Lọc theo Gói thầu
+      if (selectedPackage !== 'ALL') {
+        const matchPkg = docPkgName === selectedPackage ||
+          rep.packageName === selectedPackage ||
+          (rep.stageName && rep.stageName.toLowerCase().includes(selectedPackage.toLowerCase()));
+        if (!matchPkg) return false;
+      }
+
+      // Lọc theo Hạng mục / Công tác
+      if (selectedItem !== 'ALL') {
+        const matchItem = docItemName === selectedItem ||
+          rep.itemName === selectedItem ||
+          rep.inspectionObject === selectedItem ||
+          (rep.stageName && rep.stageName.toLowerCase().includes(selectedItem.toLowerCase()));
+        if (!matchItem) return false;
+      }
+
+      return true;
+    });
+  }, [reports, searchQuery, selectedDate, templateFilter, statusFilter, selectedProject, selectedPackage, selectedItem, projectOptions]);
+
+  const stats = useMemo(() => ({
     total: reports.length,
     projectUse: reports.filter(r => r.completionType === 'PROJECT_USE').length,
     stage: reports.filter(r => r.completionType === 'STAGE').length,
     dossier: reports.filter(r => r.completionType === 'DOSSIER').length,
     completed: reports.filter(r => r.status === 'COMPLETED' || (r.signatures?.investor?.signed && r.signatures?.supervisor?.signed)).length,
     pending: reports.filter(r => r.status !== 'COMPLETED' && (!r.signatures?.investor?.signed || !r.signatures?.supervisor?.signed)).length
-  };
+  }), [reports]);
 
   const getTemplateLabel = (type) => {
     switch (type) {
@@ -155,63 +293,232 @@ export default function CompletionReportsListView({
           </div>
         </div>
 
-        {/* TOOLBAR SEARCH & FILTERS */}
-        <div className="toolbar-row" style={{ marginTop: '16px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <div className="search-input-box" style={{ flex: 1, minWidth: '280px' }}>
-            <Search size={18} />
-            <input 
-              type="text" 
-              className="search-input"
-              placeholder="Tìm theo số hiệu BB (02/BBNT-GDTC), công trình, giai đoạn..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+        {/* TOOLBAR SEARCH & FILTERS (HÀNG 1 + HÀNG 2 PHÂN CẤP CÔNG TRÌNH - GÓI THẦU - CÔNG TÁC) */}
+        <div style={{
+          marginTop: '16px',
+          background: '#ffffff',
+          border: '1px solid #e2e8f0',
+          borderRadius: '12px',
+          padding: '14px 18px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+        }}>
+          {/* HÀNG 1: TÌM KIẾM, NGÀY, MẪU VÀ TRẠNG THÁI */}
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <div className="search-input-box" style={{ flex: '2 1 240px' }}>
+              <Search size={18} />
+              <input 
+                type="text" 
+                className="search-input"
+                placeholder="Tìm theo số hiệu BB (02/BBNT-GDTC), công trình, giai đoạn..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+
+            {/* LỌC THEO NGÀY */}
+            <div style={{ flex: '1 1 160px', position: 'relative' }}>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                title="Lọc theo ngày biên bản hoàn thành"
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: selectedDate ? '1.5px solid #0284c7' : '1.5px solid #e2e8f0',
+                  borderRadius: '8px',
+                  fontSize: '0.86rem',
+                  color: selectedDate ? '#0369a1' : '#334155',
+                  background: selectedDate ? '#f0f9ff' : '#fff',
+                  fontWeight: selectedDate ? 600 : 400,
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+
+            {/* TEMPLATE FILTER PILLS */}
+            <div className="filter-pills" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              <button 
+                className={`filter-pill ${templateFilter === 'ALL' ? 'active' : ''}`}
+                onClick={() => setTemplateFilter('ALL')}
+              >
+                Tất cả mẫu ({stats.total})
+              </button>
+              <button 
+                className={`filter-pill ${templateFilter === 'STAGE' ? 'active' : ''}`}
+                onClick={() => setTemplateFilter('STAGE')}
+              >
+                📑 Giai đoạn ({stats.stage})
+              </button>
+              <button 
+                className={`filter-pill ${templateFilter === 'PROJECT_USE' ? 'active' : ''}`}
+                onClick={() => setTemplateFilter('PROJECT_USE')}
+              >
+                🏛️ Đưa vào SD ({stats.projectUse})
+              </button>
+              <button 
+                className={`filter-pill ${templateFilter === 'DOSSIER' ? 'active' : ''}`}
+                onClick={() => setTemplateFilter('DOSSIER')}
+              >
+                📁 Hồ sơ ({stats.dossier})
+              </button>
+            </div>
+
+            {/* STATUS FILTER PILLS */}
+            <div className="filter-pills" style={{ display: 'flex', gap: '6px' }}>
+              <button 
+                className={`filter-pill ${statusFilter === 'COMPLETED' ? 'active' : ''}`}
+                onClick={() => setStatusFilter(statusFilter === 'COMPLETED' ? 'ALL' : 'COMPLETED')}
+                style={{ background: statusFilter === 'COMPLETED' ? '#059669' : '' }}
+              >
+                ✓ Đã duyệt ({stats.completed})
+              </button>
+              <button 
+                className={`filter-pill ${statusFilter === 'PENDING' ? 'active' : ''}`}
+                onClick={() => setStatusFilter(statusFilter === 'PENDING' ? 'ALL' : 'PENDING')}
+                style={{ background: statusFilter === 'PENDING' ? '#d97706' : '' }}
+              >
+                ⏳ Chờ ký ({stats.pending})
+              </button>
+            </div>
           </div>
 
-          {/* TEMPLATE FILTER PILLS */}
-          <div className="filter-pills" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            <button 
-              className={`filter-pill ${templateFilter === 'ALL' ? 'active' : ''}`}
-              onClick={() => setTemplateFilter('ALL')}
-            >
-              Tất cả mẫu ({stats.total})
-            </button>
-            <button 
-              className={`filter-pill ${templateFilter === 'STAGE' ? 'active' : ''}`}
-              onClick={() => setTemplateFilter('STAGE')}
-            >
-              📑 Giai đoạn ({stats.stage})
-            </button>
-            <button 
-              className={`filter-pill ${templateFilter === 'PROJECT_USE' ? 'active' : ''}`}
-              onClick={() => setTemplateFilter('PROJECT_USE')}
-            >
-              🏛️ Đưa vào sử dụng ({stats.projectUse})
-            </button>
-            <button 
-              className={`filter-pill ${templateFilter === 'DOSSIER' ? 'active' : ''}`}
-              onClick={() => setTemplateFilter('DOSSIER')}
-            >
-              📁 Kiểm tra hồ sơ ({stats.dossier})
-            </button>
-          </div>
+          {/* HÀNG 2: PHÂN CẤP CÔNG TRÌNH - GÓI THẦU - HẠNG MỤC / CÔNG TÁC */}
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: '12px',
+            paddingTop: '10px',
+            borderTop: '1px dashed #e2e8f0'
+          }}>
+            {/* LỌC THEO CÔNG TRÌNH */}
+            <div style={{ flex: '1 1 200px' }}>
+              <select
+                value={selectedProject}
+                onChange={(e) => {
+                  setSelectedProject(e.target.value);
+                  setSelectedPackage('ALL');
+                  setSelectedItem('ALL');
+                }}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px',
+                  border: selectedProject !== 'ALL' ? '1.5px solid #059669' : '1.5px solid #cbd5e1',
+                  borderRadius: '8px',
+                  fontSize: '0.86rem',
+                  fontWeight: selectedProject !== 'ALL' ? 700 : 500,
+                  color: selectedProject !== 'ALL' ? '#047857' : '#334155',
+                  background: selectedProject !== 'ALL' ? '#f0fdf4' : '#fff',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  boxSizing: 'border-box'
+                }}
+              >
+                <option value="ALL">🏢 Tất cả công trình</option>
+                {projectOptions.map(p => (
+                  <option key={p.id || p.code} value={p.name}>
+                    🏢 {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          {/* STATUS FILTER PILLS */}
-          <div className="filter-pills" style={{ display: 'flex', gap: '6px' }}>
-            <button 
-              className={`filter-pill ${statusFilter === 'COMPLETED' ? 'active' : ''}`}
-              onClick={() => setStatusFilter(statusFilter === 'COMPLETED' ? 'ALL' : 'COMPLETED')}
-              style={{ background: statusFilter === 'COMPLETED' ? '#059669' : '' }}
-            >
-              ✓ Đã duyệt ({stats.completed})
-            </button>
-            <button 
-              className={`filter-pill ${statusFilter === 'PENDING' ? 'active' : ''}`}
-              onClick={() => setStatusFilter(statusFilter === 'PENDING' ? 'ALL' : 'PENDING')}
-              style={{ background: statusFilter === 'PENDING' ? '#d97706' : '' }}
-            >
-              ⏳ Chờ ký ({stats.pending})
-            </button>
+            {/* LỌC THEO GÓI THẦU */}
+            <div style={{ flex: '1 1 220px' }}>
+              <select
+                value={selectedPackage}
+                onChange={(e) => {
+                  setSelectedPackage(e.target.value);
+                  setSelectedItem('ALL');
+                }}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px',
+                  border: selectedPackage !== 'ALL' ? '1.5px solid #d97706' : '1.5px solid #cbd5e1',
+                  borderRadius: '8px',
+                  fontSize: '0.86rem',
+                  fontWeight: selectedPackage !== 'ALL' ? 700 : 500,
+                  color: selectedPackage !== 'ALL' ? '#b45309' : '#334155',
+                  background: selectedPackage !== 'ALL' ? '#fffbeb' : '#fff',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  boxSizing: 'border-box'
+                }}
+              >
+                <option value="ALL">📦 Tất cả gói thầu</option>
+                {packageOptions.map(pkg => (
+                  <option key={pkg.id || pkg.name} value={pkg.name}>
+                    📦 {pkg.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* LỌC THEO HẠNG MỤC CÔNG VIỆC / CÔNG TÁC */}
+            <div style={{ flex: '1 1 200px' }}>
+              <select
+                value={selectedItem}
+                onChange={(e) => setSelectedItem(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px',
+                  border: selectedItem !== 'ALL' ? '1.5px solid #4f46e5' : '1.5px solid #cbd5e1',
+                  borderRadius: '8px',
+                  fontSize: '0.86rem',
+                  fontWeight: selectedItem !== 'ALL' ? 700 : 500,
+                  color: selectedItem !== 'ALL' ? '#4338ca' : '#334155',
+                  background: selectedItem !== 'ALL' ? '#eef2ff' : '#fff',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  boxSizing: 'border-box'
+                }}
+              >
+                <option value="ALL">📑 Tất cả công tác</option>
+                {itemOptions.map((item, idx) => (
+                  <option key={idx} value={item}>
+                    📑 {item}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* NÚT XÓA BỘ LỌC */}
+            {(searchQuery || selectedDate || templateFilter !== 'ALL' || statusFilter !== 'ALL' || selectedProject !== 'ALL' || selectedPackage !== 'ALL' || selectedItem !== 'ALL') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setSelectedDate('');
+                  setTemplateFilter('ALL');
+                  setStatusFilter('ALL');
+                  setSelectedProject('ALL');
+                  setSelectedPackage('ALL');
+                  setSelectedItem('ALL');
+                }}
+                style={{
+                  border: '1px solid #cbd5e1',
+                  background: '#f8fafc',
+                  color: '#475569',
+                  borderRadius: '8px',
+                  padding: '8px 14px',
+                  fontSize: '0.84rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <RotateCcw size={14} />
+                <span>Xóa lọc</span>
+              </button>
+            )}
           </div>
         </div>
       </div>

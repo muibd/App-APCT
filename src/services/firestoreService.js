@@ -540,6 +540,26 @@ export const clearAllCloudInspectionData = async () => {
 // ============================================================================
 
 /**
+ * Lấy danh sách Nhật ký thi công một lần từ Firestore
+ */
+export const getDailyLogsOnce = async () => {
+  if (!isFirebaseConfigured || !db) return [];
+  try {
+    const colRef = collection(db, DAILY_LOGS_COLLECTION);
+    const snapshot = await getDocs(colRef);
+    const items = [];
+    snapshot.forEach(docSnap => {
+      items.push({ id: docSnap.id, ...docSnap.data() });
+    });
+    items.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
+    return items;
+  } catch (e) {
+    console.warn('[Firestore] Lỗi getDailyLogsOnce:', e);
+    return [];
+  }
+};
+
+/**
  * Lắng nghe thời gian thực danh sách Nhật ký thi công
  */
 export const subscribeToDailyLogs = (callback) => {
@@ -550,6 +570,22 @@ export const subscribeToDailyLogs = (callback) => {
 
   try {
     const colRef = collection(db, DAILY_LOGS_COLLECTION);
+
+    // 1. Tải tức thì một lần qua getDocs để hiển thị ngay lập tức (không chờ WebSocket bắt tay)
+    getDocs(colRef).then(snapshot => {
+      if (!snapshot.empty) {
+        const items = [];
+        snapshot.forEach(docSnap => {
+          items.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        items.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
+        callback(items);
+      }
+    }).catch(err => {
+      console.warn('[Firestore] Tải tức thì nhật ký thất bại:', err);
+    });
+
+    // 2. Lắng nghe thay đổi Real-Time
     const unsubscribe = onSnapshot(colRef, (snapshot) => {
       const items = [];
       snapshot.forEach(docSnap => {
@@ -561,13 +597,23 @@ export const subscribeToDailyLogs = (callback) => {
       callback(items);
     }, (error) => {
       console.warn('[Firestore] Lỗi lắng nghe danh sách nhật ký:', error);
-      callback([]);
+      // KHÔNG gọi callback([]) vì sẽ xóa sạch danh sách hiện tại của người dùng khi rớt mạng!
+      // Thay vào đó, thử tải lại 1 lần qua getDocs
+      getDocs(colRef).then(snapshot => {
+        if (!snapshot.empty) {
+          const items = [];
+          snapshot.forEach(docSnap => {
+            items.push({ id: docSnap.id, ...docSnap.data() });
+          });
+          items.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
+          callback(items);
+        }
+      }).catch(() => {});
     });
 
     return unsubscribe;
   } catch (e) {
     console.warn('[Firestore Daily Logs Exception]', e);
-    callback([]);
     return () => {};
   }
 };

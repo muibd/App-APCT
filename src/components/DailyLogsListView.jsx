@@ -1,13 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   NotebookPen, Plus, Search, Calendar, Clock, Sun, CloudRain, 
-  Users, CheckCircle2, AlertCircle, FileText, ChevronRight, Eye, Wrench, ShieldCheck, Trash2
+  Users, CheckCircle2, AlertCircle, FileText, ChevronRight, Eye, Wrench, ShieldCheck, Trash2, RotateCw,
+  RotateCcw
 } from 'lucide-react';
+import { getDocHierarchyInfo } from './ShopDocumentsView';
 
 export default function DailyLogsListView({
   dailyLogs = [],
+  projects = [],
   currentRole,
   currentUser,
+  onRefreshLogs,
+  onRefreshDailyLogs,
   onOpenLog,
   onOpenDailyLog,
   onCreateLog,
@@ -19,35 +24,170 @@ export default function DailyLogsListView({
   const handleCreate = onCreateDailyLog || onCreateLog;
   const handleDelete = onDeleteDailyLog || onDeleteLog;
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedDate, setSelectedDate] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'SUBMITTED' | 'CONFIRMED'
-  const [buildingFilter, setBuildingFilter] = useState('ALL');
+  const [selectedProject, setSelectedProject] = useState('ALL');
+  const [selectedPackage, setSelectedPackage] = useState('ALL');
+  const [selectedItem, setSelectedItem] = useState('ALL');
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Thống kê
-  const stats = {
+  const stats = useMemo(() => ({
     total: dailyLogs.length,
     submitted: dailyLogs.filter(l => l.status === 'SUBMITTED').length,
     confirmed: dailyLogs.filter(l => l.status === 'CONFIRMED').length
-  };
+  }), [dailyLogs]);
 
-  // Danh sách công trình độc nhất
-  const buildings = Array.from(new Set(dailyLogs.map(l => l.buildingName).filter(Boolean)));
+  // Danh sách Công trình (Level 1)
+  const projectOptions = useMemo(() => {
+    const list = [];
+    (projects || []).forEach(p => {
+      const code = p.code || p.id;
+      const name = p.name || p.projectName || `Công trình ${code}`;
+      if (!list.some(x => x.name === name)) {
+        list.push({ code, name, id: p.id });
+      }
+    });
+    // Bổ sung từ dailyLogs nếu có
+    (dailyLogs || []).forEach(l => {
+      const { projectName } = getDocHierarchyInfo(l);
+      if (projectName && !list.some(x => x.name === projectName)) {
+        list.push({ code: l.projectCode || projectName, name: projectName, id: projectName });
+      }
+    });
+    return list;
+  }, [projects, dailyLogs]);
 
-  // Lọc
-  const filteredLogs = dailyLogs.filter(log => {
-    if (statusFilter !== 'ALL' && log.status !== statusFilter) return false;
-    if (buildingFilter !== 'ALL' && log.buildingName !== buildingFilter) return false;
+  // Danh sách Gói thầu (Level 2 - phụ thuộc vào Công trình nếu có chọn)
+  const packageOptions = useMemo(() => {
+    const list = [];
+    (projects || []).forEach(p => {
+      const projCode = p.code || p.id;
+      const projName = p.name || p.projectName;
+      if (selectedProject !== 'ALL' && selectedProject !== projCode && selectedProject !== projName && selectedProject !== p.id) {
+        return;
+      }
+      (p.contractors || []).forEach(c => {
+        (c.packages || []).forEach(pkg => {
+          if (!list.some(x => x.name === pkg.name)) {
+            list.push({ id: pkg.id, name: pkg.name });
+          }
+        });
+      });
+    });
+    // Bổ sung từ dailyLogs
+    (dailyLogs || []).forEach(l => {
+      const { projectName, packageName } = getDocHierarchyInfo(l);
+      if (packageName && !list.some(x => x.name === packageName)) {
+        if (selectedProject === 'ALL' || selectedProject === projectName || (projects || []).some(p => (p.code === selectedProject || p.id === selectedProject) && p.name === projectName)) {
+          list.push({ id: packageName, name: packageName });
+        }
+      }
+    });
+    return list;
+  }, [projects, dailyLogs, selectedProject]);
 
-    if (searchTerm.trim()) {
-      const q = searchTerm.toLowerCase();
-      const matchNum = log.logNumber?.toLowerCase().includes(q);
-      const matchWork = log.workContent?.toLowerCase().includes(q);
-      const matchBuilding = log.buildingName?.toLowerCase().includes(q);
-      const matchItem = log.itemName?.toLowerCase().includes(q);
-      const matchCreator = log.createdByName?.toLowerCase().includes(q);
-      if (!matchNum && !matchWork && !matchBuilding && !matchItem && !matchCreator) return false;
-    }
-    return true;
-  });
+  // Danh sách Hạng mục / Công tác (Level 3 - phụ thuộc vào Công trình & Gói thầu nếu có chọn)
+  const itemOptions = useMemo(() => {
+    const list = [];
+    (projects || []).forEach(p => {
+      const projCode = p.code || p.id;
+      const projName = p.name || p.projectName;
+      if (selectedProject !== 'ALL' && selectedProject !== projCode && selectedProject !== projName && selectedProject !== p.id) {
+        return;
+      }
+      (p.contractors || []).forEach(c => {
+        (c.packages || []).forEach(pkg => {
+          if (selectedPackage !== 'ALL' && pkg.id !== selectedPackage && pkg.name !== selectedPackage) {
+            return;
+          }
+          (pkg.tasks || []).forEach(t => {
+            const taskName = typeof t === 'string' ? t : (t.name || t.taskName);
+            if (taskName && !list.includes(taskName)) {
+              list.push(taskName);
+            }
+          });
+        });
+      });
+    });
+    // Bổ sung từ dailyLogs
+    (dailyLogs || []).forEach(l => {
+      const { projectName, packageName, itemName } = getDocHierarchyInfo(l);
+      if (itemName && !list.includes(itemName)) {
+        const matchProj = selectedProject === 'ALL' || selectedProject === projectName || (projects || []).some(p => (p.code === selectedProject || p.id === selectedProject) && p.name === projectName);
+        const matchPkg = selectedPackage === 'ALL' || selectedPackage === packageName;
+        if (matchProj && matchPkg) {
+          list.push(itemName);
+        }
+      }
+    });
+    return list;
+  }, [projects, dailyLogs, selectedProject, selectedPackage]);
+
+  // Lọc danh sách nhật ký
+  const filteredLogs = useMemo(() => {
+    return dailyLogs.filter(log => {
+      const { projectName: docProjName, packageName: docPkgName, itemName: docItemName } = getDocHierarchyInfo(log);
+
+      // 1. Text search
+      if (searchTerm.trim()) {
+        const q = searchTerm.toLowerCase();
+        const matchNum = (log.logNumber || '').toLowerCase().includes(q);
+        const matchWork = (log.workContent || '').toLowerCase().includes(q);
+        const matchBuilding = (log.buildingName || docProjName || '').toLowerCase().includes(q);
+        const matchPkg = (log.packageName || docPkgName || '').toLowerCase().includes(q);
+        const matchItem = (log.itemName || docItemName || '').toLowerCase().includes(q);
+        const matchCreator = (log.createdByName || '').toLowerCase().includes(q);
+        if (!matchNum && !matchWork && !matchBuilding && !matchPkg && !matchItem && !matchCreator) return false;
+      }
+
+      // 2. Lọc theo ngày
+      if (selectedDate) {
+        const logDate = (log.date || '').slice(0, 10);
+        if (logDate !== selectedDate) return false;
+      }
+
+      // 3. Lọc theo trạng thái
+      if (statusFilter !== 'ALL' && log.status !== statusFilter) {
+        return false;
+      }
+
+      // 4. Lọc theo Công trình
+      if (selectedProject !== 'ALL') {
+        const projObj = projectOptions.find(p => p.code === selectedProject || p.id === selectedProject || p.name === selectedProject);
+        const targetName = projObj?.name || selectedProject;
+        const targetCode = projObj?.code || selectedProject;
+        const match = docProjName === targetName ||
+          log.buildingName === targetName ||
+          log.projectId === selectedProject ||
+          log.projectCode === targetCode ||
+          (log.buildingName && log.buildingName.toLowerCase().includes(targetName.toLowerCase())) ||
+          (log.projectName && log.projectName.toLowerCase().includes(targetName.toLowerCase()));
+        if (!match) return false;
+      }
+
+      // 5. Lọc theo Gói thầu
+      if (selectedPackage !== 'ALL') {
+        const match = docPkgName === selectedPackage ||
+          log.packageName === selectedPackage ||
+          log.packageId === selectedPackage ||
+          (log.workContent && log.workContent.toLowerCase().includes(selectedPackage.toLowerCase()));
+        if (!match) return false;
+      }
+
+      // 6. Lọc theo Hạng mục / Công tác
+      if (selectedItem !== 'ALL') {
+        const match = docItemName === selectedItem ||
+          log.itemName === selectedItem ||
+          log.itemId === selectedItem ||
+          log.taskName === selectedItem ||
+          (log.workContent && log.workContent.toLowerCase().includes(selectedItem.toLowerCase()));
+        if (!match) return false;
+      }
+
+      return true;
+    });
+  }, [dailyLogs, searchTerm, selectedDate, statusFilter, selectedProject, selectedPackage, selectedItem, projectOptions]);
 
   return (
     <div>
@@ -64,17 +204,53 @@ export default function DailyLogsListView({
             </div>
           </div>
 
-          {currentRole === 'CONTRACTOR' && (
-            <button 
-              type="button" 
-              className="btn-primary"
-              onClick={handleCreate}
-              style={{ background: '#059669', borderColor: '#059669', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
-            >
-              <Plus size={18} />
-              <span>Tạo Nhật Ký Thi Công</span>
-            </button>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {(onRefreshDailyLogs || onRefreshLogs) && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const fn = onRefreshDailyLogs || onRefreshLogs;
+                  if (!fn) return;
+                  setIsSyncing(true);
+                  try {
+                    await fn();
+                  } finally {
+                    setTimeout(() => setIsSyncing(false), 600);
+                  }
+                }}
+                className="btn-secondary"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 14px',
+                  fontSize: '0.84rem',
+                  fontWeight: 600,
+                  background: '#ffffff',
+                  border: '1.5px solid #cbd5e1',
+                  borderRadius: '8px',
+                  cursor: isSyncing ? 'not-allowed' : 'pointer'
+                }}
+                title="Đồng bộ danh sách nhật ký từ Cloud"
+                disabled={isSyncing}
+              >
+                <RotateCw size={15} style={{ animation: isSyncing ? 'spin 1s linear infinite' : 'none' }} />
+                <span>{isSyncing ? 'Đang đồng bộ...' : 'Đồng Bộ Cloud'}</span>
+              </button>
+            )}
+
+            {currentRole === 'CONTRACTOR' && (
+              <button 
+                type="button" 
+                className="btn-primary"
+                onClick={handleCreate}
+                style={{ background: '#059669', borderColor: '#059669', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+              >
+                <Plus size={18} />
+                <span>Tạo Nhật Ký Thi Công</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* THỐNG KÊ METRIC CARDS */}
@@ -123,36 +299,64 @@ export default function DailyLogsListView({
         </div>
       </div>
 
-      {/* THANH TÌM KIẾM VÀ BỘ LỌC */}
-      <div className="filter-card" style={{ marginBottom: '18px' }}>
+      {/* THANH TÌM KIẾM VÀ BỘ LỌC (HÀNG 1 + HÀNG 2 PHÂN CẤP CÔNG TRÌNH - GÓI THẦU - CÔNG TÁC) */}
+      <div style={{
+        background: '#ffffff',
+        border: '1px solid #e2e8f0',
+        borderRadius: '10px',
+        padding: '14px 18px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '12px',
+        marginBottom: '18px',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+      }}>
+        {/* HÀNG 1: TÌM KIẾM, NGÀY, TRẠNG THÁI */}
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ position: 'relative', flex: '1 1 240px' }}>
+          {/* TÌM KIẾM THEO TỪ KHÓA */}
+          <div style={{ position: 'relative', flex: '2 1 240px' }}>
             <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
             <input
               type="text"
-              className="form-input"
-              style={{ paddingLeft: '36px' }}
-              placeholder="Tìm theo số nhật ký, nội dung công việc, kỹ thuật viên..."
+              placeholder="Tìm theo số nhật ký, nội dung công việc, kỹ thuật viên, công trình..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '9px 12px 9px 36px',
+                border: '1.5px solid #e2e8f0',
+                borderRadius: '8px',
+                fontSize: '0.86rem',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
             />
           </div>
 
-          {buildings.length > 0 && (
-            <select
-              className="form-select"
-              style={{ width: 'auto', minWidth: '180px' }}
-              value={buildingFilter}
-              onChange={(e) => setBuildingFilter(e.target.value)}
-            >
-              <option value="ALL">🏢 Tất cả công trình</option>
-              {buildings.map(b => (
-                <option key={b} value={b}>{b}</option>
-              ))}
-            </select>
-          )}
+          {/* LỌC THEO NGÀY NHẬT KÝ */}
+          <div style={{ flex: '1 1 160px', position: 'relative' }}>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              title="Lọc theo ngày ghi nhật ký"
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: selectedDate ? '1.5px solid #059669' : '1.5px solid #e2e8f0',
+                borderRadius: '8px',
+                fontSize: '0.86rem',
+                color: selectedDate ? '#047857' : '#334155',
+                background: selectedDate ? '#f0fdf4' : '#fff',
+                fontWeight: selectedDate ? 600 : 400,
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
 
-          <div className="filter-pills-row" style={{ margin: 0 }}>
+          {/* LỌC THEO TRẠNG THÁI (PILLS) */}
+          <div className="filter-pills-row" style={{ margin: 0, flexWrap: 'wrap' }}>
             <button
               className={`filter-pill ${statusFilter === 'ALL' ? 'active' : ''}`}
               onClick={() => setStatusFilter('ALL')}
@@ -173,6 +377,139 @@ export default function DailyLogsListView({
             </button>
           </div>
         </div>
+
+        {/* HÀNG 2: PHÂN CẤP CÔNG TRÌNH - GÓI THẦU - HẠNG MỤC / CÔNG TÁC */}
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: '12px',
+          paddingTop: '10px',
+          borderTop: '1px dashed #e2e8f0'
+        }}>
+          {/* LỌC THEO CÔNG TRÌNH */}
+          <div style={{ flex: '1 1 200px' }}>
+            <select
+              value={selectedProject}
+              onChange={(e) => {
+                setSelectedProject(e.target.value);
+                setSelectedPackage('ALL');
+                setSelectedItem('ALL');
+              }}
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                border: selectedProject !== 'ALL' ? '1.5px solid #059669' : '1.5px solid #cbd5e1',
+                borderRadius: '8px',
+                fontSize: '0.86rem',
+                fontWeight: selectedProject !== 'ALL' ? 700 : 500,
+                color: selectedProject !== 'ALL' ? '#047857' : '#334155',
+                background: selectedProject !== 'ALL' ? '#f0fdf4' : '#fff',
+                outline: 'none',
+                cursor: 'pointer',
+                boxSizing: 'border-box'
+              }}
+            >
+              <option value="ALL">🏢 Tất cả công trình</option>
+              {projectOptions.map(p => (
+                <option key={p.id || p.code} value={p.name}>
+                  🏢 {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* LỌC THEO GÓI THẦU */}
+          <div style={{ flex: '1 1 220px' }}>
+            <select
+              value={selectedPackage}
+              onChange={(e) => {
+                setSelectedPackage(e.target.value);
+                setSelectedItem('ALL');
+              }}
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                border: selectedPackage !== 'ALL' ? '1.5px solid #d97706' : '1.5px solid #cbd5e1',
+                borderRadius: '8px',
+                fontSize: '0.86rem',
+                fontWeight: selectedPackage !== 'ALL' ? 700 : 500,
+                color: selectedPackage !== 'ALL' ? '#b45309' : '#334155',
+                background: selectedPackage !== 'ALL' ? '#fffbeb' : '#fff',
+                outline: 'none',
+                cursor: 'pointer',
+                boxSizing: 'border-box'
+              }}
+            >
+              <option value="ALL">📦 Tất cả gói thầu</option>
+              {packageOptions.map(pkg => (
+                <option key={pkg.id || pkg.name} value={pkg.name}>
+                  📦 {pkg.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* LỌC THEO HẠNG MỤC CÔNG VIỆC / CÔNG TÁC */}
+          <div style={{ flex: '1 1 200px' }}>
+            <select
+              value={selectedItem}
+              onChange={(e) => setSelectedItem(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                border: selectedItem !== 'ALL' ? '1.5px solid #4f46e5' : '1.5px solid #cbd5e1',
+                borderRadius: '8px',
+                fontSize: '0.86rem',
+                fontWeight: selectedItem !== 'ALL' ? 700 : 500,
+                color: selectedItem !== 'ALL' ? '#4338ca' : '#334155',
+                background: selectedItem !== 'ALL' ? '#eef2ff' : '#fff',
+                outline: 'none',
+                cursor: 'pointer',
+                boxSizing: 'border-box'
+              }}
+            >
+              <option value="ALL">📑 Tất cả công tác</option>
+              {itemOptions.map((item, idx) => (
+                <option key={idx} value={item}>
+                  📑 {item}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* NÚT XÓA BỘ LỌC */}
+          {(searchTerm || selectedDate || statusFilter !== 'ALL' || selectedProject !== 'ALL' || selectedPackage !== 'ALL' || selectedItem !== 'ALL') && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchTerm('');
+                setSelectedDate('');
+                setStatusFilter('ALL');
+                setSelectedProject('ALL');
+                setSelectedPackage('ALL');
+                setSelectedItem('ALL');
+              }}
+              style={{
+                border: '1px solid #cbd5e1',
+                background: '#f8fafc',
+                color: '#475569',
+                borderRadius: '8px',
+                padding: '8px 14px',
+                fontSize: '0.84rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <RotateCcw size={14} />
+              <span>Xóa lọc</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* DANH SÁCH THẺ NHẬT KÝ */}
@@ -181,15 +518,48 @@ export default function DailyLogsListView({
           <div style={{ textAlign: 'center', padding: '60px 20px', background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
             <NotebookPen size={48} color="#94a3b8" style={{ marginBottom: '12px' }} />
             <h3 style={{ color: '#334155', marginBottom: '6px' }}>Không có nhật ký thi công nào</h3>
-            <p style={{ color: '#64748b', fontSize: '0.88rem' }}>
+            <p style={{ color: '#64748b', fontSize: '0.88rem', maxWidth: '520px', margin: '0 auto 16px auto' }}>
               {currentRole === 'CONTRACTOR' 
                 ? 'Bấm nút "+ Tạo Nhật Ký Thi Công" ở góc trên để lập trang nhật ký thi công mới cho ngày hôm nay.' 
-                : 'Chưa có bản ghi nhật ký thi công nào phù hợp với bộ lọc.'}
+                : 'Chưa có bản ghi nhật ký nào hiển thị. Nếu ĐVTC vừa lập trên thiết bị khác, hãy bấm nút bên dưới để đồng bộ dữ liệu ngay lập tức.'}
             </p>
+            {(onRefreshDailyLogs || onRefreshLogs) && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const fn = onRefreshDailyLogs || onRefreshLogs;
+                  if (!fn) return;
+                  setIsSyncing(true);
+                  try {
+                    await fn();
+                  } finally {
+                    setTimeout(() => setIsSyncing(false), 600);
+                  }
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: '#059669',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '9px 18px',
+                  fontWeight: 700,
+                  fontSize: '0.86rem',
+                  cursor: isSyncing ? 'not-allowed' : 'pointer'
+                }}
+                disabled={isSyncing}
+              >
+                <RotateCw size={15} style={{ animation: isSyncing ? 'spin 1s linear infinite' : 'none' }} />
+                <span>{isSyncing ? 'Đang đồng bộ...' : 'Đồng Bộ Từ Cloud Ngay'}</span>
+              </button>
+            )}
           </div>
         ) : (
           filteredLogs.map(log => {
             const isConfirmed = log.status === 'CONFIRMED';
+            const { projectName: docProjName, packageName: docPkgName, itemName: docItemName } = getDocHierarchyInfo(log);
 
             return (
               <div 
@@ -260,11 +630,17 @@ export default function DailyLogsListView({
                   {log.workContent}
                 </h3>
 
-                {/* BREADCRUMB CÔNG TRÌNH / HẠNG MỤC */}
+                {/* BREADCRUMB CÔNG TRÌNH / GÓI THẦU / HẠNG MỤC */}
                 <div className="card-hierarchy-breadcrumb" style={{ marginBottom: '10px' }}>
-                  <span>🏢 {log.buildingName}</span>
+                  <span>🏢 {log.buildingName || docProjName}</span>
+                  {docPkgName && (
+                    <>
+                      <span>›</span>
+                      <span>📦 {docPkgName}</span>
+                    </>
+                  )}
                   <span>›</span>
-                  <span>📑 {log.itemName}</span>
+                  <span>📑 {log.itemName || docItemName}</span>
                 </div>
 
                 {/* TÌNH HÌNH NHÂN LỰC & THIẾT BỊ */}

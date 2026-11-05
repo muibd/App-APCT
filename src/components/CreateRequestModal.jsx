@@ -517,8 +517,8 @@ export default function CreateRequestModal({
       if (showAlert) {
         showAlert({
           type: 'warning',
-          title: 'Thiếu Hạng Mục Công Việc',
-          message: 'Vui lòng chọn hoặc nhập hạng mục công việc nghiệm thu!'
+          title: 'Thiếu Công Tác Nghiệm Thu',
+          message: 'Vui lòng chọn hoặc nhập công tác nghiệm thu!'
         });
       }
       return;
@@ -843,11 +843,11 @@ export default function CreateRequestModal({
                 </select>
               </div>
 
-              {/* BƯỚC 4: CHỌN HẠNG MỤC CÔNG VIỆC CỦA HẠNG MỤC ĐƯỢC CHỌN */}
+              {/* BƯỚC 4: CHỌN CÔNG TÁC NGHIỆM THU CỦA GÓI THẦU ĐƯỢC CHỌN */}
               {inspectionType === 'WORK' && (
                 <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label" style={{ fontWeight: 700, color: '#0f172a' }}>
-                    4. Chọn Hạng mục công việc:
+                    4. Chọn Công tác:
                   </label>
                   <select
                     className="form-select"
@@ -860,7 +860,7 @@ export default function CreateRequestModal({
                         {task}
                       </option>
                     ))}
-                    <option value="__CUSTOM_TASK__">✏️ -- Tự nhập hạng mục công việc khác --</option>
+                    <option value="__CUSTOM_TASK__">✏️ -- Tự nhập công tác khác --</option>
                   </select>
                 </div>
               )}
@@ -883,10 +883,10 @@ export default function CreateRequestModal({
               </div>
             )}
 
-            {/* NẾU TỰ NHẬP HẠNG MỤC CÔNG VIỆC */}
+            {/* NẾU TỰ NHẬP CÔNG TÁC */}
             {inspectionType === 'WORK' && selectedTaskName === '__CUSTOM_TASK__' && (
               <div style={{ marginTop: '12px' }}>
-                <label className="form-label">Nhập chi tiết hạng mục công việc:</label>
+                <label className="form-label">Nhập chi tiết công tác:</label>
                 <input
                   type="text"
                   className="form-input"
