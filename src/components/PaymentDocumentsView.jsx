@@ -876,27 +876,6 @@ export default function PaymentDocumentsView({
                             <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.88rem', lineHeight: 1.35 }}>
                               {doc.title}
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
-                              <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '1px 6px', borderRadius: '4px', background: '#e0f2fe', color: '#0369a1' }}>
-                                {doc.docCode || 'HSTT'}
-                              </span>
-                              <span style={{ fontSize: '0.72rem', fontWeight: 500, padding: '1px 6px', borderRadius: '4px', background: '#f1f5f9', color: '#475569' }}>
-                                {doc.typeName}
-                              </span>
-                              {(doc.pdfFile || (Array.isArray(doc.pdfFiles) && doc.pdfFiles.length > 0)) && (
-                                <span
-                                  title={`${doc.pdfFiles?.length || 1} tệp đính kèm`}
-                                  style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '0.7rem', color: '#2563eb', fontWeight: 600 }}
-                                >
-                                  <Paperclip size={11} /> Tệp {doc.pdfFiles?.length > 1 ? `(${doc.pdfFiles.length})` : ''}
-                                </span>
-                              )}
-                              {Array.isArray(doc.photos) && doc.photos.length > 0 && (
-                                <span title={`${doc.photos.length} ảnh đính kèm`} style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '0.7rem', color: '#059669', fontWeight: 600 }}>
-                                  📷 {doc.photos.length}
-                                </span>
-                              )}
-                            </div>
 
                             {/* BADGES PHÂN CẤP CÔNG TRÌNH / GÓI THẦU / HẠNG MỤC */}
                             {(docProjName || docPkgName || docItemName) && (
