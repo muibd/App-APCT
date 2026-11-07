@@ -51,7 +51,8 @@ export default function InspectionReportModal({
   initialOpenRectify = false,
   initialTab = null,
   showAlert,
-  onReassign
+  onReassign,
+  onDeleteRequest
 }) {
   // Tabs: 'INVITATION' | 'DOCUMENT' | 'EVIDENCE' | 'DEFECTS' | 'RECTIFIED'
   const isInitiallyRectified = report?.status === 'RECTIFIED';
@@ -3994,10 +3995,37 @@ export default function InspectionReportModal({
 
         {/* MODAL FOOTER */}
         <div className="modal-footer no-print" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
-          <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button className="btn-secondary" onClick={onClose} style={{ padding: '8px 16px' }}>
               Đóng
             </button>
+            {(currentRole === 'ADMIN' || currentUser?.role === 'ADMIN') && onDeleteRequest && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  const targetReqId = relatedRequest?.id || report?.requestId || report?.id;
+                  onDeleteRequest(targetReqId, relatedRequest);
+                }}
+                style={{
+                  borderColor: '#fca5a5',
+                  color: '#dc2626',
+                  background: '#fef2f2',
+                  padding: '8px 14px',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  borderRadius: '8px',
+                  cursor: 'pointer'
+                }}
+                title="Xóa phiếu yêu cầu và hồ sơ nghiệm thu này (Chỉ dành cho CĐT Admin)"
+              >
+                <Trash2 size={15} color="#dc2626" />
+                <span>Xóa Hồ Sơ</span>
+              </button>
+            )}
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>

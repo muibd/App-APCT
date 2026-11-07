@@ -149,6 +149,30 @@ export const updateRecipientResponse = async (requestId, assignedRecipients, new
   }
 };
 
+/**
+ * Xóa Phiếu yêu cầu nghiệm thu và Biên bản liên quan khỏi Firestore
+ */
+export const deleteInspectionRequest = async (requestId, matchingReportId = null) => {
+  if (!isFirebaseConfigured || !db) {
+    return true;
+  }
+  try {
+    const docRef = doc(db, REQUESTS_COLLECTION, requestId);
+    await deleteDoc(docRef);
+    if (matchingReportId) {
+      const repRef = doc(db, REPORTS_COLLECTION, matchingReportId);
+      await deleteDoc(repRef).catch((err) => {
+        console.warn('[Firestore Delete Matching Report Error]', err);
+      });
+    }
+    console.log('[Firestore Cloud] Đã xóa phiếu yêu cầu thành công:', requestId);
+    return true;
+  } catch (error) {
+    console.error('[Firestore Delete Request Error]', error);
+    throw error;
+  }
+};
+
 // ============================================================================
 // 2. BIÊN BẢN NGHIỆM THU (INSPECTION REPORTS)
 // ============================================================================

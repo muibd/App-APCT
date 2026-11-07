@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   X, MapPin, FileText, Calendar, Award, Building, UserCheck, 
   Camera, Clock, AlertTriangle, RotateCcw, CheckCircle2, 
-  ArrowLeftRight, Edit3, Ban, AlertCircle, Save, ZoomIn 
+  ArrowLeftRight, Edit3, Ban, AlertCircle, Save, ZoomIn, Trash2 
 } from 'lucide-react';
 import { getDocumentRevisionNumber } from '../data/projectCatalog';
 import ImagePreviewModal from './ImagePreviewModal';
@@ -19,7 +19,8 @@ export default function InvitationDetailModal({
   onOpenReport,
   onReassign,
   onUpdateTime,
-  onCancelRequest
+  onCancelRequest,
+  onDeleteRequest
 }) {
   if (!isOpen || !request) return null;
 
@@ -724,7 +725,7 @@ export default function InvitationDetailModal({
 
         {/* FOOTER ACTIONS */}
         <div className="modal-footer" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
-          <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {canModify && (
               <button
                 type="button"
@@ -746,6 +747,29 @@ export default function InvitationDetailModal({
               >
                 <Ban size={15} />
                 <span>Hủy Phiếu</span>
+              </button>
+            )}
+            {(currentRole === 'ADMIN' || currentUser?.role === 'ADMIN') && onDeleteRequest && (
+              <button
+                type="button"
+                onClick={() => onDeleteRequest(request.id, request)}
+                style={{
+                  background: '#fef2f2',
+                  border: '1.5px solid #fca5a5',
+                  color: '#dc2626',
+                  borderRadius: '8px',
+                  padding: '8px 14px',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+                title="Xóa vĩnh viễn phiếu yêu cầu nghiệm thu này (Chỉ dành cho CĐT Admin)"
+              >
+                <Trash2 size={15} />
+                <span>Xóa Phiếu</span>
               </button>
             )}
           </div>

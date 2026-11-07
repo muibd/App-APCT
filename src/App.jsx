@@ -4,7 +4,7 @@ import {
   AlertTriangle, FileText, ChevronRight, Layers, MapPin, Calendar, 
   Send, Users, ShieldAlert, Award, HardHat, Eye, Briefcase, ShieldCheck,
   BellRing, LogOut, ArrowRight, UserCheck, BookOpen, Settings, Wrench, RotateCcw,
-  ArrowLeftRight, NotebookPen, Ban, CreditCard
+  ArrowLeftRight, NotebookPen, Ban, CreditCard, Trash2
 } from 'lucide-react';
 
 import Navbar from './components/Navbar';
@@ -93,6 +93,7 @@ import {
 
 import { 
   saveInspectionRequest, 
+  deleteInspectionRequest,
   updateRecipientResponse, 
   saveInspectionReport, 
   subscribeToRequests,
@@ -5340,6 +5341,82 @@ export default function App() {
     });
   };
 
+  // Xóa vĩnh viễn phiếu yêu cầu nghiệm thu (Dành riêng cho CĐT Admin)
+  const handleDeleteRequest = (requestId, reqObj = null) => {
+    const targetReq = reqObj || requests.find(r => r.id === requestId);
+    const reqName = targetReq?.taskContent || targetReq?.requestNumber || 'Phiếu yêu cầu này';
+    const reqNumber = targetReq?.requestNumber || '';
+
+    showConfirm({
+      type: 'danger',
+      title: 'XÁC NHẬN XÓA PHIẾU YÊU CẦU',
+      message: `Bạn có chắc chắn muốn xóa phiếu yêu cầu "${reqNumber ? reqNumber + ' - ' : ''}${reqName}"? Dữ liệu phiếu và biên bản nghiệm thu liên quan sẽ bị xóa vĩnh viễn khỏi hệ thống và không thể phục hồi.`,
+      confirmText: 'Xóa Phiếu',
+      cancelText: 'Hủy Bỏ',
+      onConfirm: async () => {
+        try {
+          // 1. Tìm biên bản liên quan (nếu có)
+          const targetReport = reports.find(r => 
+            (targetReq?.reportId && r.id === targetReq.reportId) ||
+            (r.requestId && r.requestId === requestId) ||
+            (r.reportNumber && targetReq?.requestNumber && (
+              r.reportNumber.replace('BBNT-APG', 'PYC').replace('BBNT-VL', 'PYC') === targetReq.requestNumber ||
+              r.reportNumber.replace('BBNT', 'PYC') === targetReq.requestNumber
+            ))
+          );
+
+          // 2. Xóa khỏi Cloud Firestore
+          await deleteInspectionRequest(requestId, targetReport?.id);
+
+          // 3. Cập nhật state requests & cache LocalStorage/IndexedDB
+          const nextRequests = requests.filter(r => r.id !== requestId);
+          setRequests(nextRequests);
+          safeSaveLocalStorage(REQUESTS_STORAGE_KEY, nextRequests);
+          try {
+            if (typeof saveToIndexedDB === 'function') saveToIndexedDB('requests', nextRequests);
+          } catch (e) {
+            console.warn('Lỗi saveToIndexedDB requests:', e);
+          }
+
+          // 4. Cập nhật state reports nếu có biên bản liên quan
+          if (targetReport) {
+            const nextReports = reports.filter(r => r.id !== targetReport.id && r.requestId !== requestId);
+            setReports(nextReports);
+            safeSaveLocalStorage(REPORTS_STORAGE_KEY, nextReports);
+            try {
+              if (typeof saveToIndexedDB === 'function') saveToIndexedDB('reports', nextReports);
+            } catch (e) {
+              console.warn('Lỗi saveToIndexedDB reports:', e);
+            }
+          }
+
+          // 5. Đóng modal nếu đang mở đúng phiếu hoặc biên bản này
+          if (selectedRequest?.id === requestId) {
+            setSelectedRequest(null);
+          }
+          if (selectedReport && (selectedReport.id === targetReport?.id || selectedReport.requestId === requestId)) {
+            setSelectedReport(null);
+          }
+
+          showAlert({
+            type: 'success',
+            title: 'Đã Xóa Thành Công',
+            message: `Phiếu yêu cầu nghiệm thu ${reqNumber ? '(' + reqNumber + ') ' : ''}đã được xóa thành công khỏi hệ thống.`,
+            confirmText: 'Đóng'
+          });
+        } catch (err) {
+          console.error('Lỗi khi xóa phiếu yêu cầu:', err);
+          showAlert({
+            type: 'danger',
+            title: 'Lỗi Xóa Phiếu',
+            message: 'Không thể xóa phiếu yêu cầu: ' + (err.message || err),
+            confirmText: 'Đóng'
+          });
+        }
+      }
+    });
+  };
+
   // Xử lý khi Cán bộ KHÔNG ĐỒNG Ý NGHIỆM THU từ chối biên bản
   const handleRejectReport = async (reportId, rejectData) => {
     // 1. Tìm đúng đối tượng report cần từ chối
@@ -7146,6 +7223,7 @@ export default function App() {
 
                     const isLeadSupervisor = currentRole !== 'ADMIN' && isSupervisorLeadOrDeputy(currentUser);
                     const isLeadInvestor = currentRole !== 'ADMIN' && isInvestorLeadOrDeputy(currentUser);
+                    const canDeleteRequest = currentRole === 'ADMIN' || currentUser?.role === 'ADMIN' || currentUser?.isSuperAdmin;
 
                     return (
                       <div 
@@ -7413,7 +7491,35 @@ export default function App() {
                         </div>
 
                         {/* NÚT HÀNH ĐỘNG CHUẨN NGHIỆP VỤ: MỞ XEM HỒ SƠ TỔNG HỢP (PHIẾU YÊU CẦU & BIÊN BẢN) */}
-                        <div className="card-actions-row" style={{ justifyContent: 'flex-end' }}>
+                        <div className="card-actions-row" style={{ justifyContent: 'flex-end', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {canDeleteRequest && (
+                            <button 
+                              type="button"
+                              className="btn-secondary" 
+                              style={{ 
+                                borderColor: '#fca5a5', 
+                                color: '#dc2626', 
+                                background: '#fff', 
+                                padding: '7px 16px', 
+                                fontSize: '0.86rem', 
+                                display: 'inline-flex', 
+                                alignItems: 'center', 
+                                gap: '6px',
+                                fontWeight: 600,
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease'
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteRequest(req.id, req);
+                              }}
+                              title="Xóa phiếu yêu cầu nghiệm thu này (Dành riêng cho CĐT Admin)"
+                            >
+                              <Trash2 size={15} color="#dc2626" />
+                              <span>Xóa</span>
+                            </button>
+                          )}
                           {isCancelled ? (
                             <button 
                               className="btn-secondary" 
@@ -7612,6 +7718,7 @@ export default function App() {
         }}
         onUpdateTime={handleUpdateRequestTime}
         onCancelRequest={handleCancelRequest}
+        onDeleteRequest={handleDeleteRequest}
       />
 
       <InspectionReportModal 
@@ -7641,6 +7748,7 @@ export default function App() {
         onReassign={(req, type) => {
           handleOpenReassignModal(req, type);
         }}
+        onDeleteRequest={handleDeleteRequest}
       />
 
       <ReassignRecipientModal 
