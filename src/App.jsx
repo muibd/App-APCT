@@ -2456,10 +2456,16 @@ export default function App() {
             }
           }
 
-          // Kiểm tra Ban QLDA quá hạn
-          const invAssigned = d.assignedInvestor?.assignee || d.assignedInvestor?.uid;
+          // Kiểm tra Ban QLDA quá hạn (CHỈ KIỂM TRA KHI TVGS ĐÃ DUYỆT ĐẠT VÀ KHÔNG PHẢI BẢN VẼ HOÀN CÔNG!)
+          const invAssigned = !isAsBuiltDoc(d) && d.assignedTvgs?.status === 'ACCEPTED' && Boolean(d.assignedInvestor?.assignee || d.assignedInvestor?.uid);
           if (invAssigned && d.assignedInvestor?.status === 'PENDING') {
-            const invDue = d.assignedInvestor?.dueDate ? new Date(d.assignedInvestor.dueDate).getTime() : (d.dueDate ? new Date(d.dueDate).getTime() : 0);
+            const tvgsReviewedTime = d.assignedTvgs?.reviewedAt ? new Date(d.assignedTvgs.reviewedAt).getTime() : 0;
+            const invSlaDays = Number(d.assignedInvestor?.slaDays || d.slaDays || 3);
+            const invAssignedTime = d.assignedInvestor?.assignedAt ? new Date(d.assignedInvestor.assignedAt).getTime() : 0;
+            const invStartTime = Math.max(tvgsReviewedTime, invAssignedTime);
+            const invDue = (d.assignedInvestor?.dueDate && new Date(d.assignedInvestor.dueDate).getTime() > invStartTime)
+              ? new Date(d.assignedInvestor.dueDate).getTime()
+              : (invStartTime + invSlaDays * 24 * 3600 * 1000);
             if (invDue && now > invDue && !d.investorReviewOverdueNotified) {
               d.investorReviewOverdueNotified = true;
               changed = true;
@@ -3273,9 +3279,11 @@ export default function App() {
             if (invAssigned && d.assignedInvestor?.status === 'PENDING') {
               const tvgsReviewedTime = d.assignedTvgs?.reviewedAt ? new Date(d.assignedTvgs.reviewedAt).getTime() : 0;
               const invSlaDays = Number(d.assignedInvestor?.slaDays || d.slaDays || 3);
-              const invDue = d.assignedInvestor?.dueDate && new Date(d.assignedInvestor.dueDate).getTime() > tvgsReviewedTime
+              const invAssignedTime = d.assignedInvestor?.assignedAt ? new Date(d.assignedInvestor.assignedAt).getTime() : 0;
+              const invStartTime = Math.max(tvgsReviewedTime, invAssignedTime);
+              const invDue = (d.assignedInvestor?.dueDate && new Date(d.assignedInvestor.dueDate).getTime() > invStartTime)
                 ? new Date(d.assignedInvestor.dueDate).getTime()
-                : (tvgsReviewedTime + invSlaDays * 24 * 3600 * 1000);
+                : (invStartTime + invSlaDays * 24 * 3600 * 1000);
 
               if (invDue && now > invDue && !d.investorReviewOverdueNotified) {
                 d.investorReviewOverdueNotified = true;

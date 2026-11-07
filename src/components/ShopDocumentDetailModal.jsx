@@ -1795,7 +1795,11 @@ export default function ShopDocumentDetailModal({
                         {!isTvgsApproved ? (
                           <span>Thời hạn hoàn thành: {shopDoc.assignedInvestor?.slaDays || 3} ngày (Bắt đầu tính khi TVGS duyệt đạt)</span>
                         ) : (
-                          <span>Thời hạn hoàn thành: {shopDoc.assignedInvestor?.slaDays || 3} ngày (Hạn: {formatDateStr(shopDoc.assignedInvestor?.dueDate || (shopDoc.assignedTvgs?.reviewedAt ? new Date(new Date(shopDoc.assignedTvgs.reviewedAt).getTime() + (shopDoc.assignedInvestor?.slaDays || 3) * 24 * 3600 * 1000).toISOString() : shopDoc.dueDate))})</span>
+                        <span>Thời hạn hoàn thành: {shopDoc.assignedInvestor?.slaDays || 3} ngày (Hạn: {formatDateStr(
+                          shopDoc.assignedInvestor?.dueDate && new Date(shopDoc.assignedInvestor.dueDate).getTime() > Math.max(new Date(shopDoc.assignedTvgs?.reviewedAt || 0).getTime(), new Date(shopDoc.assignedInvestor?.assignedAt || 0).getTime())
+                            ? shopDoc.assignedInvestor.dueDate
+                            : new Date(Math.max(new Date(shopDoc.assignedTvgs?.reviewedAt || Date.now()).getTime(), new Date(shopDoc.assignedInvestor?.assignedAt || 0).getTime()) + (shopDoc.assignedInvestor?.slaDays || 3) * 24 * 3600 * 1000).toISOString()
+                        )})</span>
                         )}
                       </div>
 

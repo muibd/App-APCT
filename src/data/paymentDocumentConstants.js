@@ -207,12 +207,14 @@ export const getPaymentInvestorOverdueInfo = (doc) => {
     return { isOverdue: false };
   }
 
-  // 2. Kiểm tra chậm duyệt: Cán bộ Ban QLDA có số ngày SLA tính từ thời điểm TVGS duyệt đạt
+  // 2. Kiểm tra chậm duyệt: Cán bộ Ban QLDA có số ngày SLA tính từ thời điểm TVGS duyệt đạt (hoặc từ lúc được phân công)
   if (doc.assignedInvestor?.status === 'PENDING') {
     const invSlaDays = Number(doc.assignedInvestor?.slaDays || doc.slaDays || 3);
-    const invDueTime = doc.assignedInvestor?.dueDate && new Date(doc.assignedInvestor.dueDate).getTime() > tvgsReviewedTime
+    const invAssignedTime = doc.assignedInvestor?.assignedAt ? new Date(doc.assignedInvestor.assignedAt).getTime() : 0;
+    const invStartTime = Math.max(tvgsReviewedTime, invAssignedTime);
+    const invDueTime = doc.assignedInvestor?.dueDate && new Date(doc.assignedInvestor.dueDate).getTime() > invStartTime
       ? new Date(doc.assignedInvestor.dueDate).getTime()
-      : (tvgsReviewedTime + invSlaDays * 24 * 60 * 60 * 1000);
+      : (invStartTime + invSlaDays * 24 * 60 * 60 * 1000);
 
     if (now > invDueTime) {
       return { isOverdue: true, type: 'REVIEW', reason: 'Ban QLDA Chậm duyệt' };

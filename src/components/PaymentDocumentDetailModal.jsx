@@ -1576,9 +1576,9 @@ export default function PaymentDocumentDetailModal({
                         <span style={{ color: '#d97706', fontWeight: 600 }}>(Tính {paymentDoc.assignedInvestor?.slaDays || 3} ngày kể từ khi TVGS xác nhận đạt)</span>
                       ) : (
                         <span>(Hạn: {formatDateStr(
-                          paymentDoc.assignedInvestor?.dueDate && new Date(paymentDoc.assignedInvestor.dueDate).getTime() > new Date(paymentDoc.assignedTvgs?.reviewedAt || 0).getTime()
+                          paymentDoc.assignedInvestor?.dueDate && new Date(paymentDoc.assignedInvestor.dueDate).getTime() > Math.max(new Date(paymentDoc.assignedTvgs?.reviewedAt || 0).getTime(), new Date(paymentDoc.assignedInvestor?.assignedAt || 0).getTime())
                             ? paymentDoc.assignedInvestor.dueDate
-                            : new Date(new Date(paymentDoc.assignedTvgs?.reviewedAt || Date.now()).getTime() + (paymentDoc.assignedInvestor?.slaDays || 3) * 24 * 3600 * 1000).toISOString()
+                            : new Date(Math.max(new Date(paymentDoc.assignedTvgs?.reviewedAt || Date.now()).getTime(), new Date(paymentDoc.assignedInvestor?.assignedAt || 0).getTime()) + (paymentDoc.assignedInvestor?.slaDays || 3) * 24 * 3600 * 1000).toISOString()
                         )})</span>
                       )}
                     </div>

@@ -131,9 +131,11 @@ export default function PaymentDocumentsView({
     } else {
       const tvgsReviewedTime = doc.assignedTvgs?.reviewedAt ? new Date(doc.assignedTvgs.reviewedAt).getTime() : Date.now();
       const invSlaDays = Number(doc.assignedInvestor?.slaDays || doc.slaDays || 3);
-      targetDueTime = doc.assignedInvestor?.dueDate && new Date(doc.assignedInvestor.dueDate).getTime() > tvgsReviewedTime
+      const invAssignedTime = doc.assignedInvestor?.assignedAt ? new Date(doc.assignedInvestor.assignedAt).getTime() : 0;
+      const invStartTime = Math.max(tvgsReviewedTime, invAssignedTime);
+      targetDueTime = doc.assignedInvestor?.dueDate && new Date(doc.assignedInvestor.dueDate).getTime() > invStartTime
         ? new Date(doc.assignedInvestor.dueDate).getTime()
-        : (tvgsReviewedTime + invSlaDays * 24 * 3600 * 1000);
+        : (invStartTime + invSlaDays * 24 * 3600 * 1000);
     }
 
     if (!targetDueTime) return { text: '---', isOverdue: false, diffDays: 0 };
@@ -845,13 +847,14 @@ export default function PaymentDocumentsView({
                   const investorAssignee = doc.assignedInvestor?.assignee || (doc.assignedInvestor?.uid ? doc.assignedInvestor : null);
                   const isInvestorAssignOverdue = isTvgsApproved && !isInvestorAssigned && (Date.now() > investorAssignDeadline);
 
-                  // 4. THÔNG TIN CÁN BỘ BAN KIỂM TRA (CHỈ TÍNH HẠN SAU KHI TRƯỞNG BAN PHÂN CÔNG)
+                  // 4. THÔNG TIN CÁN BỘ BAN KIỂM TRA (TUẦN TỰ: CHỈ TÍNH HẠN SAU KHI TVGS ĐÃ DUYỆT ĐẠT)
                   const investorStatus = doc.assignedInvestor?.status || 'WAITING_ASSIGNMENT';
-                  const investorDueDate = doc.assignedInvestor?.dueDate
+                  const invSlaDays = Number(doc.assignedInvestor?.slaDays || doc.slaDays || 3);
+                  const invAssignedTime = doc.assignedInvestor?.assignedAt ? new Date(doc.assignedInvestor.assignedAt).getTime() : 0;
+                  const invStartTime = Math.max(tvgsReviewedTime, invAssignedTime);
+                  const investorDueDate = (doc.assignedInvestor?.dueDate && new Date(doc.assignedInvestor.dueDate).getTime() > invStartTime)
                     ? new Date(doc.assignedInvestor.dueDate).getTime()
-                    : (doc.assignedInvestor?.assignedAt
-                      ? new Date(doc.assignedInvestor.assignedAt).getTime() + (doc.assignedInvestor?.slaDays || 3) * 24 * 3600 * 1000
-                      : (tvgsReviewedTime + (doc.assignedInvestor?.slaDays || doc.slaDays || 3) * 24 * 3600 * 1000));
+                    : (invStartTime + invSlaDays * 24 * 3600 * 1000);
                   const isInvestorReviewOverdue = isTvgsApproved && isInvestorAssigned && investorStatus === 'PENDING' && investorDueDate && (Date.now() > investorDueDate);
 
                   return (
