@@ -805,7 +805,8 @@ export default function PaymentDocumentsView({
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.86rem' }}>
               <thead>
                 <tr style={{ background: '#f8fafc', borderBottom: '1.5px solid #e2e8f0', color: '#475569', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                  <th style={{ padding: '12px 16px', minWidth: '240px' }}>Tên Hồ Sơ Thanh Toán</th>
+                  <th style={{ padding: '12px 16px', minWidth: '220px' }}>Tên Hồ Sơ Thanh Toán</th>
+                  <th style={{ padding: '12px 14px', minWidth: '150px' }}>Đơn Vị Thi Công</th>
                   <th style={{ padding: '12px 14px', minWidth: '160px' }}>Giám Sát Trưởng</th>
                   <th style={{ padding: '12px 16px', minWidth: '160px' }}>TVGS Kiểm Tra</th>
                   <th style={{ padding: '12px 16px', minWidth: '160px' }}>T. Ban Phân Công</th>
@@ -865,7 +866,7 @@ export default function PaymentDocumentsView({
                       onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                       onClick={() => onOpenDetailModal(doc)}
                     >
-                      {/* 1. TÊN HỒ SƠ & THÔNG TIN ĐƠN VỊ THI CÔNG */}
+                      {/* 1. TÊN HỒ SƠ */}
                       <td style={{ padding: '12px 16px', verticalAlign: 'top' }}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
                           <div style={{ marginTop: '2px' }}>
@@ -917,30 +918,36 @@ export default function PaymentDocumentsView({
                                 )}
                               </div>
                             )}
-
-                            {/* THÔNG TIN ĐƠN VỊ THI CÔNG TRÌNH NỘP */}
-                            <div style={{
-                              marginTop: '6px',
-                              padding: '5px 8px',
-                              background: '#f8fafc',
-                              border: '1px solid #e2e8f0',
-                              borderRadius: '6px',
-                              fontSize: '0.74rem',
-                              lineHeight: 1.45
-                            }}>
-                              <div style={{ color: '#0f172a', fontWeight: 600 }}>
-                                👷‍♂️ {doc.createdByName || 'ĐVTC'}
-                              </div>
-                              <div style={{ color: '#64748b', fontSize: '0.71rem' }}>
-                                🕒 {formatDateDisplay(doc.submittedAt || doc.createdAt)}
-                              </div>
-                              {(doc.status === 'REJECTED' || doc.assignedTvgs?.status === 'REJECTED' || doc.assignedInvestor?.status === 'REJECTED') && (
-                                <div style={{ color: '#dc2626', fontWeight: 700, fontSize: '0.71rem', marginTop: '2px' }}>
-                                  ⚠️ Đang sửa để trình lại
-                                </div>
-                              )}
-                            </div>
                           </div>
+                        </div>
+                      </td>
+
+                      {/* 2. ĐƠN VỊ THI CÔNG */}
+                      <td style={{ padding: '12px 14px', minWidth: '150px', verticalAlign: 'top' }}>
+                        <div>
+                          <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.84rem' }}>
+                            {doc.createdByName || 'ĐVTC'}
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '3px' }}>
+                            {formatDateDisplay(doc.submittedAt || doc.createdAt)}
+                          </div>
+                          {(doc.status === 'REJECTED' || doc.assignedTvgs?.status === 'REJECTED' || doc.assignedInvestor?.status === 'REJECTED') && (
+                            <div style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                              color: '#dc2626',
+                              background: '#fef2f2',
+                              border: '1px solid #fca5a5',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              fontWeight: 700,
+                              fontSize: '0.7rem',
+                              marginTop: '4px'
+                            }}>
+                              ⚠️ Đang sửa để trình lại
+                            </div>
+                          )}
                         </div>
                       </td>
 
