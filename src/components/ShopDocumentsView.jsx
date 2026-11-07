@@ -840,26 +840,54 @@ export default function ShopDocumentsView({
               <thead>
                 <tr style={{ background: '#f8fafc', borderBottom: '1.5px solid #e2e8f0', color: '#475569', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                   <th style={{ padding: '12px 16px', minWidth: '220px' }}>Tên Hồ Sơ / Bản Vẽ</th>
-                  <th style={{ padding: '12px 14px', minWidth: '150px' }}>Ngày Gửi</th>
-                  <th style={{ padding: '12px 14px', minWidth: '130px' }}>Trạng Thái</th>
-                  <th style={{ padding: '12px 16px', minWidth: '170px' }}>Tư Vấn Giám Sát</th>
-                  <th style={{ padding: '12px 16px', minWidth: '170px' }}>Ban QLDA</th>
-                  <th style={{ padding: '12px 14px', minWidth: '130px' }}>Hạn Phản Hồi</th>
+                  <th style={{ padding: '12px 14px', minWidth: '150px' }}>Đơn Vị Thi Công</th>
+                  <th style={{ padding: '12px 14px', minWidth: '160px' }}>Giám Sát Trưởng</th>
+                  <th style={{ padding: '12px 16px', minWidth: '160px' }}>TVGS Kiểm Tra</th>
+                  <th style={{ padding: '12px 16px', minWidth: '160px' }}>T. Ban Phân Công</th>
+                  <th style={{ padding: '12px 14px', minWidth: '160px' }}>CB Ban Kiểm Tra</th>
                   <th style={{ padding: '12px 16px', minWidth: '110px', textAlign: 'center' }}>Thao Tác</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredDocuments.map((doc, idx) => {
-                  const effectiveStatus = getEffectiveShopStatus(doc);
-                  const badgeConfig = getShopStatusBadgeConfig(effectiveStatus);
-                  const slaInfo = getSlaRemainingInfo(doc);
                   const { projectName: docProjName, packageName: docPkgName, itemName: docItemName } = getDocHierarchyInfo(doc);
+                  const isAsBuilt = isAsBuiltDoc(doc);
 
-                  const tvgsUser = doc.assignedTvgs?.assignee || (doc.assignedTvgs?.uid ? doc.assignedTvgs : null);
-                  const isTvgsAssigned = Boolean(tvgsUser?.uid);
+                  // 1. THÔNG TIN GIÁM SÁT TRƯỞNG PHÂN CÔNG
+                  const isTvgsAssigned = Boolean(doc.assignedTvgs?.assignee?.uid || doc.assignedTvgs?.uid);
+                  const tvgsAssignee = doc.assignedTvgs?.assignee || (doc.assignedTvgs?.uid ? doc.assignedTvgs : null);
+                  const tvgsAssignDeadline = doc.assignmentDeadline 
+                    ? new Date(doc.assignmentDeadline).getTime() 
+                    : (new Date(doc.createdAt || doc.submittedAt || Date.now()).getTime() + 24 * 60 * 60 * 1000);
+                  const isTvgsAssignOverdue = !isTvgsAssigned && (Date.now() > tvgsAssignDeadline);
 
-                  const investorUser = doc.assignedInvestor?.assignee || (doc.assignedInvestor?.uid ? doc.assignedInvestor : null);
-                  const isInvestorAssigned = Boolean(investorUser?.uid);
+                  // 2. THÔNG TIN TVGS KIỂM TRA
+                  const tvgsStatus = doc.assignedTvgs?.status || 'WAITING_ASSIGNMENT';
+                  const tvgsDueDate = doc.assignedTvgs?.dueDate 
+                    ? new Date(doc.assignedTvgs.dueDate).getTime() 
+                    : (doc.assignedTvgs?.assignedAt 
+                        ? new Date(doc.assignedTvgs.assignedAt).getTime() + (doc.assignedTvgs?.slaDays || 3) * 24 * 3600 * 1000 
+                        : null);
+                  const isTvgsReviewOverdue = isTvgsAssigned && tvgsStatus === 'PENDING' && tvgsDueDate && (Date.now() > tvgsDueDate);
+                  const isTvgsApproved = tvgsStatus === 'ACCEPTED';
+
+                  // 3. THÔNG TIN TRƯỞNG BAN PHÂN CÔNG (TUẦN TỰ: CHỈ BẮT ĐẦU KHI TVGS ĐÃ DUYỆT ĐẠT, NẾU KHÔNG PHẢI HOÀN CÔNG)
+                  const tvgsReviewedTime = doc.assignedTvgs?.reviewedAt 
+                    ? new Date(doc.assignedTvgs.reviewedAt).getTime() 
+                    : (doc.updatedAt ? new Date(doc.updatedAt).getTime() : Date.now());
+                  const investorAssignDeadline = tvgsReviewedTime + 24 * 60 * 60 * 1000;
+                  const isInvestorAssigned = Boolean(doc.assignedInvestor?.assignee?.uid || doc.assignedInvestor?.uid);
+                  const investorAssignee = doc.assignedInvestor?.assignee || (doc.assignedInvestor?.uid ? doc.assignedInvestor : null);
+                  const isInvestorAssignOverdue = !isAsBuilt && isTvgsApproved && !isInvestorAssigned && (Date.now() > investorAssignDeadline);
+
+                  // 4. THÔNG TIN CÁN BỘ BAN KIỂM TRA (CHỈ TÍNH HẠN SAU KHI TRƯỞNG BAN PHÂN CÔNG)
+                  const investorStatus = doc.assignedInvestor?.status || 'WAITING_ASSIGNMENT';
+                  const investorDueDate = doc.assignedInvestor?.dueDate 
+                    ? new Date(doc.assignedInvestor.dueDate).getTime() 
+                    : (doc.assignedInvestor?.assignedAt 
+                        ? new Date(doc.assignedInvestor.assignedAt).getTime() + (doc.assignedInvestor?.slaDays || 3) * 24 * 3600 * 1000 
+                        : (tvgsReviewedTime + (doc.assignedInvestor?.slaDays || doc.slaDays || 3) * 24 * 3600 * 1000));
+                  const isInvestorReviewOverdue = !isAsBuilt && isTvgsApproved && isInvestorAssigned && investorStatus === 'PENDING' && investorDueDate && (Date.now() > investorDueDate);
 
                   return (
                     <tr 
@@ -873,8 +901,8 @@ export default function ShopDocumentsView({
                       onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                       onClick={() => onOpenDetailModal(doc)}
                     >
-                      {/* TÊN HỒ SƠ */}
-                      <td style={{ padding: '12px 16px' }}>
+                      {/* 1. TÊN HỒ SƠ / BẢN VẼ */}
+                      <td style={{ padding: '12px 16px', verticalAlign: 'top' }}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
                           <div style={{ marginTop: '2px' }}>
                             <FileText size={18} color="#0284c7" />
@@ -882,27 +910,6 @@ export default function ShopDocumentsView({
                           <div>
                             <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.88rem', lineHeight: 1.35 }}>
                               {doc.title}
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
-                              <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '1px 6px', borderRadius: '4px', background: '#e0f2fe', color: '#0369a1' }}>
-                                {doc.docCode || 'HSS'}
-                              </span>
-                              <span style={{ fontSize: '0.72rem', fontWeight: 500, padding: '1px 6px', borderRadius: '4px', background: '#f1f5f9', color: '#475569' }}>
-                                {doc.typeName}
-                              </span>
-                              {(doc.pdfFile || (Array.isArray(doc.pdfFiles) && doc.pdfFiles.length > 0)) && (
-                                <span
-                                  title={`${doc.pdfFiles?.length || 1} tệp đính kèm`}
-                                  style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '0.7rem', color: '#2563eb', fontWeight: 600 }}
-                                >
-                                  <Paperclip size={11} /> Tệp {doc.pdfFiles?.length > 1 ? `(${doc.pdfFiles.length})` : ''}
-                                </span>
-                              )}
-                              {Array.isArray(doc.photos) && doc.photos.length > 0 && (
-                                <span title={`${doc.photos.length} ảnh đính kèm`} style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '0.7rem', color: '#059669', fontWeight: 600 }}>
-                                  📷 {doc.photos.length}
-                                </span>
-                              )}
                             </div>
 
                             {/* BADGES PHÂN CẤP CÔNG TRÌNH / GÓI THẦU / HẠNG MỤC */}
@@ -929,71 +936,156 @@ export default function ShopDocumentsView({
                         </div>
                       </td>
 
-                      {/* NGÀY GỬI */}
-                      <td style={{ padding: '12px 14px', color: '#334155', fontSize: '0.82rem' }}>
-                        <div>{formatDateDisplay(doc.submittedAt || doc.createdAt)}</div>
-                        <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Bởi: {doc.createdByName || 'ĐVTC'}</div>
+                      {/* 2. ĐƠN VỊ THI CÔNG */}
+                      <td style={{ padding: '12px 14px', minWidth: '150px', verticalAlign: 'top' }}>
+                        <div>
+                          <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.84rem' }}>
+                            {doc.createdByName || 'ĐVTC'}
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '3px' }}>
+                            {formatDateDisplay(doc.submittedAt || doc.createdAt)}
+                          </div>
+                          {(doc.status === 'REJECTED' || doc.assignedTvgs?.status === 'REJECTED' || doc.assignedInvestor?.status === 'REJECTED') && (
+                            <div style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                              color: '#dc2626',
+                              background: '#fef2f2',
+                              border: '1px solid #fca5a5',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              fontWeight: 700,
+                              fontSize: '0.7rem',
+                              marginTop: '4px'
+                            }}>
+                              ⚠️ Đang sửa để trình lại
+                            </div>
+                          )}
+                        </div>
                       </td>
 
-                      {/* TRẠNG THÁI */}
-                      <td style={{ padding: '12px 14px' }}>
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '5px',
-                          padding: '3px 8px',
-                          borderRadius: '12px',
-                          fontSize: '0.76rem',
-                          fontWeight: 700,
-                          background: badgeConfig.bg,
-                          color: badgeConfig.color,
-                          border: `1px solid ${badgeConfig.border}`
-                        }}>
-                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: badgeConfig.dotColor }} />
-                          {badgeConfig.label}
-                        </span>
-                      </td>
-
-                      {/* TÊN TVGS */}
-                      <td style={{ padding: '12px 16px' }}>
+                      {/* 3. GIÁM SÁT TRƯỞNG PHÂN CÔNG */}
+                      <td style={{ padding: '12px 14px', minWidth: '160px', verticalAlign: 'top' }}>
                         {!isTvgsAssigned ? (
-                          <span style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            color: getShopTvgsOverdueInfo(doc).type === 'ASSIGNMENT' ? '#e11d48' : '#b45309',
-                            background: getShopTvgsOverdueInfo(doc).type === 'ASSIGNMENT' ? '#fff1f2' : '#fffbeb',
-                            border: `1px solid ${getShopTvgsOverdueInfo(doc).type === 'ASSIGNMENT' ? '#fecdd3' : '#fde68a'}`,
-                            padding: '3px 8px',
-                            borderRadius: '4px',
-                            fontSize: '0.74rem',
-                            fontWeight: 600
-                          }}>
-                            {getShopTvgsOverdueInfo(doc).type === 'ASSIGNMENT' ? '⚠️ Chậm TVGS Trưởng giao' : '⏳ Chờ TVGS Trưởng giao'}
-                          </span>
+                          <div>
+                            <div>
+                              <span style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                color: isTvgsAssignOverdue ? '#b91c1c' : '#b45309',
+                                background: isTvgsAssignOverdue ? '#fef2f2' : '#fffbeb',
+                                border: `1px solid ${isTvgsAssignOverdue ? '#fca5a5' : '#fde68a'}`,
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                fontSize: '0.74rem',
+                                fontWeight: 700
+                              }}>
+                                ⏳ Đang phân công {isTvgsAssignOverdue ? '(Trễ)' : ''}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '0.71rem', color: isTvgsAssignOverdue ? '#dc2626' : '#64748b', marginTop: '4px', fontWeight: isTvgsAssignOverdue ? 600 : 400 }}>
+                              Hạn: {formatDateDisplay(tvgsAssignDeadline)}
+                            </div>
+                          </div>
                         ) : (
                           <div>
-                            <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.84rem' }}>
-                              {tvgsUser?.fullName || '---'}
+                            <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.84rem' }}>
+                              {tvgsAssignee?.fullName || '---'}
                             </div>
-                            <div style={{ fontSize: '0.72rem', marginTop: '2px' }}>
-                              {doc.assignedTvgs?.status === 'ACCEPTED' ? (
-                                <span style={{ color: '#15803d', fontWeight: 600 }}>✓ Đã xác nhận</span>
-                              ) : doc.assignedTvgs?.status === 'REJECTED' ? (
-                                <span style={{ color: '#b91c1c', fontWeight: 600 }}>✕ Yêu cầu sửa</span>
-                              ) : getShopTvgsOverdueInfo(doc).type === 'REVIEW' ? (
-                                <span style={{ color: '#e11d48', fontWeight: 700 }}>⚠️ TVGS chậm duyệt</span>
+                            <div style={{ fontSize: '0.71rem', color: '#15803d', marginTop: '3px', fontWeight: 500 }}>
+                              ✓ Hoàn thành: {formatDateDisplay(doc.assignedTvgs?.assignedAt || doc.createdAt)}
+                            </div>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* 4. TVGS KIỂM TRA */}
+                      <td style={{ padding: '12px 16px', minWidth: '160px', verticalAlign: 'top' }}>
+                        {!isTvgsAssigned ? (
+                          <div>
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              color: '#64748b',
+                              background: '#f1f5f9',
+                              border: '1px solid #e2e8f0',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              fontSize: '0.74rem',
+                              fontWeight: 600
+                            }}>
+                              ⏳ Chờ phân công
+                            </span>
+                            <div style={{ fontSize: '0.71rem', color: '#94a3b8', marginTop: '4px' }}>---</div>
+                          </div>
+                        ) : (
+                          <div>
+                            <div>
+                              {tvgsStatus === 'ACCEPTED' ? (
+                                <span style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  color: '#15803d',
+                                  background: '#f0fdf4',
+                                  border: '1px solid #bbf7d0',
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '0.74rem',
+                                  fontWeight: 700
+                                }}>
+                                  ✓ Đã kiểm tra (Đạt)
+                                </span>
+                              ) : tvgsStatus === 'REJECTED' ? (
+                                <span style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  color: '#b91c1c',
+                                  background: '#fef2f2',
+                                  border: '1px solid #fecaca',
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '0.74rem',
+                                  fontWeight: 700
+                                }}>
+                                  ✕ Yêu cầu sửa
+                                </span>
                               ) : (
-                                <span style={{ color: '#0284c7' }}>⏳ Đang thẩm định</span>
+                                <span style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  color: isTvgsReviewOverdue ? '#b91c1c' : '#0284c7',
+                                  background: isTvgsReviewOverdue ? '#fef2f2' : '#f0f9ff',
+                                  border: `1px solid ${isTvgsReviewOverdue ? '#fca5a5' : '#bae6fd'}`,
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '0.74rem',
+                                  fontWeight: 700
+                                }}>
+                                  ⏳ Đang kiểm tra {isTvgsReviewOverdue ? '(Trễ)' : ''}
+                                </span>
+                              )}
+                            </div>
+
+                            <div style={{ fontSize: '0.71rem', marginTop: '4px', color: (tvgsStatus === 'ACCEPTED' ? '#15803d' : tvgsStatus === 'REJECTED' ? '#b91c1c' : isTvgsReviewOverdue ? '#dc2626' : '#64748b') }}>
+                              {tvgsStatus === 'ACCEPTED' || tvgsStatus === 'REJECTED' ? (
+                                <span>Xong: {formatDateDisplay(doc.assignedTvgs?.reviewedAt)}</span>
+                              ) : (
+                                <span>Hạn: {formatDateDisplay(tvgsDueDate)}</span>
                               )}
                             </div>
                           </div>
                         )}
                       </td>
 
-                      {/* TÊN BAN QLDA */}
-                      <td style={{ padding: '12px 16px' }}>
-                        {isAsBuiltDoc(doc) ? (
+                      {/* 5. T. BAN PHÂN CÔNG */}
+                      <td style={{ padding: '12px 16px', minWidth: '160px', verticalAlign: 'top' }}>
+                        {isAsBuilt ? (
                           <span style={{
                             display: 'inline-flex',
                             alignItems: 'center',
@@ -1009,75 +1101,161 @@ export default function ShopDocumentsView({
                           }}>
                             — Không qua Ban QLDA
                           </span>
-                        ) : !isInvestorAssigned ? (
-                          doc.assignedTvgs?.status !== 'ACCEPTED' ? (
+                        ) : !isTvgsApproved ? (
+                          <div>
                             <span style={{
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: '4px',
-                              color: '#64748b',
+                              color: '#94a3b8',
                               background: '#f8fafc',
                               border: '1px solid #e2e8f0',
-                              padding: '3px 8px',
-                              borderRadius: '4px',
-                              fontSize: '0.74rem'
-                            }}>
-                              ⏳ Chờ TVGS duyệt trước
-                            </span>
-                          ) : (
-                            <span style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              color: getShopInvestorOverdueInfo(doc).type === 'ASSIGNMENT' ? '#be185d' : '#b45309',
-                              background: getShopInvestorOverdueInfo(doc).type === 'ASSIGNMENT' ? '#fdf2f8' : '#fffbeb',
-                              border: `1px solid ${getShopInvestorOverdueInfo(doc).type === 'ASSIGNMENT' ? '#fbcfe8' : '#fde68a'}`,
-                              padding: '3px 8px',
+                              padding: '2px 8px',
                               borderRadius: '4px',
                               fontSize: '0.74rem',
-                              fontWeight: 600
+                              fontWeight: 500
                             }}>
-                              {getShopInvestorOverdueInfo(doc).type === 'ASSIGNMENT' ? '⚠️ Chậm Trưởng Ban giao' : '⏳ Chờ Trưởng Ban giao'}
+                              ⏳ Chờ TVGS kiểm tra
                             </span>
-                          )
+                            <div style={{ fontSize: '0.71rem', color: '#cbd5e1', marginTop: '4px' }}>---</div>
+                          </div>
+                        ) : !isInvestorAssigned ? (
+                          <div>
+                            <div>
+                              <span style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                color: isInvestorAssignOverdue ? '#b91c1c' : '#b45309',
+                                background: isInvestorAssignOverdue ? '#fef2f2' : '#fffbeb',
+                                border: `1px solid ${isInvestorAssignOverdue ? '#fca5a5' : '#fde68a'}`,
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                fontSize: '0.74rem',
+                                fontWeight: 700
+                              }}>
+                                ⏳ Đang phân công {isInvestorAssignOverdue ? '(Trễ)' : ''}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '0.71rem', color: isInvestorAssignOverdue ? '#dc2626' : '#64748b', marginTop: '4px', fontWeight: isInvestorAssignOverdue ? 600 : 400 }}>
+                              Hạn: {formatDateDisplay(investorAssignDeadline)}
+                            </div>
+                          </div>
                         ) : (
                           <div>
-                            <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.84rem' }}>
-                              {investorUser?.fullName || '---'}
+                            <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.84rem' }}>
+                              {investorAssignee?.fullName || '---'}
                             </div>
-                            <div style={{ fontSize: '0.72rem', marginTop: '2px' }}>
-                              {doc.assignedInvestor?.status === 'ACCEPTED' ? (
-                                <span style={{ color: '#15803d', fontWeight: 600 }}>✓ Đã xác nhận</span>
-                              ) : doc.assignedInvestor?.status === 'REJECTED' ? (
-                                <span style={{ color: '#b91c1c', fontWeight: 600 }}>✕ Yêu cầu sửa</span>
-                              ) : doc.assignedTvgs?.status !== 'ACCEPTED' ? (
-                                <span style={{ color: '#94a3b8' }}>⏳ Chờ TVGS duyệt trước</span>
-                              ) : getShopInvestorOverdueInfo(doc).type === 'REVIEW' ? (
-                                <span style={{ color: '#be185d', fontWeight: 700 }}>⚠️ Ban QLDA chậm duyệt</span>
-                              ) : (
-                                <span style={{ color: '#b45309', fontWeight: 600 }}>⏳ Chờ Ban QLDA duyệt</span>
-                              )}
+                            <div style={{ fontSize: '0.71rem', color: '#15803d', marginTop: '3px', fontWeight: 500 }}>
+                              ✓ Hoàn thành: {formatDateDisplay(doc.assignedInvestor?.assignedAt)}
                             </div>
                           </div>
                         )}
                       </td>
 
-                      {/* HẠN PHẢN HỒI (SLA) */}
-                      <td style={{ padding: '12px 14px' }}>
-                        <span style={{
-                          display: 'inline-block',
-                          padding: '3px 7px',
-                          borderRadius: '6px',
-                          fontSize: '0.74rem',
-                          fontWeight: 700,
-                          background: slaInfo.bg,
-                          color: slaInfo.color
-                        }}>
-                          {slaInfo.text}
-                        </span>
-                        <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '2px' }}>
-                          SLA: {doc.slaDays || 3} ngày
-                        </div>
+                      {/* 6. CB BAN KIỂM TRA (CHỈ TÍNH HẠN SAU KHI TRƯỞNG BAN PHÂN CÔNG) */}
+                      <td style={{ padding: '12px 14px', minWidth: '160px', verticalAlign: 'top' }}>
+                        {isAsBuilt ? (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            color: '#64748b',
+                            background: '#f1f5f9',
+                            border: '1px solid #e2e8f0',
+                            padding: '3px 8px',
+                            borderRadius: '4px',
+                            fontSize: '0.74rem',
+                            fontWeight: 500,
+                            fontStyle: 'italic'
+                          }}>
+                            — Không qua Ban QLDA
+                          </span>
+                        ) : !isTvgsApproved ? (
+                          /* Lúc TVGS kiểm tra, cột này không hiện thông báo */
+                          <div>
+                            <span style={{ color: '#94a3b8', fontSize: '0.76rem', fontStyle: 'italic' }}>
+                              ---
+                            </span>
+                          </div>
+                        ) : !isInvestorAssigned ? (
+                          <div>
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              color: '#94a3b8',
+                              background: '#f8fafc',
+                              border: '1px solid #e2e8f0',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              fontSize: '0.74rem',
+                              fontWeight: 500
+                            }}>
+                              ⏳ Chờ Trưởng ban giao
+                            </span>
+                            <div style={{ fontSize: '0.71rem', color: '#cbd5e1', marginTop: '4px' }}>---</div>
+                          </div>
+                        ) : (
+                          <div>
+                            <div>
+                              {investorStatus === 'ACCEPTED' ? (
+                                <span style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  color: '#15803d',
+                                  background: '#f0fdf4',
+                                  border: '1px solid #bbf7d0',
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '0.74rem',
+                                  fontWeight: 700
+                                }}>
+                                  ✓ Đã kiểm tra (Đạt)
+                                </span>
+                              ) : investorStatus === 'REJECTED' ? (
+                                <span style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  color: '#b91c1c',
+                                  background: '#fef2f2',
+                                  border: '1px solid #fecaca',
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '0.74rem',
+                                  fontWeight: 700
+                                }}>
+                                  ✕ Yêu cầu sửa
+                                </span>
+                              ) : (
+                                <span style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  color: isInvestorReviewOverdue ? '#b91c1c' : '#0284c7',
+                                  background: isInvestorReviewOverdue ? '#fef2f2' : '#f0f9ff',
+                                  border: `1px solid ${isInvestorReviewOverdue ? '#fca5a5' : '#bae6fd'}`,
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '0.74rem',
+                                  fontWeight: 700
+                                }}>
+                                  ⏳ Đang kiểm tra {isInvestorReviewOverdue ? '(Trễ)' : ''}
+                                </span>
+                              )}
+                            </div>
+
+                            <div style={{ fontSize: '0.71rem', marginTop: '4px', color: (investorStatus === 'ACCEPTED' ? '#15803d' : investorStatus === 'REJECTED' ? '#b91c1c' : isInvestorReviewOverdue ? '#dc2626' : '#64748b') }}>
+                              {investorStatus === 'ACCEPTED' || investorStatus === 'REJECTED' ? (
+                                <span>Xong: {formatDateDisplay(doc.assignedInvestor?.reviewedAt)}</span>
+                              ) : (
+                                <span>Hạn: {formatDateDisplay(investorDueDate)}</span>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </td>
 
                       {/* THAO TÁC */}
