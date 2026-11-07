@@ -877,14 +877,9 @@ export default function PaymentDocumentsView({
                               {doc.title}
                             </div>
 
-                            {/* BADGES PHÂN CẤP CÔNG TRÌNH / GÓI THẦU / HẠNG MỤC */}
-                            {(docProjName || docPkgName || docItemName) && (
+                            {/* BADGES PHÂN CẤP GÓI THẦU / HẠNG MỤC */}
+                            {(docPkgName || docItemName) && (
                               <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '4px', flexWrap: 'wrap' }}>
-                                {docProjName && (
-                                  <span style={{ fontSize: '0.7rem', color: '#0f766e', background: '#f0fdfa', border: '1px solid #ccfbf1', padding: '1px 5px', borderRadius: '4px', fontWeight: 600 }}>
-                                    🏢 {docProjName}
-                                  </span>
-                                )}
                                 {docPkgName && (
                                   <span style={{ fontSize: '0.7rem', color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', padding: '1px 5px', borderRadius: '4px', fontWeight: 600 }}>
                                     📦 {docPkgName}

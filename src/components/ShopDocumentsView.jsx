@@ -912,14 +912,9 @@ export default function ShopDocumentsView({
                               {doc.title}
                             </div>
 
-                            {/* BADGES PHÂN CẤP CÔNG TRÌNH / GÓI THẦU / HẠNG MỤC */}
-                            {(docProjName || docPkgName || docItemName) && (
+                            {/* BADGES PHÂN CẤP GÓI THẦU / HẠNG MỤC */}
+                            {(docPkgName || docItemName) && (
                               <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '4px', flexWrap: 'wrap' }}>
-                                {docProjName && (
-                                  <span style={{ fontSize: '0.7rem', color: '#0f766e', background: '#f0fdfa', border: '1px solid #ccfbf1', padding: '1px 5px', borderRadius: '4px', fontWeight: 600 }}>
-                                    🏢 {docProjName}
-                                  </span>
-                                )}
                                 {docPkgName && (
                                   <span style={{ fontSize: '0.7rem', color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', padding: '1px 5px', borderRadius: '4px', fontWeight: 600 }}>
                                     📦 {docPkgName}
@@ -1086,21 +1081,9 @@ export default function ShopDocumentsView({
                       {/* 5. T. BAN PHÂN CÔNG */}
                       <td style={{ padding: '12px 16px', minWidth: '160px', verticalAlign: 'top' }}>
                         {isAsBuilt ? (
-                          <span style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            color: '#64748b',
-                            background: '#f1f5f9',
-                            border: '1px solid #e2e8f0',
-                            padding: '3px 8px',
-                            borderRadius: '4px',
-                            fontSize: '0.74rem',
-                            fontWeight: 500,
-                            fontStyle: 'italic'
-                          }}>
-                            — Không qua Ban QLDA
-                          </span>
+                          <div>
+                            <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>--</span>
+                          </div>
                         ) : !isTvgsApproved ? (
                           <div>
                             <span style={{
@@ -1156,21 +1139,9 @@ export default function ShopDocumentsView({
                       {/* 6. CB BAN KIỂM TRA (CHỈ TÍNH HẠN SAU KHI TRƯỞNG BAN PHÂN CÔNG) */}
                       <td style={{ padding: '12px 14px', minWidth: '160px', verticalAlign: 'top' }}>
                         {isAsBuilt ? (
-                          <span style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            color: '#64748b',
-                            background: '#f1f5f9',
-                            border: '1px solid #e2e8f0',
-                            padding: '3px 8px',
-                            borderRadius: '4px',
-                            fontSize: '0.74rem',
-                            fontWeight: 500,
-                            fontStyle: 'italic'
-                          }}>
-                            — Không qua Ban QLDA
-                          </span>
+                          <div>
+                            <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>--</span>
+                          </div>
                         ) : !isTvgsApproved ? (
                           /* Lúc TVGS kiểm tra, cột này không hiện thông báo */
                           <div>
