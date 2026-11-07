@@ -72,6 +72,7 @@ import {
   getShopLeadSupervisor,
   getShopLeadInvestor,
   isAsBuiltDoc,
+  getDocumentAttachmentVersions,
   SHOP_DOCUMENTS_STORAGE_KEY,
   SHOP_SLA_STORAGE_KEY
 } from './data/shopDocumentConstants';
@@ -2171,7 +2172,7 @@ export default function App() {
   };
 
   // 5. Khắc phục & Nộp lại trực tiếp cho người từ chối (Bypasses 2 leaders)
-  const handleResubmitShopDocument = async (docId, { notes, pdfFile, pdfFiles, photos, resubmittedBy }) => {
+  const handleResubmitShopDocument = async (docId, { notes, pdfFile, pdfFiles, attachmentVersions, newAttachmentVersion, photos, resubmittedBy }) => {
     try {
       const doc = (shopDocuments || []).find(d => d.id === docId) || selectedShopDoc;
       if (!doc) return;
@@ -2179,6 +2180,35 @@ export default function App() {
       const nowIso = new Date().toISOString();
       const rejectingOfficer = doc.rejectedBy;
       const isTvgsReject = rejectingOfficer?.role === 'SUPERVISOR';
+
+      // Quản lý phiên bản tệp đính kèm (v1 ban đầu, v2, v3... khi sửa gửi lại)
+      const existingVersions = getDocumentAttachmentVersions(doc);
+      let updatedVersions = attachmentVersions;
+      if (!Array.isArray(updatedVersions) || updatedVersions.length === 0) {
+        if (newAttachmentVersion) {
+          updatedVersions = [...existingVersions, newAttachmentVersion];
+        } else if (Array.isArray(pdfFiles) && pdfFiles.length > 0) {
+          const nextV = existingVersions.length + 1;
+          updatedVersions = [
+            ...existingVersions,
+            {
+              version: nextV,
+              versionName: `v${nextV}`,
+              label: `Tệp đính kèm v${nextV}`,
+              title: `Tệp đính kèm v${nextV}`,
+              createdAt: nowIso,
+              createdByName: resubmittedBy?.fullName || currentUser?.fullName || 'Đơn Vị Thi Công',
+              files: pdfFiles
+            }
+          ];
+        } else {
+          updatedVersions = existingVersions;
+        }
+      }
+
+      const latestFiles = (Array.isArray(pdfFiles) && pdfFiles.length > 0)
+        ? pdfFiles
+        : (updatedVersions[updatedVersions.length - 1]?.files || doc.pdfFiles || []);
 
       // Đặt lại trạng thái của bên từ chối về PENDING
       const updatedTvgs = isTvgsReject ? {
@@ -2196,8 +2226,9 @@ export default function App() {
       const updatedDoc = {
         ...doc,
         notes: notes !== undefined ? notes : doc.notes,
-        pdfFile: pdfFile !== undefined ? pdfFile : doc.pdfFile,
-        pdfFiles: Array.isArray(pdfFiles) ? pdfFiles : (doc.pdfFiles || (doc.pdfFile ? [doc.pdfFile] : [])),
+        pdfFile: latestFiles[0] || pdfFile || doc.pdfFile || null,
+        pdfFiles: latestFiles,
+        attachmentVersions: updatedVersions,
         photos: Array.isArray(photos) ? photos : doc.photos,
         assignedTvgs: updatedTvgs,
         assignedInvestor: updatedInvestor,
@@ -2210,7 +2241,7 @@ export default function App() {
             by: resubmittedBy?.fullName || currentUser?.fullName,
             role: 'CONTRACTOR',
             time: nowIso,
-            note: `Đã khắc phục chỉnh sửa và nộp lại trực tiếp cho ${rejectingOfficer?.fullName || 'cán bộ thẩm định'}. Nội dung: ${notes}`
+            note: `Đã khắc phục chỉnh sửa (Phiên bản v${updatedVersions.length}) và nộp lại trực tiếp cho ${rejectingOfficer?.fullName || 'cán bộ thẩm định'}. Nội dung: ${notes}`
           }
         ],
         updatedAt: nowIso
@@ -2958,7 +2989,7 @@ export default function App() {
   };
 
   // 5. Khắc phục & Nộp lại trực tiếp cho người từ chối (Bypasses 2 leaders)
-  const handleResubmitPaymentDocument = async (docId, { notes, pdfFile, pdfFiles, photos, resubmittedBy }) => {
+  const handleResubmitPaymentDocument = async (docId, { notes, pdfFile, pdfFiles, attachmentVersions, newAttachmentVersion, photos, resubmittedBy }) => {
     try {
       const doc = (paymentDocuments || []).find(d => d.id === docId) || selectedPaymentDoc;
       if (!doc) return;
@@ -2966,6 +2997,35 @@ export default function App() {
       const nowIso = new Date().toISOString();
       const rejectingOfficer = doc.rejectedBy;
       const isTvgsReject = rejectingOfficer?.role === 'SUPERVISOR';
+
+      // Quản lý phiên bản tệp đính kèm (v1 ban đầu, v2, v3... khi sửa gửi lại)
+      const existingVersions = getDocumentAttachmentVersions(doc);
+      let updatedVersions = attachmentVersions;
+      if (!Array.isArray(updatedVersions) || updatedVersions.length === 0) {
+        if (newAttachmentVersion) {
+          updatedVersions = [...existingVersions, newAttachmentVersion];
+        } else if (Array.isArray(pdfFiles) && pdfFiles.length > 0) {
+          const nextV = existingVersions.length + 1;
+          updatedVersions = [
+            ...existingVersions,
+            {
+              version: nextV,
+              versionName: `v${nextV}`,
+              label: `Tệp đính kèm v${nextV}`,
+              title: `Tệp đính kèm v${nextV}`,
+              createdAt: nowIso,
+              createdByName: resubmittedBy?.fullName || currentUser?.fullName || 'Đơn Vị Thi Công',
+              files: pdfFiles
+            }
+          ];
+        } else {
+          updatedVersions = existingVersions;
+        }
+      }
+
+      const latestFiles = (Array.isArray(pdfFiles) && pdfFiles.length > 0)
+        ? pdfFiles
+        : (updatedVersions[updatedVersions.length - 1]?.files || doc.pdfFiles || []);
 
       const updatedTvgs = isTvgsReject ? {
         ...doc.assignedTvgs,
@@ -2982,8 +3042,9 @@ export default function App() {
       const updatedDoc = {
         ...doc,
         notes: notes !== undefined ? notes : doc.notes,
-        pdfFile: pdfFile !== undefined ? pdfFile : doc.pdfFile,
-        pdfFiles: Array.isArray(pdfFiles) ? pdfFiles : (doc.pdfFiles || (doc.pdfFile ? [doc.pdfFile] : [])),
+        pdfFile: latestFiles[0] || pdfFile || doc.pdfFile || null,
+        pdfFiles: latestFiles,
+        attachmentVersions: updatedVersions,
         photos: Array.isArray(photos) ? photos : doc.photos,
         assignedTvgs: updatedTvgs,
         assignedInvestor: updatedInvestor,
@@ -2996,7 +3057,7 @@ export default function App() {
             by: resubmittedBy?.fullName || currentUser?.fullName,
             role: 'CONTRACTOR',
             time: nowIso,
-            note: `Đã khắc phục chỉnh sửa và nộp lại trực tiếp cho ${rejectingOfficer?.fullName || 'cán bộ thẩm định'}. Nội dung: ${notes}`
+            note: `Đã khắc phục chỉnh sửa (Phiên bản v${updatedVersions.length}) và nộp lại trực tiếp cho ${rejectingOfficer?.fullName || 'cán bộ thẩm định'}. Nội dung: ${notes}`
           }
         ],
         updatedAt: nowIso

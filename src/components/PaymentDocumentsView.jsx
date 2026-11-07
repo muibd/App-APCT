@@ -71,8 +71,8 @@ export default function PaymentDocumentsView({
     }
 
     if (doc.status === PAYMENT_STATUS.WAITING_ASSIGNMENT || (!isTvgsAssigned || !isInvestorAssigned)) {
-      const deadline = doc.assignmentDeadline 
-        ? new Date(doc.assignmentDeadline).getTime() 
+      const deadline = doc.assignmentDeadline
+        ? new Date(doc.assignmentDeadline).getTime()
         : (new Date(doc.createdAt || doc.submittedAt || Date.now()).getTime() + 24 * 60 * 60 * 1000);
       const diffHours = Math.round((deadline - Date.now()) / (3600 * 1000));
       if (diffHours < 0) {
@@ -125,8 +125,8 @@ export default function PaymentDocumentsView({
     let targetDueTime = null;
 
     if (!isTvgsApproved) {
-      targetDueTime = doc.assignedTvgs?.dueDate 
-        ? new Date(doc.assignedTvgs.dueDate).getTime() 
+      targetDueTime = doc.assignedTvgs?.dueDate
+        ? new Date(doc.assignedTvgs.dueDate).getTime()
         : (doc.dueDate ? new Date(doc.dueDate).getTime() : null);
     } else {
       const tvgsReviewedTime = doc.assignedTvgs?.reviewedAt ? new Date(doc.assignedTvgs.reviewedAt).getTime() : Date.now();
@@ -326,11 +326,11 @@ export default function PaymentDocumentsView({
       if (selectedStatus !== 'ALL') {
         const effStatus = getEffectivePaymentStatus(doc);
         if (selectedStatus === PAYMENT_STATUS.OVERDUE) {
-          const isOverdue = 
+          const isOverdue =
             effStatus === PAYMENT_STATUS.OVERDUE_TVGS ||
             effStatus === PAYMENT_STATUS.OVERDUE_INVESTOR ||
-            effStatus === PAYMENT_STATUS.OVERDUE || 
-            effStatus === PAYMENT_STATUS.OVERDUE_ASSIGNMENT || 
+            effStatus === PAYMENT_STATUS.OVERDUE ||
+            effStatus === PAYMENT_STATUS.OVERDUE_ASSIGNMENT ||
             effStatus === PAYMENT_STATUS.OVERDUE_REVIEW;
           if (!isOverdue) return false;
         } else if (effStatus !== selectedStatus) {
@@ -383,7 +383,7 @@ export default function PaymentDocumentsView({
 
   return (
     <div className="payment-documents-view" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      
+
       {/* 1. HEADER & METRIC SUMMARY CARDS */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
         <div>
@@ -423,9 +423,9 @@ export default function PaymentDocumentsView({
 
       {/* METRIC CARDS */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
-        
+
         {/* TỔNG SỐ */}
-        <div 
+        <div
           onClick={() => setSelectedStatus('ALL')}
           style={{
             background: '#ffffff',
@@ -447,7 +447,7 @@ export default function PaymentDocumentsView({
         </div>
 
         {/* CHỜ PHÂN CÔNG */}
-        <div 
+        <div
           onClick={() => setSelectedStatus(PAYMENT_STATUS.WAITING_ASSIGNMENT)}
           style={{
             background: '#ffffff',
@@ -469,7 +469,7 @@ export default function PaymentDocumentsView({
         </div>
 
         {/* ĐANG THẨM ĐỊNH */}
-        <div 
+        <div
           onClick={() => setSelectedStatus(PAYMENT_STATUS.SENT)}
           style={{
             background: '#ffffff',
@@ -491,7 +491,7 @@ export default function PaymentDocumentsView({
         </div>
 
         {/* ĐÃ XÁC NHẬN */}
-        <div 
+        <div
           onClick={() => setSelectedStatus(PAYMENT_STATUS.APPROVED)}
           style={{
             background: '#ffffff',
@@ -513,7 +513,7 @@ export default function PaymentDocumentsView({
         </div>
 
         {/* CẦN SỬA */}
-        <div 
+        <div
           onClick={() => setSelectedStatus(PAYMENT_STATUS.REJECTED)}
           style={{
             background: '#ffffff',
@@ -535,7 +535,7 @@ export default function PaymentDocumentsView({
         </div>
 
         {/* CHẬM (QUÁ HẠN) */}
-        <div 
+        <div
           onClick={() => setSelectedStatus(PAYMENT_STATUS.OVERDUE)}
           style={{
             background: '#ffffff',
@@ -791,7 +791,7 @@ export default function PaymentDocumentsView({
         overflow: 'hidden',
         boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
       }}>
-        
+
         {filteredDocuments.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px 20px', color: '#64748b' }}>
             <CreditCard size={42} color="#cbd5e1" style={{ marginBottom: '10px' }} />
@@ -821,24 +821,24 @@ export default function PaymentDocumentsView({
                   // 1. THÔNG TIN GIÁM SÁT TRƯỞNG PHÂN CÔNG
                   const isTvgsAssigned = Boolean(doc.assignedTvgs?.assignee?.uid || doc.assignedTvgs?.uid);
                   const tvgsAssignee = doc.assignedTvgs?.assignee || (doc.assignedTvgs?.uid ? doc.assignedTvgs : null);
-                  const tvgsAssignDeadline = doc.assignmentDeadline 
-                    ? new Date(doc.assignmentDeadline).getTime() 
+                  const tvgsAssignDeadline = doc.assignmentDeadline
+                    ? new Date(doc.assignmentDeadline).getTime()
                     : (new Date(doc.createdAt || doc.submittedAt || Date.now()).getTime() + 24 * 60 * 60 * 1000);
                   const isTvgsAssignOverdue = !isTvgsAssigned && (Date.now() > tvgsAssignDeadline);
 
                   // 2. THÔNG TIN TVGS KIỂM TRA
                   const tvgsStatus = doc.assignedTvgs?.status || 'WAITING_ASSIGNMENT';
-                  const tvgsDueDate = doc.assignedTvgs?.dueDate 
-                    ? new Date(doc.assignedTvgs.dueDate).getTime() 
-                    : (doc.assignedTvgs?.assignedAt 
-                        ? new Date(doc.assignedTvgs.assignedAt).getTime() + (doc.assignedTvgs?.slaDays || 3) * 24 * 3600 * 1000 
-                        : null);
+                  const tvgsDueDate = doc.assignedTvgs?.dueDate
+                    ? new Date(doc.assignedTvgs.dueDate).getTime()
+                    : (doc.assignedTvgs?.assignedAt
+                      ? new Date(doc.assignedTvgs.assignedAt).getTime() + (doc.assignedTvgs?.slaDays || 3) * 24 * 3600 * 1000
+                      : null);
                   const isTvgsReviewOverdue = isTvgsAssigned && tvgsStatus === 'PENDING' && tvgsDueDate && (Date.now() > tvgsDueDate);
                   const isTvgsApproved = tvgsStatus === 'ACCEPTED';
 
                   // 3. THÔNG TIN TRƯỞNG BAN PHÂN CÔNG (TUẦN TỰ: CHỈ BẮT ĐẦU KHI TVGS ĐÃ DUYỆT ĐẠT)
-                  const tvgsReviewedTime = doc.assignedTvgs?.reviewedAt 
-                    ? new Date(doc.assignedTvgs.reviewedAt).getTime() 
+                  const tvgsReviewedTime = doc.assignedTvgs?.reviewedAt
+                    ? new Date(doc.assignedTvgs.reviewedAt).getTime()
                     : (doc.updatedAt ? new Date(doc.updatedAt).getTime() : Date.now());
                   const investorAssignDeadline = tvgsReviewedTime + 24 * 60 * 60 * 1000;
                   const isInvestorAssigned = Boolean(doc.assignedInvestor?.assignee?.uid || doc.assignedInvestor?.uid);
@@ -847,15 +847,15 @@ export default function PaymentDocumentsView({
 
                   // 4. THÔNG TIN CÁN BỘ BAN KIỂM TRA (CHỈ TÍNH HẠN SAU KHI TRƯỞNG BAN PHÂN CÔNG)
                   const investorStatus = doc.assignedInvestor?.status || 'WAITING_ASSIGNMENT';
-                  const investorDueDate = doc.assignedInvestor?.dueDate 
-                    ? new Date(doc.assignedInvestor.dueDate).getTime() 
-                    : (doc.assignedInvestor?.assignedAt 
-                        ? new Date(doc.assignedInvestor.assignedAt).getTime() + (doc.assignedInvestor?.slaDays || 3) * 24 * 3600 * 1000 
-                        : (tvgsReviewedTime + (doc.assignedInvestor?.slaDays || doc.slaDays || 3) * 24 * 3600 * 1000));
+                  const investorDueDate = doc.assignedInvestor?.dueDate
+                    ? new Date(doc.assignedInvestor.dueDate).getTime()
+                    : (doc.assignedInvestor?.assignedAt
+                      ? new Date(doc.assignedInvestor.assignedAt).getTime() + (doc.assignedInvestor?.slaDays || 3) * 24 * 3600 * 1000
+                      : (tvgsReviewedTime + (doc.assignedInvestor?.slaDays || doc.slaDays || 3) * 24 * 3600 * 1000));
                   const isInvestorReviewOverdue = isTvgsApproved && isInvestorAssigned && investorStatus === 'PENDING' && investorDueDate && (Date.now() > investorDueDate);
 
                   return (
-                    <tr 
+                    <tr
                       key={doc.id || idx}
                       style={{
                         borderBottom: '1px solid #f1f5f9',
@@ -1034,7 +1034,7 @@ export default function PaymentDocumentsView({
 
                             <div style={{ fontSize: '0.71rem', marginTop: '4px', color: (tvgsStatus === 'ACCEPTED' ? '#15803d' : tvgsStatus === 'REJECTED' ? '#b91c1c' : isTvgsReviewOverdue ? '#dc2626' : '#64748b') }}>
                               {tvgsStatus === 'ACCEPTED' || tvgsStatus === 'REJECTED' ? (
-                                <span>Xong: {formatDateDisplay(doc.assignedTvgs?.reviewedAt)}</span>
+                                <span>Hoàn Thành: {formatDateDisplay(doc.assignedTvgs?.reviewedAt)}</span>
                               ) : (
                                 <span>Hạn: {formatDateDisplay(tvgsDueDate)}</span>
                               )}
@@ -1177,7 +1177,7 @@ export default function PaymentDocumentsView({
 
                             <div style={{ fontSize: '0.71rem', marginTop: '4px', color: (investorStatus === 'ACCEPTED' ? '#15803d' : investorStatus === 'REJECTED' ? '#b91c1c' : isInvestorReviewOverdue ? '#dc2626' : '#64748b') }}>
                               {investorStatus === 'ACCEPTED' || investorStatus === 'REJECTED' ? (
-                                <span>Xong: {formatDateDisplay(doc.assignedInvestor?.reviewedAt)}</span>
+                                <span>Hoàn Thành: {formatDateDisplay(doc.assignedInvestor?.reviewedAt)}</span>
                               ) : (
                                 <span>Hạn: {formatDateDisplay(investorDueDate)}</span>
                               )}

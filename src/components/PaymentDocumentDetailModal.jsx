@@ -8,7 +8,8 @@ import {
   getEffectivePaymentStatus,
   getPaymentStatusBadgeConfig,
   PAYMENT_STATUS,
-  calculateDueDate
+  calculateDueDate,
+  getDocumentAttachmentVersions
 } from '../data/paymentDocumentConstants';
 import { openPdfInNewTab } from '../utils/pdfHelper';
 import { compressImageFile } from '../utils/storageHelper';
@@ -51,26 +52,16 @@ export default function PaymentDocumentDetailModal({
   const [investorSlaDays, setInvestorSlaDays] = useState(paymentDoc.assignedInvestor?.slaDays || paymentDoc.slaDays || 3);
   const [isAssigningInvestor, setIsAssigningInvestor] = useState(false);
 
-  // Helper lấy danh sách PDF ban đầu (hỗ trợ cả pdfFiles dạng mảng hoặc pdfFile đơn lẻ)
-  const getInitialPdfFiles = (doc) => {
-    if (!doc) return [];
-    if (Array.isArray(doc.pdfFiles) && doc.pdfFiles.length > 0) {
-      return [...doc.pdfFiles];
-    }
-    if (doc.pdfFile) {
-      return [{
-        id: doc.pdfFile.id || 'pdf_0',
-        name: doc.pdfFile.name || 'Ho_so_thanh_toan.pdf',
-        size: doc.pdfFile.size || 'Tài liệu PDF',
-        dataUrl: doc.pdfFile.dataUrl
-      }];
-    }
-    return [];
-  };
+  // Danh sách các phiên bản tệp đính kèm (v1 ban đầu, v2, v3...)
+  const allAttachmentVersions = useMemo(() => {
+    return getDocumentAttachmentVersions(paymentDoc);
+  }, [paymentDoc]);
+
+  const nextVersionNumber = allAttachmentVersions.length + 1;
 
   // Editing & Resubmission states (dành cho ĐVTC khi hồ sơ bị từ chối)
   const [editNotes, setEditNotes] = useState(paymentDoc.notes || '');
-  const [editPdfFiles, setEditPdfFiles] = useState(() => getInitialPdfFiles(paymentDoc));
+  const [newVersionPdfFiles, setNewVersionPdfFiles] = useState([]);
   const [editPhotos, setEditPhotos] = useState(Array.isArray(paymentDoc.photos) ? paymentDoc.photos : []);
   const [isSubmittingResubmit, setIsSubmittingResubmit] = useState(false);
 
@@ -82,7 +73,7 @@ export default function PaymentDocumentDetailModal({
   useEffect(() => {
     if (paymentDoc) {
       setEditNotes(paymentDoc.notes || '');
-      setEditPdfFiles(getInitialPdfFiles(paymentDoc));
+      setNewVersionPdfFiles([]);
       setEditPhotos(Array.isArray(paymentDoc.photos) ? [...paymentDoc.photos] : []);
     }
   }, [paymentDoc]);
@@ -93,8 +84,8 @@ export default function PaymentDocumentDetailModal({
   };
 
   const handleDownloadFile = async (customUrl, customName) => {
-    const targetUrl = customUrl || editPdfFiles[0]?.dataUrl || paymentDoc?.pdfFile?.dataUrl;
-    const targetName = customName || editPdfFiles[0]?.name || paymentDoc?.pdfFile?.name || 'tep_thanh_toan';
+    const targetUrl = customUrl || paymentDoc?.pdfFile?.dataUrl || allAttachmentVersions[0]?.files?.[0]?.dataUrl;
+    const targetName = customName || paymentDoc?.pdfFile?.name || allAttachmentVersions[0]?.files?.[0]?.name || 'tep_thanh_toan';
     if (!targetUrl) {
       if (showAlert) showAlert({ type: 'warning', title: 'Thông báo', message: 'Hồ sơ không có tệp đính kèm để tải về.' });
       return;
@@ -438,7 +429,7 @@ export default function PaymentDocumentDetailModal({
 
       // Nếu file lớn hơn 8MB, tránh đọc base64 gây tràn bộ nhớ trình duyệt, lưu rawFile để upload thẳng lên Cloud Storage
       if (file.size > 8 * 1024 * 1024) {
-        setEditPdfFiles(prev => [
+        setNewVersionPdfFiles(prev => [
           ...prev,
           {
             id: `file_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -454,7 +445,7 @@ export default function PaymentDocumentDetailModal({
       const reader = new FileReader();
       reader.onload = () => {
         let dataUrl = reader.result;
-        setEditPdfFiles(prev => [
+        setNewVersionPdfFiles(prev => [
           ...prev,
           {
             id: `file_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -471,7 +462,7 @@ export default function PaymentDocumentDetailModal({
   };
 
   const handleDeletePdf = (pdfId) => {
-    setEditPdfFiles(prev => prev.filter(p => p.id !== pdfId));
+    setNewVersionPdfFiles(prev => prev.filter(p => p.id !== pdfId));
   };
 
   const handleExecuteResubmit = async () => {
@@ -482,13 +473,13 @@ export default function PaymentDocumentDetailModal({
 
     setIsSubmittingResubmit(true);
     try {
-      const finalPdfFiles = [];
-      for (const pdf of editPdfFiles) {
+      const finalNewPdfFiles = [];
+      for (const pdf of newVersionPdfFiles) {
         if (pdf.rawFile) {
           try {
-            const cloudUrl = await uploadPdfDocument(pdf.rawFile, paymentDoc.docCode || `HSTT-${Date.now()}`);
+            const cloudUrl = await uploadPdfDocument(pdf.rawFile, `${paymentDoc.docCode || 'HSTT'}_v${nextVersionNumber}`);
             if (cloudUrl) {
-              finalPdfFiles.push({
+              finalNewPdfFiles.push({
                 id: pdf.id,
                 name: pdf.name,
                 size: pdf.size,
@@ -500,7 +491,7 @@ export default function PaymentDocumentDetailModal({
             console.warn('[Resubmit] Lỗi upload PDF cloud, dùng dataUrl cục bộ:', uploadErr);
           }
         }
-        finalPdfFiles.push({
+        finalNewPdfFiles.push({
           id: pdf.id,
           name: pdf.name,
           size: pdf.size,
@@ -508,11 +499,34 @@ export default function PaymentDocumentDetailModal({
         });
       }
 
+      // Xây dựng phiên bản mới (v2, v3...) nếu có tệp mới được tải lên
+      let updatedVersions = allAttachmentVersions;
+      let newVersionObj = null;
+
+      if (finalNewPdfFiles.length > 0) {
+        newVersionObj = {
+          version: nextVersionNumber,
+          versionName: `v${nextVersionNumber}`,
+          label: `Tệp đính kèm v${nextVersionNumber}`,
+          title: `Tệp đính kèm v${nextVersionNumber}`,
+          createdAt: new Date().toISOString(),
+          createdByName: currentUser?.fullName || 'Đơn Vị Thi Công',
+          files: finalNewPdfFiles
+        };
+        updatedVersions = [...allAttachmentVersions, newVersionObj];
+      }
+
+      const activeFiles = finalNewPdfFiles.length > 0 
+        ? finalNewPdfFiles 
+        : (allAttachmentVersions[allAttachmentVersions.length - 1]?.files || paymentDoc.pdfFiles || []);
+
       if (onResubmit) {
         await onResubmit(paymentDoc.id, {
           notes: editNotes.trim(),
-          pdfFile: finalPdfFiles[0] || null,
-          pdfFiles: finalPdfFiles,
+          pdfFile: activeFiles[0] || null,
+          pdfFiles: activeFiles,
+          attachmentVersions: updatedVersions,
+          newAttachmentVersion: newVersionObj,
           photos: editPhotos,
           resubmittedBy: currentUser
         });
@@ -728,205 +742,280 @@ export default function PaymentDocumentDetailModal({
             </div>
           )}
 
-          {/* FILE ĐÍNH KÈM (PDF, ZIP, RAR...) */}
-          {(canEditDoc || (Array.isArray(paymentDoc.pdfFiles) && paymentDoc.pdfFiles.length > 0) || paymentDoc.pdfFile) && (
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
-                <h4 style={{ margin: 0, fontSize: '0.86rem', color: '#1e293b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  Tệp Đính Kèm ({canEditDoc ? editPdfFiles.length : (paymentDoc.pdfFiles?.length || (paymentDoc.pdfFile ? 1 : 0))}):
+          {/* FILE ĐÍNH KÈM PHÂN THEO PHIÊN BẢN (v1, v2, v3...) */}
+          {(allAttachmentVersions.length > 0 || canEditDoc) && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                <h4 style={{ margin: 0, fontSize: '0.88rem', color: '#1e293b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <FileText size={18} color="#2563eb" />
+                  <span>Danh Sách Tệp Đính Kèm Qua Các Lần Trình Duyệt:</span>
                   <span style={{ fontSize: '0.72rem', color: '#2563eb', background: '#eff6ff', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, border: '1px solid #bfdbfe' }}>
                     PDF, ZIP, RAR, 7Z (Không giới hạn)
                   </span>
                 </h4>
-
-                {canEditDoc && (
-                  <button
-                    type="button"
-                    onClick={() => editPdfInputRef.current?.click()}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      padding: '4px 12px',
-                      borderRadius: '6px',
-                      border: '1px solid #93c5fd',
-                      background: '#eff6ff',
-                      color: '#2563eb',
-                      fontSize: '0.76rem',
-                      fontWeight: 600,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <UploadCloud size={14} /> + Thêm tệp đính kèm
-                  </button>
-                )}
               </div>
 
-              {canEditDoc ? (
-                editPdfFiles.length > 0 ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {editPdfFiles.map((pdf, idx) => (
-                      <div
-                        key={pdf.id || idx}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          background: '#f8fafc',
-                          border: '1.5px solid #cbd5e1',
-                          padding: '10px 14px',
-                          borderRadius: '8px',
-                          flexWrap: 'wrap',
-                          gap: '10px'
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '200px', flex: 1 }}>
-                          {isArchiveFile(pdf.name) ? (
-                            <FileArchive size={26} color="#d97706" style={{ flexShrink: 0 }} />
-                          ) : (
-                            <FileText size={26} color="#2563eb" style={{ flexShrink: 0 }} />
-                          )}
-                          <div>
-                            <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#0f172a', wordBreak: 'break-all' }}>
-                              {pdf.name || `Tệp đính kèm ${idx + 1}`}
+              {/* 1. HIỂN THỊ CÁC PHIÊN BẢN ĐÃ CÓ (v1 ban đầu, v2, v3...) */}
+              {allAttachmentVersions.map((ver, vIdx) => {
+                const isLatest = vIdx === allAttachmentVersions.length - 1 && !canEditDoc;
+                const isV1 = ver.version === 1 || ver.versionName === 'v1' || vIdx === 0;
+                const verFiles = ver.files || [];
+
+                return (
+                  <div
+                    key={ver.version || vIdx}
+                    style={{
+                      background: '#ffffff',
+                      border: '1.5px solid #e2e8f0',
+                      borderRadius: '10px',
+                      padding: '14px 16px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '10px',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                    }}
+                  >
+                    {/* TIÊU ĐỀ PHIÊN BẢN */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{
+                          fontSize: '0.86rem',
+                          fontWeight: 700,
+                          color: isV1 ? '#0f172a' : '#1e40af'
+                        }}>
+                          📁 {ver.label || `Tệp đính kèm v${ver.version || (vIdx + 1)}`} ({verFiles.length}):
+                        </span>
+                        {isV1 ? (
+                          <span style={{ fontSize: '0.7rem', color: '#475569', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, border: '1px solid #e2e8f0' }}>
+                            Ban đầu
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '0.7rem', color: '#1d4ed8', background: '#eff6ff', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, border: '1px solid #bfdbfe' }}>
+                            {isLatest ? 'Mới nhất' : `Gửi lại lần ${ver.version - 1}`}
+                          </span>
+                        )}
+                      </div>
+                      {ver.createdAt && (
+                        <span style={{ fontSize: '0.74rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Clock size={12} /> {formatDateStr(ver.createdAt)} {ver.createdByName ? `• ${ver.createdByName}` : ''}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* DANH SÁCH FILE CỦA PHIÊN BẢN */}
+                    {verFiles.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {verFiles.map((pdf, idx) => (
+                          <div
+                            key={pdf.id || idx}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              background: '#f8fafc',
+                              border: '1px solid #e2e8f0',
+                              padding: '10px 14px',
+                              borderRadius: '8px',
+                              flexWrap: 'wrap',
+                              gap: '12px'
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '220px', flex: 1 }}>
+                              {isArchiveFile(pdf.name) ? (
+                                <FileArchive size={26} color="#d97706" style={{ flexShrink: 0 }} />
+                              ) : (
+                                <FileText size={26} color="#2563eb" style={{ flexShrink: 0 }} />
+                              )}
+                              <div>
+                                <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#0f172a', wordBreak: 'break-all' }}>
+                                  {pdf.name || `Tệp đính kèm ${idx + 1}`}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                                  {pdf.size || 'Tài liệu đính kèm'}
+                                </div>
+                              </div>
                             </div>
-                            <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                              {pdf.size || 'Tài liệu'} {pdf.rawFile ? '• (Tệp mới chọn)' : ''}
+
+                            {pdf.dataUrl && (
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadFile(pdf.dataUrl, pdf.name)}
+                                title={`Tải về ${pdf.name || 'tệp đính kèm'}`}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  padding: '8px 16px',
+                                  background: '#2563eb',
+                                  border: 'none',
+                                  borderRadius: '6px',
+                                  color: '#ffffff',
+                                  cursor: 'pointer',
+                                  fontSize: '0.82rem',
+                                  fontWeight: 600,
+                                  boxShadow: '0 1px 2px rgba(37,99,235,0.2)'
+                                }}
+                              >
+                                <Download size={14} /> Tải Về Tệp
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic', padding: '6px 0' }}>
+                        Không có tệp đính kèm trong phiên bản này.
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* 2. KHU VỰC TẢI LÊN PHIÊN BẢN MỚI (v2, v3...) KHI BỊ TỪ CHỐI (canEditDoc) */}
+              {canEditDoc && (
+                <div
+                  style={{
+                    background: '#f0fdf4',
+                    border: '2px dashed #16a34a',
+                    borderRadius: '10px',
+                    padding: '16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#15803d' }}>
+                        📤 Tệp đính kèm v{nextVersionNumber} ({newVersionPdfFiles.length}):
+                      </span>
+                      <span style={{ fontSize: '0.72rem', color: '#166534', background: '#dcfce7', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, border: '1px solid #bbf7d0' }}>
+                        Tự động tạo phiên bản mới • File cũ v1 được giữ nguyên
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => editPdfInputRef.current?.click()}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        padding: '6px 14px',
+                        borderRadius: '6px',
+                        border: '1px solid #16a34a',
+                        background: '#16a34a',
+                        color: '#ffffff',
+                        fontSize: '0.78rem',
+                        fontWeight: 600,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <UploadCloud size={14} /> + Thêm tệp v{nextVersionNumber}
+                    </button>
+                  </div>
+
+                  {newVersionPdfFiles.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {newVersionPdfFiles.map((pdf, idx) => (
+                        <div
+                          key={pdf.id || idx}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            background: '#ffffff',
+                            border: '1.5px solid #86efac',
+                            padding: '10px 14px',
+                            borderRadius: '8px',
+                            flexWrap: 'wrap',
+                            gap: '10px'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '200px', flex: 1 }}>
+                            {isArchiveFile(pdf.name) ? (
+                              <FileArchive size={26} color="#d97706" style={{ flexShrink: 0 }} />
+                            ) : (
+                              <FileText size={26} color="#16a34a" style={{ flexShrink: 0 }} />
+                            )}
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#0f172a', wordBreak: 'break-all' }}>
+                                {pdf.name || `Tệp mới ${idx + 1}`}
+                              </div>
+                              <div style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 600 }}>
+                                {pdf.size || 'Tài liệu'} • (Tệp phiên bản v{nextVersionNumber})
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          {pdf.dataUrl && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {pdf.dataUrl && (
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadFile(pdf.dataUrl, pdf.name)}
+                                title={`Tải về ${pdf.name || 'tệp đính kèm'}`}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                  padding: '6px 12px',
+                                  background: '#16a34a',
+                                  border: 'none',
+                                  borderRadius: '6px',
+                                  color: '#ffffff',
+                                  cursor: 'pointer',
+                                  fontSize: '0.8rem',
+                                  fontWeight: 600
+                                }}
+                              >
+                                <Download size={14} /> Xem / Tải về
+                              </button>
+                            )}
                             <button
                               type="button"
-                              onClick={() => handleDownloadFile(pdf.dataUrl, pdf.name)}
-                              title={`Tải về ${pdf.name || 'tệp đính kèm'}`}
+                              onClick={() => handleDeletePdf(pdf.id)}
+                              title="Bỏ chọn tệp này"
                               style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '5px',
-                                padding: '6px 12px',
-                                background: '#2563eb',
-                                border: 'none',
+                                gap: '4px',
+                                padding: '6px 10px',
+                                background: '#ffffff',
+                                border: '1px solid #fecaca',
                                 borderRadius: '6px',
-                                color: '#ffffff',
+                                color: '#dc2626',
                                 cursor: 'pointer',
                                 fontSize: '0.8rem',
                                 fontWeight: 600
                               }}
                             >
-                              <Download size={14} /> Tải về
+                              <Trash2 size={14} /> Xóa
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => handleDeletePdf(pdf.id)}
-                            title="Xóa tệp này"
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              padding: '6px 10px',
-                              background: '#ffffff',
-                              border: '1px solid #fecaca',
-                              borderRadius: '6px',
-                              color: '#dc2626',
-                              cursor: 'pointer',
-                              fontSize: '0.8rem',
-                              fontWeight: 600
-                            }}
-                          >
-                            <Trash2 size={14} /> Xóa
-                          </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div
-                    onClick={() => editPdfInputRef.current?.click()}
-                    style={{
-                      border: '2px dashed #93c5fd',
-                      background: '#f8fafc',
-                      borderRadius: '8px',
-                      padding: '18px',
-                      textAlign: 'center',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s'
-                    }}
-                  >
-                    <UploadCloud size={30} color="#2563eb" style={{ margin: '0 auto 6px' }} />
-                    <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1e40af' }}>
-                      + Bấm vào đây để tải lên tệp đính kèm (PDF, ZIP, RAR...)
+                      ))}
                     </div>
-                    <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '2px' }}>
-                      Hỗ trợ tệp PDF, tệp nén ZIP, RAR, 7Z (Không giới hạn dung lượng)
-                    </div>
-                  </div>
-                )
-              ) : (
-                /* CHẾ ĐỘ XEM CHỈ ĐỌC (READONLY VIEW) */
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {(Array.isArray(paymentDoc.pdfFiles) && paymentDoc.pdfFiles.length > 0 ? paymentDoc.pdfFiles : [paymentDoc.pdfFile]).filter(Boolean).map((pdf, idx) => (
+                  ) : (
                     <div
-                      key={pdf.id || idx}
+                      onClick={() => editPdfInputRef.current?.click()}
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        background: '#f8fafc',
-                        border: '1px solid #e2e8f0',
-                        padding: '10px 14px',
+                        border: '1.5px dashed #86efac',
+                        background: '#ffffff',
                         borderRadius: '8px',
-                        flexWrap: 'wrap',
-                        gap: '10px'
+                        padding: '18px',
+                        textAlign: 'center',
+                        cursor: 'pointer'
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '200px', flex: 1 }}>
-                        {isArchiveFile(pdf.name) ? (
-                          <FileArchive size={26} color="#d97706" style={{ flexShrink: 0 }} />
-                        ) : (
-                          <FileText size={26} color="#2563eb" style={{ flexShrink: 0 }} />
-                        )}
-                        <div>
-                          <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#0f172a', wordBreak: 'break-all' }}>
-                            {pdf.name || `Tệp đính kèm ${idx + 1}`}
-                          </div>
-                          <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                            {pdf.size || 'Tài liệu đính kèm'}
-                          </div>
-                        </div>
+                      <UploadCloud size={30} color="#16a34a" style={{ margin: '0 auto 6px' }} />
+                      <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#15803d' }}>
+                        + Bấm vào đây để tải lên tệp đính kèm mới cho phiên bản v{nextVersionNumber}
                       </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        {pdf.dataUrl && (
-                          <button
-                            type="button"
-                            onClick={() => handleDownloadFile(pdf.dataUrl, pdf.name)}
-                            title={`Tải về ${pdf.name || 'tệp đính kèm'}`}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              padding: '8px 16px',
-                              background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
-                              border: 'none',
-                              borderRadius: '6px',
-                              color: '#ffffff',
-                              cursor: 'pointer',
-                              fontSize: '0.82rem',
-                              fontWeight: 600,
-                              boxShadow: '0 2px 4px rgba(37, 99, 235, 0.25)',
-                              transition: 'all 0.15s ease'
-                            }}
-                          >
-                            <Download size={16} /> Tải Về Tệp
-                          </button>
-                        )}
+                      <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '2px' }}>
+                        File cũ ở trên (v1) sẽ được giữ nguyên không đổi. Hỗ trợ PDF, ZIP, RAR, 7Z (Không giới hạn dung lượng)
                       </div>
                     </div>
-                  ))}
+                  )}
                 </div>
               )}
             </div>

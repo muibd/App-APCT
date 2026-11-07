@@ -394,3 +394,32 @@ export const getPaymentLeadInvestor = (users = []) => {
   };
 };
 
+/**
+ * Trích xuất danh sách các phiên bản tệp đính kèm (v1, v2, v3...) của hồ sơ
+ * Bảo toàn 100% tệp đính kèm v1 ban đầu và các lần sửa gửi lại tiếp theo
+ */
+export const getDocumentAttachmentVersions = (doc) => {
+  if (!doc) return [];
+  if (Array.isArray(doc.attachmentVersions) && doc.attachmentVersions.length > 0) {
+    return doc.attachmentVersions;
+  }
+  const initialFiles = Array.isArray(doc.pdfFiles) && doc.pdfFiles.length > 0
+    ? doc.pdfFiles
+    : (doc.pdfFile ? [doc.pdfFile] : []);
+  if (initialFiles.length > 0) {
+    return [
+      {
+        version: 1,
+        versionName: 'v1',
+        label: 'Tệp đính kèm v1',
+        title: 'Tệp đính kèm v1',
+        createdAt: doc.createdAt || doc.submittedAt || new Date().toISOString(),
+        createdByName: doc.createdByName || 'Đơn Vị Thi Công',
+        files: initialFiles
+      }
+    ];
+  }
+  return [];
+};
+
+

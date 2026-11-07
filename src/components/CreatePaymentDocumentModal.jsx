@@ -300,6 +300,17 @@ export default function CreatePaymentDocumentModal({
         notes: notes.trim(),
         pdfFile: finalPdfFiles[0] || null,
         pdfFiles: finalPdfFiles,
+        attachmentVersions: finalPdfFiles.length > 0 ? [
+          {
+            version: 1,
+            versionName: 'v1',
+            label: 'Tệp đính kèm v1',
+            title: 'Tệp đính kèm v1',
+            createdAt: nowIso,
+            createdByName: currentUser?.fullName || 'Đơn Vị Thi Công',
+            files: finalPdfFiles
+          }
+        ] : [],
         photos: photos || [],
         createdByUid: currentUser?.uid || 'contractor_uid',
         createdByName: currentUser?.fullName || 'Đơn Vị Thi Công',

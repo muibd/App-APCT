@@ -144,8 +144,8 @@ export default function ShopDocumentsView({
     if (!isTvgsApproved) {
       // 3.1. TVGS chưa phân công cán bộ (Đang trong hạn 24h)
       if (!isTvgsAssigned || doc.assignedTvgs?.status === 'WAITING_ASSIGNMENT') {
-        const deadline = doc.assignmentDeadline 
-          ? new Date(doc.assignmentDeadline).getTime() 
+        const deadline = doc.assignmentDeadline
+          ? new Date(doc.assignmentDeadline).getTime()
           : (new Date(doc.createdAt || doc.submittedAt || now).getTime() + 24 * 60 * 60 * 1000);
         const diffHours = Math.round((deadline - now) / (3600 * 1000));
         return {
@@ -157,8 +157,8 @@ export default function ShopDocumentsView({
       }
 
       // 3.2. TVGS đã phân công cán bộ -> Đang trong hạn duyệt của TVGS
-      const tvgsDue = doc.assignedTvgs?.dueDate 
-        ? new Date(doc.assignedTvgs.dueDate).getTime() 
+      const tvgsDue = doc.assignedTvgs?.dueDate
+        ? new Date(doc.assignedTvgs.dueDate).getTime()
         : (doc.dueDate ? new Date(doc.dueDate).getTime() : (now + 3 * 24 * 3600 * 1000));
       const diffDays = Math.ceil((tvgsDue - now) / (24 * 3600 * 1000));
 
@@ -175,8 +175,8 @@ export default function ShopDocumentsView({
     }
 
     // Hồ sơ thường -> Tính hạn cho Ban QLDA:
-    const tvgsReviewedTime = doc.assignedTvgs?.reviewedAt 
-      ? new Date(doc.assignedTvgs.reviewedAt).getTime() 
+    const tvgsReviewedTime = doc.assignedTvgs?.reviewedAt
+      ? new Date(doc.assignedTvgs.reviewedAt).getTime()
       : (doc.updatedAt ? new Date(doc.updatedAt).getTime() : now);
 
     const isInvestorAssigned = Boolean(doc.assignedInvestor?.assignee || doc.assignedInvestor?.uid);
@@ -366,11 +366,11 @@ export default function ShopDocumentsView({
       if (selectedStatus !== 'ALL') {
         const effStatus = getEffectiveShopStatus(doc);
         if (selectedStatus === SHOP_STATUS.OVERDUE) {
-          const isOverdue = 
+          const isOverdue =
             effStatus === SHOP_STATUS.OVERDUE_TVGS ||
             effStatus === SHOP_STATUS.OVERDUE_INVESTOR ||
-            effStatus === SHOP_STATUS.OVERDUE || 
-            effStatus === SHOP_STATUS.OVERDUE_ASSIGNMENT || 
+            effStatus === SHOP_STATUS.OVERDUE ||
+            effStatus === SHOP_STATUS.OVERDUE_ASSIGNMENT ||
             effStatus === SHOP_STATUS.OVERDUE_REVIEW;
           if (!isOverdue) return false;
         } else if (effStatus !== selectedStatus) {
@@ -423,7 +423,7 @@ export default function ShopDocumentsView({
 
   return (
     <div className="shop-documents-view" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      
+
       {/* 1. HEADER & METRIC SUMMARY CARDS */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
         <div>
@@ -463,9 +463,9 @@ export default function ShopDocumentsView({
 
       {/* METRIC CARDS */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
-        
+
         {/* TỔNG SỐ */}
-        <div 
+        <div
           onClick={() => setSelectedStatus('ALL')}
           style={{
             background: '#ffffff',
@@ -487,7 +487,7 @@ export default function ShopDocumentsView({
         </div>
 
         {/* CHỜ PHÂN CÔNG */}
-        <div 
+        <div
           onClick={() => setSelectedStatus(SHOP_STATUS.WAITING_ASSIGNMENT)}
           style={{
             background: '#ffffff',
@@ -509,7 +509,7 @@ export default function ShopDocumentsView({
         </div>
 
         {/* ĐANG THẨM ĐỊNH */}
-        <div 
+        <div
           onClick={() => setSelectedStatus(SHOP_STATUS.SENT)}
           style={{
             background: '#ffffff',
@@ -531,7 +531,7 @@ export default function ShopDocumentsView({
         </div>
 
         {/* ĐÃ XÁC NHẬN */}
-        <div 
+        <div
           onClick={() => setSelectedStatus(SHOP_STATUS.APPROVED)}
           style={{
             background: '#ffffff',
@@ -553,7 +553,7 @@ export default function ShopDocumentsView({
         </div>
 
         {/* CẦN SỬA */}
-        <div 
+        <div
           onClick={() => setSelectedStatus(SHOP_STATUS.REJECTED)}
           style={{
             background: '#ffffff',
@@ -575,7 +575,7 @@ export default function ShopDocumentsView({
         </div>
 
         {/* CHẬM (QUÁ HẠN) */}
-        <div 
+        <div
           onClick={() => setSelectedStatus(SHOP_STATUS.OVERDUE)}
           style={{
             background: '#ffffff',
@@ -611,7 +611,7 @@ export default function ShopDocumentsView({
       }}>
         {/* HÀNG 1: TÌM KIẾM TỪ KHÓA, NGÀY VÀ TRẠNG THÁI */}
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px' }}>
-          
+
           {/* TÌM KIẾM THEO TÊN HỒ SƠ / MÃ */}
           <div style={{ flex: '2 1 240px', position: 'relative' }}>
             <Search size={17} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
@@ -825,7 +825,7 @@ export default function ShopDocumentsView({
         overflow: 'hidden',
         boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
       }}>
-        
+
         {filteredDocuments.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px 20px', color: '#64748b' }}>
             <Layers size={42} color="#cbd5e1" style={{ marginBottom: '10px' }} />
@@ -856,24 +856,24 @@ export default function ShopDocumentsView({
                   // 1. THÔNG TIN GIÁM SÁT TRƯỞNG PHÂN CÔNG
                   const isTvgsAssigned = Boolean(doc.assignedTvgs?.assignee?.uid || doc.assignedTvgs?.uid);
                   const tvgsAssignee = doc.assignedTvgs?.assignee || (doc.assignedTvgs?.uid ? doc.assignedTvgs : null);
-                  const tvgsAssignDeadline = doc.assignmentDeadline 
-                    ? new Date(doc.assignmentDeadline).getTime() 
+                  const tvgsAssignDeadline = doc.assignmentDeadline
+                    ? new Date(doc.assignmentDeadline).getTime()
                     : (new Date(doc.createdAt || doc.submittedAt || Date.now()).getTime() + 24 * 60 * 60 * 1000);
                   const isTvgsAssignOverdue = !isTvgsAssigned && (Date.now() > tvgsAssignDeadline);
 
                   // 2. THÔNG TIN TVGS KIỂM TRA
                   const tvgsStatus = doc.assignedTvgs?.status || 'WAITING_ASSIGNMENT';
-                  const tvgsDueDate = doc.assignedTvgs?.dueDate 
-                    ? new Date(doc.assignedTvgs.dueDate).getTime() 
-                    : (doc.assignedTvgs?.assignedAt 
-                        ? new Date(doc.assignedTvgs.assignedAt).getTime() + (doc.assignedTvgs?.slaDays || 3) * 24 * 3600 * 1000 
-                        : null);
+                  const tvgsDueDate = doc.assignedTvgs?.dueDate
+                    ? new Date(doc.assignedTvgs.dueDate).getTime()
+                    : (doc.assignedTvgs?.assignedAt
+                      ? new Date(doc.assignedTvgs.assignedAt).getTime() + (doc.assignedTvgs?.slaDays || 3) * 24 * 3600 * 1000
+                      : null);
                   const isTvgsReviewOverdue = isTvgsAssigned && tvgsStatus === 'PENDING' && tvgsDueDate && (Date.now() > tvgsDueDate);
                   const isTvgsApproved = tvgsStatus === 'ACCEPTED';
 
                   // 3. THÔNG TIN TRƯỞNG BAN PHÂN CÔNG (TUẦN TỰ: CHỈ BẮT ĐẦU KHI TVGS ĐÃ DUYỆT ĐẠT, NẾU KHÔNG PHẢI HOÀN CÔNG)
-                  const tvgsReviewedTime = doc.assignedTvgs?.reviewedAt 
-                    ? new Date(doc.assignedTvgs.reviewedAt).getTime() 
+                  const tvgsReviewedTime = doc.assignedTvgs?.reviewedAt
+                    ? new Date(doc.assignedTvgs.reviewedAt).getTime()
                     : (doc.updatedAt ? new Date(doc.updatedAt).getTime() : Date.now());
                   const investorAssignDeadline = tvgsReviewedTime + 24 * 60 * 60 * 1000;
                   const isInvestorAssigned = Boolean(doc.assignedInvestor?.assignee?.uid || doc.assignedInvestor?.uid);
@@ -882,15 +882,15 @@ export default function ShopDocumentsView({
 
                   // 4. THÔNG TIN CÁN BỘ BAN KIỂM TRA (CHỈ TÍNH HẠN SAU KHI TRƯỞNG BAN PHÂN CÔNG)
                   const investorStatus = doc.assignedInvestor?.status || 'WAITING_ASSIGNMENT';
-                  const investorDueDate = doc.assignedInvestor?.dueDate 
-                    ? new Date(doc.assignedInvestor.dueDate).getTime() 
-                    : (doc.assignedInvestor?.assignedAt 
-                        ? new Date(doc.assignedInvestor.assignedAt).getTime() + (doc.assignedInvestor?.slaDays || 3) * 24 * 3600 * 1000 
-                        : (tvgsReviewedTime + (doc.assignedInvestor?.slaDays || doc.slaDays || 3) * 24 * 3600 * 1000));
+                  const investorDueDate = doc.assignedInvestor?.dueDate
+                    ? new Date(doc.assignedInvestor.dueDate).getTime()
+                    : (doc.assignedInvestor?.assignedAt
+                      ? new Date(doc.assignedInvestor.assignedAt).getTime() + (doc.assignedInvestor?.slaDays || 3) * 24 * 3600 * 1000
+                      : (tvgsReviewedTime + (doc.assignedInvestor?.slaDays || doc.slaDays || 3) * 24 * 3600 * 1000));
                   const isInvestorReviewOverdue = !isAsBuilt && isTvgsApproved && isInvestorAssigned && investorStatus === 'PENDING' && investorDueDate && (Date.now() > investorDueDate);
 
                   return (
-                    <tr 
+                    <tr
                       key={doc.id || idx}
                       style={{
                         borderBottom: '1px solid #f1f5f9',
@@ -1069,7 +1069,7 @@ export default function ShopDocumentsView({
 
                             <div style={{ fontSize: '0.71rem', marginTop: '4px', color: (tvgsStatus === 'ACCEPTED' ? '#15803d' : tvgsStatus === 'REJECTED' ? '#b91c1c' : isTvgsReviewOverdue ? '#dc2626' : '#64748b') }}>
                               {tvgsStatus === 'ACCEPTED' || tvgsStatus === 'REJECTED' ? (
-                                <span>Xong: {formatDateDisplay(doc.assignedTvgs?.reviewedAt)}</span>
+                                <span>Hoàn Thành: {formatDateDisplay(doc.assignedTvgs?.reviewedAt)}</span>
                               ) : (
                                 <span>Hạn: {formatDateDisplay(tvgsDueDate)}</span>
                               )}
@@ -1220,7 +1220,7 @@ export default function ShopDocumentsView({
 
                             <div style={{ fontSize: '0.71rem', marginTop: '4px', color: (investorStatus === 'ACCEPTED' ? '#15803d' : investorStatus === 'REJECTED' ? '#b91c1c' : isInvestorReviewOverdue ? '#dc2626' : '#64748b') }}>
                               {investorStatus === 'ACCEPTED' || investorStatus === 'REJECTED' ? (
-                                <span>Xong: {formatDateDisplay(doc.assignedInvestor?.reviewedAt)}</span>
+                                <span>Hoàn Thành: {formatDateDisplay(doc.assignedInvestor?.reviewedAt)}</span>
                               ) : (
                                 <span>Hạn: {formatDateDisplay(investorDueDate)}</span>
                               )}
