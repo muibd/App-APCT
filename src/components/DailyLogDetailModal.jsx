@@ -76,45 +76,6 @@ export default function DailyLogDetailModal({
   const handleConfirmSubmit = (e) => {
     e.preventDefault();
 
-    if (!supervisorCommentsInput.trim()) {
-      if (showAlert) {
-        showAlert({
-          type: 'warning',
-          title: 'Thiếu Nhận Xét TVGS',
-          message: 'Vui lòng nhập nhận xét và yêu cầu của Cán bộ Giám sát thi công (Mục 5)!'
-        });
-      } else {
-        alert('Vui lòng nhập nhận xét của Cán bộ Giám sát thi công tại Mục 5!');
-      }
-      return;
-    }
-
-    if (!investorCommentsInput.trim()) {
-      if (showAlert) {
-        showAlert({
-          type: 'warning',
-          title: 'Thiếu Nhận Xét CĐT',
-          message: 'Vui lòng nhập nhận xét và yêu cầu của Chủ đầu tư (Mục 6)!'
-        });
-      } else {
-        alert('Vui lòng nhập nhận xét của Chủ đầu tư tại Mục 6!');
-      }
-      return;
-    }
-
-    if (!contractorCommentsInput.trim()) {
-      if (showAlert) {
-        showAlert({
-          type: 'warning',
-          title: 'Thiếu Ý Kiến ĐVTC',
-          message: 'Vui lòng nhập ý kiến của Nhà thầu thi công xây dựng (Mục 7)!'
-        });
-      } else {
-        alert('Vui lòng nhập ý kiến của Nhà thầu thi công xây dựng tại Mục 7!');
-      }
-      return;
-    }
-
     const updatedLog = {
       ...log,
       status: 'CONFIRMED',
@@ -300,7 +261,7 @@ export default function DailyLogDetailModal({
               <form onSubmit={handleConfirmSubmit}>
                 <div style={{ marginBottom: '12px' }}>
                   <label className="form-label" style={{ fontWeight: 700, color: '#14532d', fontSize: '0.86rem' }}>
-                    5. Nhận xét và yêu cầu của cán bộ giám sát thi công <span style={{ color: '#ef4444' }}>*</span>:
+                    5. Nhận xét và yêu cầu của cán bộ giám sát thi công:
                   </label>
                   <textarea 
                     className="form-textarea" 
@@ -308,14 +269,13 @@ export default function DailyLogDetailModal({
                     value={supervisorCommentsInput}
                     onChange={(e) => setSupervisorCommentsInput(e.target.value)}
                     placeholder="Nhập nhận xét chất lượng thi công, an toàn, tiến độ và các yêu cầu đối với ĐVTC..."
-                    required
                     autoFocus
                   />
                 </div>
 
                 <div style={{ marginBottom: '12px' }}>
                   <label className="form-label" style={{ fontWeight: 700, color: '#14532d', fontSize: '0.86rem' }}>
-                    6. Nhận xét và yêu cầu của Chủ đầu tư <span style={{ color: '#ef4444' }}>*</span>:
+                    6. Nhận xét và yêu cầu của Chủ đầu tư:
                   </label>
                   <textarea 
                     className="form-textarea" 
@@ -323,13 +283,12 @@ export default function DailyLogDetailModal({
                     value={investorCommentsInput}
                     onChange={(e) => setInvestorCommentsInput(e.target.value)}
                     placeholder="Nhập ý kiến chỉ đạo, nhận xét và yêu cầu của Chủ đầu tư..."
-                    required
                   />
                 </div>
 
                 <div style={{ marginBottom: '14px' }}>
                   <label className="form-label" style={{ fontWeight: 700, color: '#14532d', fontSize: '0.86rem' }}>
-                    7. Ý kiến của nhà thầu thi công xây dựng <span style={{ color: '#ef4444' }}>*</span>:
+                    7. Ý kiến của nhà thầu thi công xây dựng:
                   </label>
                   <textarea 
                     className="form-textarea" 
@@ -337,7 +296,6 @@ export default function DailyLogDetailModal({
                     value={contractorCommentsInput}
                     onChange={(e) => setContractorCommentsInput(e.target.value)}
                     placeholder="Nhập ý kiến tiếp thu, cam kết thực hiện của Đơn vị thi công..."
-                    required
                   />
                 </div>
 
