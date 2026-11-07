@@ -12,10 +12,12 @@ import {
 } from '../data/paymentDocumentConstants';
 import { uploadPdfDocument } from '../services/storageService';
 import { openPdfInNewTab } from '../utils/pdfHelper';
+import { DEFAULT_PROJECTS } from '../data/projectCatalog';
 
 export default function CreatePaymentDocumentModal({
   isOpen,
   onClose,
+  projects = [],
   users = [],
   currentUser,
   slaConfigs = DEFAULT_PAYMENT_SLA_CONFIGS,
@@ -23,6 +25,11 @@ export default function CreatePaymentDocumentModal({
   showAlert
 }) {
   if (!isOpen) return null;
+
+  // Fallback to DEFAULT_PROJECTS if projects list is empty
+  const effectiveProjects = useMemo(() => {
+    return (projects && projects.length > 0) ? projects : DEFAULT_PROJECTS;
+  }, [projects]);
 
   // Tìm Tư vấn giám sát trưởng (Đinh Xuân Thám)
   const leadSupervisor = useMemo(() => getPaymentLeadSupervisor(users), [users]);
@@ -34,6 +41,66 @@ export default function CreatePaymentDocumentModal({
   const typeOptions = useMemo(() => {
     return (slaConfigs && slaConfigs.length > 0) ? slaConfigs : DEFAULT_PAYMENT_SLA_CONFIGS;
   }, [slaConfigs]);
+
+  // State phân cấp: Công trình - Gói thầu - Hạng mục
+  const [selectedProjectCode, setSelectedProjectCode] = useState(() => {
+    return effectiveProjects[0]?.code || '2203';
+  });
+
+  const currentProject = useMemo(() => {
+    return effectiveProjects.find(p => p.code === selectedProjectCode || p.id === selectedProjectCode) || effectiveProjects[0];
+  }, [effectiveProjects, selectedProjectCode]);
+
+  // Các gói thầu của công trình đang chọn
+  const availablePackages = useMemo(() => {
+    const pkgs = [];
+    (currentProject?.contractors || []).forEach(c => {
+      (c.packages || []).forEach(pkg => {
+        if (!pkgs.some(p => p.name === pkg.name)) {
+          pkgs.push(pkg);
+        }
+      });
+    });
+    return pkgs;
+  }, [currentProject]);
+
+  const [selectedPackageName, setSelectedPackageName] = useState(() => {
+    return availablePackages[0]?.name || 'Thi công phần hoàn thiện Tòa A và Tòa B';
+  });
+  const [customPackageInput, setCustomPackageInput] = useState('');
+
+  // Tự động đồng bộ gói thầu khi công trình thay đổi
+  useEffect(() => {
+    if (availablePackages.length > 0) {
+      const exists = availablePackages.some(p => p.name === selectedPackageName);
+      if (!exists && selectedPackageName !== '__CUSTOM_PKG__') {
+        setSelectedPackageName(availablePackages[0].name);
+      }
+    }
+  }, [availablePackages]);
+
+  // Các hạng mục công việc trực thuộc gói thầu đang chọn
+  const currentPackage = useMemo(() => {
+    return availablePackages.find(p => p.name === selectedPackageName) || availablePackages[0];
+  }, [availablePackages, selectedPackageName]);
+
+  const availableTasks = useMemo(() => {
+    return currentPackage?.tasks || [];
+  }, [currentPackage]);
+
+  const [selectedTaskName, setSelectedTaskName] = useState(() => {
+    return availableTasks[0] || 'Cốt thép, ván khuôn, bê tông';
+  });
+  const [customTaskInput, setCustomTaskInput] = useState('');
+
+  useEffect(() => {
+    if (availableTasks.length > 0) {
+      const exists = availableTasks.includes(selectedTaskName);
+      if (!exists && selectedTaskName !== '__CUSTOM_TASK__') {
+        setSelectedTaskName(availableTasks[0]);
+      }
+    }
+  }, [availableTasks]);
 
   // State form
   const [title, setTitle] = useState('');
@@ -200,10 +267,25 @@ export default function CreatePaymentDocumentModal({
         });
       }
 
+      const effectivePackageName = selectedPackageName === '__CUSTOM_PKG__' 
+        ? (customPackageInput.trim() || 'Gói thầu khác') 
+        : selectedPackageName;
+      const effectiveTaskName = selectedTaskName === '__CUSTOM_TASK__' 
+        ? (customTaskInput.trim() || 'Hạng mục khác') 
+        : selectedTaskName;
+
       const newPaymentDoc = {
         id: `payment_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         docCode,
         title: title.trim(),
+        projectId: currentProject?.id || selectedProjectCode,
+        projectCode: currentProject?.code || selectedProjectCode,
+        projectName: currentProject?.name || currentProject?.projectName || 'Chung cư nhà ở xã hội 2',
+        packageId: currentPackage?.id || '',
+        packageName: effectivePackageName,
+        itemId: '',
+        itemName: effectiveTaskName,
+        taskName: effectiveTaskName,
         typeCode: currentSlaConfig?.typeCode || selectedTypeCode,
         typeName: currentSlaConfig?.typeName || 'Hồ sơ thanh toán',
         slaDays,
@@ -433,6 +515,142 @@ export default function CreatePaymentDocumentModal({
                 </div>
               </div>
 
+            </div>
+
+            {/* PHÂN CẤP DỰ ÁN: CÔNG TRÌNH - GÓI THẦU - HẠNG MỤC */}
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '10px',
+              padding: '14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.84rem', fontWeight: 700, color: '#334155' }}>
+                <span>📍 PHÂN LOẠI CÔNG TRÌNH & HẠNG MỤC</span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' }}>
+                {/* 1. CÔNG TRÌNH */}
+                <div>
+                  <label style={{ display: 'block', fontWeight: 600, fontSize: '0.82rem', color: '#1e293b', marginBottom: '5px' }}>
+                    🏢 Công trình <span style={{ color: '#dc2626' }}>*</span>
+                  </label>
+                  <select
+                    value={selectedProjectCode}
+                    onChange={(e) => setSelectedProjectCode(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '7px',
+                      fontSize: '0.86rem',
+                      background: '#fff',
+                      outline: 'none',
+                      boxSizing: 'border-box'
+                    }}
+                  >
+                    {effectiveProjects.map(p => (
+                      <option key={p.id || p.code} value={p.code}>
+                        [{p.code}] {p.name || p.projectName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 2. GÓI THẦU */}
+                <div>
+                  <label style={{ display: 'block', fontWeight: 600, fontSize: '0.82rem', color: '#1e293b', marginBottom: '5px' }}>
+                    📦 Gói thầu <span style={{ color: '#dc2626' }}>*</span>
+                  </label>
+                  <select
+                    value={selectedPackageName}
+                    onChange={(e) => setSelectedPackageName(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '7px',
+                      fontSize: '0.86rem',
+                      background: '#fff',
+                      outline: 'none',
+                      boxSizing: 'border-box'
+                    }}
+                  >
+                    {availablePackages.map((pkg, idx) => (
+                      <option key={pkg.id || idx} value={pkg.name}>
+                        {pkg.name}
+                      </option>
+                    ))}
+                    <option value="__CUSTOM_PKG__">➕ Nhập gói thầu khác...</option>
+                  </select>
+                  {selectedPackageName === '__CUSTOM_PKG__' && (
+                    <input
+                      type="text"
+                      placeholder="Nhập tên gói thầu..."
+                      value={customPackageInput}
+                      onChange={(e) => setCustomPackageInput(e.target.value)}
+                      style={{
+                        width: '100%',
+                        marginTop: '6px',
+                        padding: '7px 10px',
+                        border: '1px solid #94a3b8',
+                        borderRadius: '6px',
+                        fontSize: '0.84rem',
+                        boxSizing: 'border-box'
+                      }}
+                      required
+                    />
+                  )}
+                </div>
+
+                {/* 3. CÔNG TÁC */}
+                <div>
+                  <label style={{ display: 'block', fontWeight: 600, fontSize: '0.82rem', color: '#1e293b', marginBottom: '5px' }}>
+                    📑 Công tác <span style={{ color: '#dc2626' }}>*</span>
+                  </label>
+                  <select
+                    value={selectedTaskName}
+                    onChange={(e) => setSelectedTaskName(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '7px',
+                      fontSize: '0.86rem',
+                      background: '#fff',
+                      outline: 'none',
+                      boxSizing: 'border-box'
+                    }}
+                  >
+                    {availableTasks.map((task, idx) => (
+                      <option key={idx} value={task}>
+                        {task}
+                      </option>
+                    ))}
+                    <option value="__CUSTOM_TASK__">➕ Nhập hạng mục khác...</option>
+                  </select>
+                  {selectedTaskName === '__CUSTOM_TASK__' && (
+                    <input
+                      type="text"
+                      placeholder="Nhập tên hạng mục..."
+                      value={customTaskInput}
+                      onChange={(e) => setCustomTaskInput(e.target.value)}
+                      style={{
+                        width: '100%',
+                        marginTop: '6px',
+                        padding: '7px 10px',
+                        border: '1px solid #94a3b8',
+                        borderRadius: '6px',
+                        fontSize: '0.84rem',
+                        boxSizing: 'border-box'
+                      }}
+                      required
+                    />
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* LOẠI HỒ SƠ THANH TOÁN (3 LOẠI: TẠM ỨNG, THANH TOÁN, QUYẾT TOÁN) */}

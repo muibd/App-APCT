@@ -7818,6 +7818,7 @@ export default function App() {
       <CreatePaymentDocumentModal 
         isOpen={isCreatePaymentModalOpen}
         onClose={() => setIsCreatePaymentModalOpen(false)}
+        projects={projectsList}
         users={users}
         currentUser={currentUser}
         slaConfigs={paymentSlaConfigs}
@@ -7830,6 +7831,7 @@ export default function App() {
         isOpen={Boolean(selectedPaymentDoc)}
         onClose={() => setSelectedPaymentDoc(null)}
         document={selectedPaymentDoc}
+        projects={projectsList}
         currentUser={currentUser}
         currentRole={currentRole}
         users={users}

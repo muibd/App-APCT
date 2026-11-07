@@ -13,6 +13,7 @@ import {
 import { openPdfInNewTab } from '../utils/pdfHelper';
 import { compressImageFile } from '../utils/storageHelper';
 import { uploadPdfDocument } from '../services/storageService';
+import { getDocHierarchyInfo } from './ShopDocumentsView';
 import ImagePreviewModal from './ImagePreviewModal';
 import { isSupervisorLeadOrDeputy, isInvestorLeadOrDeputy } from '../data/mockData';
 
@@ -20,6 +21,7 @@ export default function PaymentDocumentDetailModal({
   isOpen,
   onClose,
   document: paymentDoc,
+  projects = [],
   currentUser,
   currentRole,
   users = [],
@@ -31,6 +33,8 @@ export default function PaymentDocumentDetailModal({
   showAlert
 }) {
   if (!isOpen || !paymentDoc) return null;
+
+  const docHierarchy = useMemo(() => getDocHierarchyInfo(paymentDoc), [paymentDoc]);
 
   // Review states
   const [reviewNote, setReviewNote] = useState('');
@@ -621,6 +625,18 @@ export default function PaymentDocumentDetailModal({
 
           {/* THÔNG TIN CHUNG */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', background: '#f8fafc', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+            <div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>🏢 Công Trình</div>
+              <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#0f172a' }}>{docHierarchy.projectName || 'Chung cư nhà ở xã hội 2'}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>📦 Gói Thầu</div>
+              <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#0f172a' }}>{docHierarchy.packageName || 'Chung cho dự án'}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>📑 Công Tác</div>
+              <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#0f172a' }}>{docHierarchy.itemName || 'Toàn bộ công tác'}</div>
+            </div>
             <div>
               <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Loại Hồ Sơ</div>
               <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#0f172a' }}>{paymentDoc.typeName}</div>
