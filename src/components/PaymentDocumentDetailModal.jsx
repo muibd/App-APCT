@@ -96,6 +96,7 @@ export default function PaymentDocumentDetailModal({
         const blob = await response.blob();
         const blobUrl = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
+        a.style.display = 'none';
         a.href = blobUrl;
         a.download = targetName;
         document.body.appendChild(a);
@@ -104,6 +105,7 @@ export default function PaymentDocumentDetailModal({
         setTimeout(() => window.URL.revokeObjectURL(blobUrl), 2000);
       } else {
         const a = document.createElement('a');
+        a.style.display = 'none';
         a.href = targetUrl;
         a.download = targetName;
         document.body.appendChild(a);
@@ -113,6 +115,7 @@ export default function PaymentDocumentDetailModal({
     } catch (err) {
       console.warn('Lỗi tải file bằng fetch blob, tải trực tiếp:', err);
       const a = document.createElement('a');
+      a.style.display = 'none';
       a.href = targetUrl;
       a.download = targetName;
       a.target = '_blank';
@@ -402,7 +405,7 @@ export default function PaymentDocumentDetailModal({
 
     for (const file of files) {
       const fileNameLower = file.name.toLowerCase();
-      const isAllowed = 
+      const isAllowed =
         file.type === 'application/pdf' ||
         fileNameLower.endsWith('.pdf') ||
         fileNameLower.endsWith('.zip') ||
@@ -516,8 +519,8 @@ export default function PaymentDocumentDetailModal({
         updatedVersions = [...allAttachmentVersions, newVersionObj];
       }
 
-      const activeFiles = finalNewPdfFiles.length > 0 
-        ? finalNewPdfFiles 
+      const activeFiles = finalNewPdfFiles.length > 0
+        ? finalNewPdfFiles
         : (allAttachmentVersions[allAttachmentVersions.length - 1]?.files || paymentDoc.pdfFiles || []);
 
       if (onResubmit) {
@@ -543,7 +546,7 @@ export default function PaymentDocumentDetailModal({
   return (
     <div className="modal-overlay" style={{ zIndex: 1150 }}>
       <div className="modal-content" style={{ maxWidth: '860px', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
-        
+
         {/* MODAL HEADER */}
         <div className="modal-header" style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', padding: '16px 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -581,7 +584,7 @@ export default function PaymentDocumentDetailModal({
 
         {/* MODAL BODY */}
         <div className="modal-body" style={{ overflowY: 'auto', padding: '20px', flex: 1, display: 'flex', flexDirection: 'column', gap: '18px' }}>
-          
+
           {/* CẢNH BÁO BỊ TỪ CHỐI / CẦN SỬA */}
           {paymentDoc.status === PAYMENT_STATUS.REJECTED && (
             <div style={{
@@ -749,9 +752,6 @@ export default function PaymentDocumentDetailModal({
                 <h4 style={{ margin: 0, fontSize: '0.88rem', color: '#1e293b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <FileText size={18} color="#2563eb" />
                   <span>Danh Sách Tệp Đính Kèm Qua Các Lần Trình Duyệt:</span>
-                  <span style={{ fontSize: '0.72rem', color: '#2563eb', background: '#eff6ff', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, border: '1px solid #bfdbfe' }}>
-                    PDF, ZIP, RAR, 7Z (Không giới hạn)
-                  </span>
                 </h4>
               </div>
 
@@ -1077,11 +1077,11 @@ export default function PaymentDocumentDetailModal({
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '10px' }}>
                     {editPhotos.map(photo => (
                       <div key={photo.id} style={{ position: 'relative', border: '1.5px solid #fca5a5', borderRadius: '6px', overflow: 'hidden', background: '#fef2f2' }}>
-                        <img 
-                          src={photo.url} 
-                          alt="Chứng từ" 
+                        <img
+                          src={photo.url}
+                          alt="Chứng từ"
                           onClick={() => setActivePhoto(photo.url)}
-                          style={{ width: '100%', height: '80px', objectFit: 'cover', cursor: 'pointer' }} 
+                          style={{ width: '100%', height: '80px', objectFit: 'cover', cursor: 'pointer' }}
                         />
                         <button
                           type="button"
@@ -1124,8 +1124,8 @@ export default function PaymentDocumentDetailModal({
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '10px' }}>
                   {paymentDoc.photos.map((photo, i) => (
-                    <div 
-                      key={i} 
+                    <div
+                      key={i}
                       onClick={() => setActivePhoto(photo.url)}
                       style={{ border: '1px solid #e2e8f0', borderRadius: '6px', overflow: 'hidden', cursor: 'pointer' }}
                     >
@@ -1148,14 +1148,14 @@ export default function PaymentDocumentDetailModal({
             </h4>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '14px' }}>
-              
+
               {/* BÊN 1: TƯ VẤN GIÁM SÁT */}
               <div style={{
-                border: paymentDoc.assignedTvgs?.status === 'ACCEPTED' 
-                  ? '1.5px solid #86efac' 
-                  : paymentDoc.assignedTvgs?.status === 'REJECTED' 
-                  ? '1.5px solid #fca5a5' 
-                  : '1.5px solid #bfdbfe',
+                border: paymentDoc.assignedTvgs?.status === 'ACCEPTED'
+                  ? '1.5px solid #86efac'
+                  : paymentDoc.assignedTvgs?.status === 'REJECTED'
+                    ? '1.5px solid #fca5a5'
+                    : '1.5px solid #bfdbfe',
                 borderRadius: '10px',
                 padding: '14px',
                 background: paymentDoc.assignedTvgs?.status === 'ACCEPTED' ? '#f0fdf4' : paymentDoc.assignedTvgs?.status === 'REJECTED' ? '#fef2f2' : '#f8fafc'
@@ -1396,11 +1396,11 @@ export default function PaymentDocumentDetailModal({
 
               {/* BÊN 2: BAN QUẢN LÝ DỰ ÁN */}
               <div style={{
-                border: paymentDoc.assignedInvestor?.status === 'ACCEPTED' 
-                  ? '1.5px solid #86efac' 
-                  : paymentDoc.assignedInvestor?.status === 'REJECTED' 
-                  ? '1.5px solid #fca5a5' 
-                  : '1.5px solid #fed7aa',
+                border: paymentDoc.assignedInvestor?.status === 'ACCEPTED'
+                  ? '1.5px solid #86efac'
+                  : paymentDoc.assignedInvestor?.status === 'REJECTED'
+                    ? '1.5px solid #fca5a5'
+                    : '1.5px solid #fed7aa',
                 borderRadius: '10px',
                 padding: '14px',
                 background: paymentDoc.assignedInvestor?.status === 'ACCEPTED' ? '#f0fdf4' : paymentDoc.assignedInvestor?.status === 'REJECTED' ? '#fef2f2' : '#f8fafc'

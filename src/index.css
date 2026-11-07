@@ -1045,10 +1045,8 @@ button, input, select, textarea {
 /* --------------------------------------------------------------------------
    MODALS & DIALOGS
    -------------------------------------------------------------------------- */
-body.modal-open,
-html.modal-open {
+body.modal-open {
   overflow: hidden !important;
-  height: 100% !important;
 }
 
 .modal-overlay {

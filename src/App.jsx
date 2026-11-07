@@ -3631,13 +3631,32 @@ export default function App() {
     Boolean(selectedPaymentDoc)
   );
 
+  // Lưu vị trí cuộn trang để phục hồi chính xác khi đóng popup/modal
+  const savedScrollPositionRef = useRef(0);
+
   useEffect(() => {
     if (isAnyModalOpen) {
+      // Lưu lại vị trí cuộn trang hiện tại của người dùng trước khi mở modal
+      const currentScroll = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+      savedScrollPositionRef.current = currentScroll;
+
+      // Khóa cuộn trang nền an toàn chỉ trên body (không gán vào documentElement và không ép height: 100%)
       document.body.classList.add('modal-open');
-      document.documentElement.classList.add('modal-open');
     } else {
       document.body.classList.remove('modal-open');
       document.documentElement.classList.remove('modal-open');
+
+      // Phục hồi lại chính xác vị trí cuộn trước đó cho người dùng
+      const savedScroll = savedScrollPositionRef.current;
+      if (typeof savedScroll === 'number' && savedScroll > 0) {
+        requestAnimationFrame(() => {
+          window.scrollTo({
+            top: savedScroll,
+            left: 0,
+            behavior: 'instant'
+          });
+        });
+      }
     }
     return () => {
       document.body.classList.remove('modal-open');
@@ -7054,18 +7073,21 @@ export default function App() {
 
                     <div className="filter-pills" style={{ margin: 0, flexWrap: 'wrap' }}>
                       <button 
+                        type="button"
                         className={`filter-pill ${statusFilter === 'ALL' ? 'active' : ''}`}
                         onClick={() => setStatusFilter('ALL')}
                       >
                         Tất cả ({stats.total})
                       </button>
                       <button 
+                        type="button"
                         className={`filter-pill ${statusFilter === 'SENT' ? 'active' : ''}`}
                         onClick={() => setStatusFilter('SENT')}
                       >
                         Chờ nghiệm thu ({stats.sent})
                       </button>
                       <button 
+                        type="button"
                         className={`filter-pill ${statusFilter === 'HAS_REJECTIONS' ? 'active' : ''}`}
                         style={statusFilter === 'HAS_REJECTIONS' ? { background: '#ef4444', borderColor: '#ef4444', color: '#fff' } : {}}
                         onClick={() => setStatusFilter('HAS_REJECTIONS')}
@@ -7073,6 +7095,7 @@ export default function App() {
                         ⚠️ Chưa đạt ({stats.rejected})
                       </button>
                       <button 
+                        type="button"
                         className={`filter-pill ${statusFilter === 'RECTIFIED' ? 'active' : ''}`}
                         style={statusFilter === 'RECTIFIED' ? { background: '#7c3aed', borderColor: '#7c3aed', color: '#fff' } : {}}
                         onClick={() => setStatusFilter('RECTIFIED')}
@@ -7080,6 +7103,7 @@ export default function App() {
                         🔄 Đã sửa ({stats.rectified})
                       </button>
                       <button 
+                        type="button"
                         className={`filter-pill ${statusFilter === 'COMPLETED' ? 'active' : ''}`}
                         onClick={() => setStatusFilter('COMPLETED')}
                       >
@@ -7583,6 +7607,7 @@ export default function App() {
                           )}
                           {isCancelled ? (
                             <button 
+                              type="button"
                               className="btn-secondary" 
                               style={{ color: '#64748b', padding: '7px 18px', fontSize: '0.86rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                               onClick={(e) => {
@@ -7600,6 +7625,7 @@ export default function App() {
                           ) : isRejected ? (
                             currentRole === 'CONTRACTOR' ? (
                               <button 
+                                type="button"
                                 className="btn-primary" 
                                 style={{ background: '#7c3aed', padding: '7px 18px', fontSize: '0.86rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                                 onClick={(e) => {
@@ -7616,6 +7642,7 @@ export default function App() {
                               </button>
                             ) : (
                               <button 
+                                type="button"
                                 className="btn-secondary" 
                                 style={{ borderColor: '#fca5a5', color: '#b91c1c', background: '#fff', padding: '7px 18px', fontSize: '0.86rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                                 onClick={(e) => {
@@ -7633,6 +7660,7 @@ export default function App() {
                             )
                           ) : isRectified ? (
                             <button 
+                              type="button"
                               className="btn-primary" 
                               style={{ background: '#7c3aed', padding: '7px 18px', fontSize: '0.86rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                               onClick={(e) => {
@@ -7649,6 +7677,7 @@ export default function App() {
                             </button>
                           ) : (
                             <button 
+                              type="button"
                               className="btn-primary" 
                               style={{ background: '#059669', padding: '7px 20px', fontSize: '0.88rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                               onClick={(e) => {

@@ -99,6 +99,7 @@ export default function ShopDocumentDetailModal({
         const blob = await response.blob();
         const blobUrl = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
+        a.style.display = 'none';
         a.href = blobUrl;
         a.download = targetName;
         document.body.appendChild(a);
@@ -107,6 +108,7 @@ export default function ShopDocumentDetailModal({
         setTimeout(() => window.URL.revokeObjectURL(blobUrl), 2000);
       } else {
         const a = document.createElement('a');
+        a.style.display = 'none';
         a.href = targetUrl;
         a.download = targetName;
         document.body.appendChild(a);
@@ -116,6 +118,7 @@ export default function ShopDocumentDetailModal({
     } catch (err) {
       console.warn('Lỗi tải file bằng fetch blob, tải trực tiếp:', err);
       const a = document.createElement('a');
+      a.style.display = 'none';
       a.href = targetUrl;
       a.download = targetName;
       a.target = '_blank';
@@ -184,14 +187,14 @@ export default function ShopDocumentDetailModal({
   // 2. Thời hạn 1 ngày phân công của Ban QLDA: 24h KỂ TỪ KHI TVGS DUYỆT ĐẠT
   const investorAssignmentDeadlineTime = useMemo(() => {
     if (!isTvgsApproved) return null;
-    const tvgsReviewTime = shopDoc.assignedTvgs?.reviewedAt 
-      ? new Date(shopDoc.assignedTvgs.reviewedAt).getTime() 
+    const tvgsReviewTime = shopDoc.assignedTvgs?.reviewedAt
+      ? new Date(shopDoc.assignedTvgs.reviewedAt).getTime()
       : Date.now();
     return tvgsReviewTime + 24 * 60 * 60 * 1000;
   }, [isTvgsApproved, shopDoc.assignedTvgs?.reviewedAt]);
 
-  const isWithin1DayInvestorAssignment = !isTvgsApproved 
-    ? true 
+  const isWithin1DayInvestorAssignment = !isTvgsApproved
+    ? true
     : (investorAssignmentDeadlineTime ? Date.now() <= investorAssignmentDeadlineTime : true);
 
   const remainingInvestor1DayHours = useMemo(() => {
@@ -431,7 +434,7 @@ export default function ShopDocumentDetailModal({
 
     for (const file of files) {
       const fileNameLower = file.name.toLowerCase();
-      const isAllowed = 
+      const isAllowed =
         file.type === 'application/pdf' ||
         fileNameLower.endsWith('.pdf') ||
         fileNameLower.endsWith('.zip') ||
@@ -545,8 +548,8 @@ export default function ShopDocumentDetailModal({
         updatedVersions = [...allAttachmentVersions, newVersionObj];
       }
 
-      const activeFiles = finalNewPdfFiles.length > 0 
-        ? finalNewPdfFiles 
+      const activeFiles = finalNewPdfFiles.length > 0
+        ? finalNewPdfFiles
         : (allAttachmentVersions[allAttachmentVersions.length - 1]?.files || shopDoc.pdfFiles || []);
 
       if (onResubmit) {
@@ -572,7 +575,7 @@ export default function ShopDocumentDetailModal({
   return (
     <div className="modal-overlay" style={{ zIndex: 1150 }}>
       <div className="modal-content" style={{ maxWidth: '860px', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
-        
+
         {/* MODAL HEADER */}
         <div className="modal-header" style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', padding: '16px 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -610,7 +613,7 @@ export default function ShopDocumentDetailModal({
 
         {/* MODAL BODY */}
         <div className="modal-body" style={{ overflowY: 'auto', padding: '20px', flex: 1, display: 'flex', flexDirection: 'column', gap: '18px' }}>
-          
+
           {/* CẢNH BÁO BỊ TỪ CHỐI / CẦN SỬA */}
           {shopDoc.status === SHOP_STATUS.REJECTED && (
             <div style={{
@@ -788,9 +791,6 @@ export default function ShopDocumentDetailModal({
                 <h4 style={{ margin: 0, fontSize: '0.88rem', color: '#1e293b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <FileText size={18} color="#2563eb" />
                   <span>Danh Sách Tệp Đính Kèm Qua Các Lần Trình Duyệt:</span>
-                  <span style={{ fontSize: '0.72rem', color: '#2563eb', background: '#eff6ff', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, border: '1px solid #bfdbfe' }}>
-                    PDF, ZIP, RAR, 7Z (Không giới hạn)
-                  </span>
                 </h4>
               </div>
 
@@ -1257,18 +1257,18 @@ export default function ShopDocumentDetailModal({
             </h4>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-              
+
               {/* 1. TVGS CARD */}
               <div style={{
                 border: '1px solid #cbd5e1',
                 borderRadius: '8px',
                 padding: '14px',
-                background: shopDoc.assignedTvgs?.status === 'ACCEPTED' 
-                  ? '#f0fdf4' 
-                  : shopDoc.assignedTvgs?.status === 'REJECTED' 
-                    ? '#fef2f2' 
-                    : !isTvgsAssigned 
-                      ? '#fffbeb' 
+                background: shopDoc.assignedTvgs?.status === 'ACCEPTED'
+                  ? '#f0fdf4'
+                  : shopDoc.assignedTvgs?.status === 'REJECTED'
+                    ? '#fef2f2'
+                    : !isTvgsAssigned
+                      ? '#fffbeb'
                       : '#ffffff'
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
@@ -1281,27 +1281,27 @@ export default function ShopDocumentDetailModal({
                     fontWeight: 700,
                     padding: '2px 8px',
                     borderRadius: '10px',
-                    background: !isTvgsAssigned 
+                    background: !isTvgsAssigned
                       ? (getShopTvgsOverdueInfo(shopDoc).isOverdue ? '#fee2e2' : '#fef3c7')
-                      : shopDoc.assignedTvgs?.status === 'ACCEPTED' 
-                        ? '#dcfce7' 
-                        : shopDoc.assignedTvgs?.status === 'REJECTED' 
-                          ? '#fee2e2' 
+                      : shopDoc.assignedTvgs?.status === 'ACCEPTED'
+                        ? '#dcfce7'
+                        : shopDoc.assignedTvgs?.status === 'REJECTED'
+                          ? '#fee2e2'
                           : (getShopTvgsOverdueInfo(shopDoc).isOverdue ? '#fee2e2' : '#eff6ff'),
-                    color: !isTvgsAssigned 
+                    color: !isTvgsAssigned
                       ? (getShopTvgsOverdueInfo(shopDoc).isOverdue ? '#b91c1c' : '#b45309')
-                      : shopDoc.assignedTvgs?.status === 'ACCEPTED' 
-                        ? '#15803d' 
-                        : shopDoc.assignedTvgs?.status === 'REJECTED' 
-                          ? '#b91c1c' 
+                      : shopDoc.assignedTvgs?.status === 'ACCEPTED'
+                        ? '#15803d'
+                        : shopDoc.assignedTvgs?.status === 'REJECTED'
+                          ? '#b91c1c'
                           : (getShopTvgsOverdueInfo(shopDoc).isOverdue ? '#b91c1c' : '#1d4ed8')
                   }}>
-                    {!isTvgsAssigned 
+                    {!isTvgsAssigned
                       ? (getShopTvgsOverdueInfo(shopDoc).isOverdue ? '⚠️ Chậm phân công' : '⏳ Chờ phân công')
-                      : shopDoc.assignedTvgs?.status === 'ACCEPTED' 
-                        ? '✓ Đã xác nhận' 
-                        : shopDoc.assignedTvgs?.status === 'REJECTED' 
-                          ? '✕ Yêu cầu sửa' 
+                      : shopDoc.assignedTvgs?.status === 'ACCEPTED'
+                        ? '✓ Đã xác nhận'
+                        : shopDoc.assignedTvgs?.status === 'REJECTED'
+                          ? '✕ Yêu cầu sửa'
                           : (getShopTvgsOverdueInfo(shopDoc).isOverdue ? '⚠️ Chậm duyệt' : '⏳ Đang thẩm định')}
                   </span>
                 </div>
@@ -1592,12 +1592,12 @@ export default function ShopDocumentDetailModal({
                   border: '1px solid #cbd5e1',
                   borderRadius: '8px',
                   padding: '14px',
-                  background: shopDoc.assignedInvestor?.status === 'ACCEPTED' 
-                    ? '#f0fdf4' 
-                    : shopDoc.assignedInvestor?.status === 'REJECTED' 
-                      ? '#fef2f2' 
-                      : !isInvestorAssigned 
-                        ? '#fffbeb' 
+                  background: shopDoc.assignedInvestor?.status === 'ACCEPTED'
+                    ? '#f0fdf4'
+                    : shopDoc.assignedInvestor?.status === 'REJECTED'
+                      ? '#fef2f2'
+                      : !isInvestorAssigned
+                        ? '#fffbeb'
                         : '#ffffff'
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
@@ -1610,33 +1610,33 @@ export default function ShopDocumentDetailModal({
                       fontWeight: 700,
                       padding: '2px 8px',
                       borderRadius: '10px',
-                      background: !isInvestorAssigned 
+                      background: !isInvestorAssigned
                         ? (getShopInvestorOverdueInfo(shopDoc).isOverdue ? '#fee2e2' : '#fef3c7')
-                        : shopDoc.assignedInvestor?.status === 'ACCEPTED' 
-                          ? '#dcfce7' 
-                          : shopDoc.assignedInvestor?.status === 'REJECTED' 
-                            ? '#fee2e2' 
-                            : !isTvgsApproved 
-                              ? '#f1f5f9' 
+                        : shopDoc.assignedInvestor?.status === 'ACCEPTED'
+                          ? '#dcfce7'
+                          : shopDoc.assignedInvestor?.status === 'REJECTED'
+                            ? '#fee2e2'
+                            : !isTvgsApproved
+                              ? '#f1f5f9'
                               : (getShopInvestorOverdueInfo(shopDoc).isOverdue ? '#fee2e2' : '#eff6ff'),
-                      color: !isInvestorAssigned 
+                      color: !isInvestorAssigned
                         ? (getShopInvestorOverdueInfo(shopDoc).isOverdue ? '#b91c1c' : '#b45309')
-                        : shopDoc.assignedInvestor?.status === 'ACCEPTED' 
-                          ? '#15803d' 
-                          : shopDoc.assignedInvestor?.status === 'REJECTED' 
-                            ? '#b91c1c' 
-                            : !isTvgsApproved 
-                              ? '#64748b' 
+                        : shopDoc.assignedInvestor?.status === 'ACCEPTED'
+                          ? '#15803d'
+                          : shopDoc.assignedInvestor?.status === 'REJECTED'
+                            ? '#b91c1c'
+                            : !isTvgsApproved
+                              ? '#64748b'
                               : (getShopInvestorOverdueInfo(shopDoc).isOverdue ? '#b91c1c' : '#1d4ed8')
                     }}>
-                      {!isInvestorAssigned 
+                      {!isInvestorAssigned
                         ? (getShopInvestorOverdueInfo(shopDoc).isOverdue ? '⚠️ Chậm phân công' : '⏳ Chờ phân công')
-                        : shopDoc.assignedInvestor?.status === 'ACCEPTED' 
-                          ? '✓ Đã xác nhận' 
-                          : shopDoc.assignedInvestor?.status === 'REJECTED' 
-                            ? '✕ Yêu cầu sửa' 
-                            : !isTvgsApproved 
-                              ? '⏳ Chờ TVGS duyệt trước' 
+                        : shopDoc.assignedInvestor?.status === 'ACCEPTED'
+                          ? '✓ Đã xác nhận'
+                          : shopDoc.assignedInvestor?.status === 'REJECTED'
+                            ? '✕ Yêu cầu sửa'
+                            : !isTvgsApproved
+                              ? '⏳ Chờ TVGS duyệt trước'
                               : (getShopInvestorOverdueInfo(shopDoc).isOverdue ? '⚠️ Chậm duyệt' : '⏳ Chờ Ban QLDA duyệt')}
                     </span>
                   </div>

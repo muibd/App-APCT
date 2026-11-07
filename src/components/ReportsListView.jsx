@@ -1018,6 +1018,7 @@ export default function ReportsListView({
                       <>
                         {(!isAdmin && (currentRole === 'SUPERVISOR' || currentRole === 'LEAD_SUPERVISOR' || currentRole === 'INVESTOR' || currentRole === 'LEAD_INVESTOR')) ? (
                           <button 
+                            type="button"
                             className="btn-success"
                             style={{ padding: '8px 14px', fontSize: '0.84rem' }}
                             onClick={() => onOpenReport(report)}
@@ -1027,6 +1028,7 @@ export default function ReportsListView({
                           </button>
                         ) : (
                           <button 
+                            type="button"
                             className="btn-primary" 
                             style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)', padding: '8px 14px', fontSize: '0.84rem' }}
                             onClick={() => onOpenReport(report)}
@@ -1042,6 +1044,7 @@ export default function ReportsListView({
                         {/* NÚT CHO ĐVTC: GỬI ẢNH SỬA & MỜI NGHIỆM THU LẠI */}
                         {currentRole === 'CONTRACTOR' && (
                           <button 
+                            type="button"
                             className="btn-primary" 
                             style={{ 
                               background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
@@ -1056,6 +1059,7 @@ export default function ReportsListView({
                         )}
 
                         <button 
+                          type="button"
                           className="btn-secondary" 
                           style={{ padding: '8px 12px', fontSize: '0.84rem', borderColor: '#fca5a5', color: '#b91c1c' }}
                           onClick={() => onOpenReport(report)}
@@ -1069,6 +1073,7 @@ export default function ReportsListView({
                       <>
                         {isCompleted && (
                           <button 
+                            type="button"
                             className="btn-secondary" 
                             style={{ padding: '8px 12px', fontSize: '0.84rem' }}
                             onClick={() => onOpenReport(report)}
@@ -1079,6 +1084,7 @@ export default function ReportsListView({
                           </button>
                         )}
                         <button 
+                          type="button"
                           className="btn-primary" 
                           style={{ padding: '8px 16px', fontSize: '0.85rem' }}
                           onClick={() => onOpenReport(report)}
