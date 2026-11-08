@@ -11,7 +11,8 @@ import {
   SHOP_STATUS,
   isAsBuiltDoc,
   getShopTvgsOverdueInfo,
-  getShopInvestorOverdueInfo
+  getShopInvestorOverdueInfo,
+  isShopDocumentOverdue
 } from '../data/shopDocumentConstants';
 
 // Hàm trích xuất / suy luận Công trình, Gói thầu, Hạng mục/Công tác của hồ sơ, biên bản, nhật ký
@@ -218,17 +219,38 @@ export default function ShopDocumentsView({
 
     shopDocuments.forEach(doc => {
       const effStatus = getEffectiveShopStatus(doc);
-      if (effStatus === SHOP_STATUS.APPROVED) approved++;
-      else if (effStatus === SHOP_STATUS.REJECTED) rejected++;
-      else if (
-        effStatus === SHOP_STATUS.OVERDUE_TVGS ||
-        effStatus === SHOP_STATUS.OVERDUE_INVESTOR ||
-        effStatus === SHOP_STATUS.OVERDUE_ASSIGNMENT ||
-        effStatus === SHOP_STATUS.OVERDUE_REVIEW ||
-        effStatus === SHOP_STATUS.OVERDUE
-      ) overdue++;
-      else if (effStatus === SHOP_STATUS.WAITING_ASSIGNMENT) waitingAssignment++;
-      else sent++;
+      if (effStatus === SHOP_STATUS.APPROVED) {
+        approved++;
+      } else if (effStatus === SHOP_STATUS.REJECTED) {
+        rejected++;
+      } else {
+        // Hồ sơ đang trong quy trình xử lý:
+        const isTvgsAccepted = doc.assignedTvgs?.status === 'ACCEPTED';
+        let isWaitingAssign = false;
+        if (!isTvgsAccepted) {
+          isWaitingAssign = (!doc.assignedTvgs?.assignee && !doc.assignedTvgs?.uid) || doc.assignedTvgs?.status === 'WAITING_ASSIGNMENT';
+        } else if (!isAsBuiltDoc(doc)) {
+          isWaitingAssign = (!doc.assignedInvestor?.assignee && !doc.assignedInvestor?.uid) || doc.assignedInvestor?.status === 'WAITING_ASSIGNMENT';
+        }
+
+        if (isWaitingAssign) {
+          waitingAssignment++;
+        } else {
+          sent++;
+        }
+
+        // Đồng thời nếu đang bị quá hạn (giao việc hoặc thẩm định) thì đếm vào quá hạn
+        if (
+          effStatus === SHOP_STATUS.OVERDUE_TVGS ||
+          effStatus === SHOP_STATUS.OVERDUE_INVESTOR ||
+          effStatus === SHOP_STATUS.OVERDUE_ASSIGNMENT ||
+          effStatus === SHOP_STATUS.OVERDUE_REVIEW ||
+          effStatus === SHOP_STATUS.OVERDUE ||
+          isShopDocumentOverdue(doc)
+        ) {
+          overdue++;
+        }
+      }
     });
 
     return {
@@ -367,15 +389,41 @@ export default function ShopDocumentsView({
       // 3. Lọc theo trạng thái
       if (selectedStatus !== 'ALL') {
         const effStatus = getEffectiveShopStatus(doc);
+        const isOverdue =
+          effStatus === SHOP_STATUS.OVERDUE_TVGS ||
+          effStatus === SHOP_STATUS.OVERDUE_INVESTOR ||
+          effStatus === SHOP_STATUS.OVERDUE ||
+          effStatus === SHOP_STATUS.OVERDUE_ASSIGNMENT ||
+          effStatus === SHOP_STATUS.OVERDUE_REVIEW ||
+          isShopDocumentOverdue(doc);
+
         if (selectedStatus === SHOP_STATUS.OVERDUE) {
-          const isOverdue =
-            effStatus === SHOP_STATUS.OVERDUE_TVGS ||
-            effStatus === SHOP_STATUS.OVERDUE_INVESTOR ||
-            effStatus === SHOP_STATUS.OVERDUE ||
-            effStatus === SHOP_STATUS.OVERDUE_ASSIGNMENT ||
-            effStatus === SHOP_STATUS.OVERDUE_REVIEW;
           if (!isOverdue) return false;
-        } else if (effStatus !== selectedStatus) {
+        } else if (selectedStatus === SHOP_STATUS.OVERDUE_TVGS) {
+          if (effStatus !== SHOP_STATUS.OVERDUE_TVGS) return false;
+        } else if (selectedStatus === SHOP_STATUS.OVERDUE_INVESTOR) {
+          if (effStatus !== SHOP_STATUS.OVERDUE_INVESTOR) return false;
+        } else if (selectedStatus === SHOP_STATUS.WAITING_ASSIGNMENT) {
+          if (doc.status === SHOP_STATUS.APPROVED || doc.status === SHOP_STATUS.REJECTED) return false;
+          const isTvgsAccepted = doc.assignedTvgs?.status === 'ACCEPTED';
+          let isWaitingAssign = false;
+          if (!isTvgsAccepted) {
+            isWaitingAssign = (!doc.assignedTvgs?.assignee && !doc.assignedTvgs?.uid) || doc.assignedTvgs?.status === 'WAITING_ASSIGNMENT';
+          } else if (!isAsBuiltDoc(doc)) {
+            isWaitingAssign = (!doc.assignedInvestor?.assignee && !doc.assignedInvestor?.uid) || doc.assignedInvestor?.status === 'WAITING_ASSIGNMENT';
+          }
+          if (!isWaitingAssign) return false;
+        } else if (selectedStatus === SHOP_STATUS.SENT) {
+          if (doc.status === SHOP_STATUS.APPROVED || doc.status === SHOP_STATUS.REJECTED) return false;
+          const isTvgsAccepted = doc.assignedTvgs?.status === 'ACCEPTED';
+          let isWaitingAssign = false;
+          if (!isTvgsAccepted) {
+            isWaitingAssign = (!doc.assignedTvgs?.assignee && !doc.assignedTvgs?.uid) || doc.assignedTvgs?.status === 'WAITING_ASSIGNMENT';
+          } else if (!isAsBuiltDoc(doc)) {
+            isWaitingAssign = (!doc.assignedInvestor?.assignee && !doc.assignedInvestor?.uid) || doc.assignedInvestor?.status === 'WAITING_ASSIGNMENT';
+          }
+          if (isWaitingAssign) return false;
+        } else if (effStatus !== selectedStatus && doc.status !== selectedStatus) {
           return false;
         }
       }

@@ -7,10 +7,11 @@
 // ============================================================================
 
 const DB_NAME = 'APCT_Storage_v1';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 export const STORE_REPORTS = 'reports';
 export const STORE_REQUESTS = 'requests';
 export const STORE_SHOP_DOCUMENTS = 'shop_documents';
+export const STORE_PAYMENT_DOCUMENTS = 'payment_documents';
 
 /**
  * Mở kết nối IndexedDB (hoạt động offline và không bị giới hạn 5MB như LocalStorage)
@@ -33,6 +34,9 @@ function openDB() {
       if (!db.objectStoreNames.contains(STORE_SHOP_DOCUMENTS)) {
         db.createObjectStore(STORE_SHOP_DOCUMENTS, { keyPath: 'id' });
       }
+      if (!db.objectStoreNames.contains(STORE_PAYMENT_DOCUMENTS)) {
+        db.createObjectStore(STORE_PAYMENT_DOCUMENTS, { keyPath: 'id' });
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => {
@@ -44,6 +48,7 @@ function openDB() {
 
 /**
  * Lưu danh sách dữ liệu vào IndexedDB song song để chống mất dữ liệu
+ * Tự động xóa các bản ghi cũ không còn tồn tại để tránh rác/bản ghi bóng (ghost items)
  */
 export async function saveToIndexedDB(storeName, items) {
   try {
@@ -51,6 +56,9 @@ export async function saveToIndexedDB(storeName, items) {
     if (!db || !Array.isArray(items)) return;
     const tx = db.transaction(storeName, 'readwrite');
     const store = tx.objectStore(storeName);
+    
+    // Đồng bộ chính xác danh sách: xóa store trước khi nạp items để loại bỏ các bản ghi đã xóa
+    store.clear();
     for (const item of items) {
       if (item && item.id) {
         store.put(item);
@@ -61,7 +69,27 @@ export async function saveToIndexedDB(storeName, items) {
       tx.onerror = () => resolve(false);
     });
   } catch (err) {
-    console.warn('Lỗi lưu IndexedDB:', err);
+    console.warn('Lỗi lưu IndexedDB:', storeName, err);
+    return false;
+  }
+}
+
+/**
+ * Xóa một bản ghi cụ thể theo id khỏi store IndexedDB
+ */
+export async function deleteFromIndexedDB(storeName, id) {
+  try {
+    const db = await openDB();
+    if (!db || !id) return false;
+    const tx = db.transaction(storeName, 'readwrite');
+    const store = tx.objectStore(storeName);
+    store.delete(id);
+    return new Promise((resolve) => {
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+    });
+  } catch (err) {
+    console.warn('Lỗi xóa mục khỏi IndexedDB:', storeName, id, err);
     return false;
   }
 }
@@ -374,6 +402,16 @@ function createLightweightDataForLocalStorage(key, data) {
     });
   }
 
+  if (key.includes('payment')) {
+    return data.map((doc, idx) => {
+      if (idx < 5) return doc;
+      return {
+        ...doc,
+        photos: Array.isArray(doc.photos) ? doc.photos.slice(0, 2) : []
+      };
+    });
+  }
+
   return data;
 }
 
@@ -392,6 +430,8 @@ export function safeSaveLocalStorage(key, data) {
     saveToIndexedDB(STORE_REQUESTS, data);
   } else if (key.includes('shop') && Array.isArray(data)) {
     saveToIndexedDB(STORE_SHOP_DOCUMENTS, data);
+  } else if (key.includes('payment') && Array.isArray(data)) {
+    saveToIndexedDB(STORE_PAYMENT_DOCUMENTS, data);
   }
 
   // 2. Thử lưu vào LocalStorage

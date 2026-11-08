@@ -8,7 +8,8 @@ import {
 import {
   getEffectivePaymentStatus,
   getPaymentStatusBadgeConfig,
-  PAYMENT_STATUS
+  PAYMENT_STATUS,
+  isPaymentDocumentOverdue
 } from '../data/paymentDocumentConstants';
 import { getDocHierarchyInfo } from './ShopDocumentsView';
 
@@ -178,17 +179,35 @@ export default function PaymentDocumentsView({
 
     paymentDocuments.forEach(doc => {
       const effStatus = getEffectivePaymentStatus(doc);
-      if (effStatus === PAYMENT_STATUS.APPROVED) approved++;
-      else if (effStatus === PAYMENT_STATUS.REJECTED) rejected++;
-      else if (
-        effStatus === PAYMENT_STATUS.OVERDUE_ASSIGNMENT ||
-        effStatus === PAYMENT_STATUS.OVERDUE_REVIEW ||
-        effStatus === PAYMENT_STATUS.OVERDUE ||
-        effStatus === PAYMENT_STATUS.OVERDUE_TVGS ||
-        effStatus === PAYMENT_STATUS.OVERDUE_INVESTOR
-      ) overdue++;
-      else if (effStatus === PAYMENT_STATUS.WAITING_ASSIGNMENT) waitingAssignment++;
-      else sent++;
+      if (effStatus === PAYMENT_STATUS.APPROVED) {
+        approved++;
+      } else if (effStatus === PAYMENT_STATUS.REJECTED) {
+        rejected++;
+      } else {
+        // Hồ sơ đang trong quy trình xử lý:
+        const isTvgsAccepted = doc.assignedTvgs?.status === 'ACCEPTED';
+        const isWaitingAssign = !isTvgsAccepted
+          ? (!doc.assignedTvgs?.assignee && !doc.assignedTvgs?.uid) || doc.assignedTvgs?.status === 'WAITING_ASSIGNMENT'
+          : (!doc.assignedInvestor?.assignee && !doc.assignedInvestor?.uid) || doc.assignedInvestor?.status === 'WAITING_ASSIGNMENT';
+
+        if (isWaitingAssign) {
+          waitingAssignment++;
+        } else {
+          sent++;
+        }
+
+        // Đồng thời nếu đang bị quá hạn (giao việc hoặc thẩm định) thì đếm vào quá hạn
+        if (
+          effStatus === PAYMENT_STATUS.OVERDUE_TVGS ||
+          effStatus === PAYMENT_STATUS.OVERDUE_INVESTOR ||
+          effStatus === PAYMENT_STATUS.OVERDUE_ASSIGNMENT ||
+          effStatus === PAYMENT_STATUS.OVERDUE_REVIEW ||
+          effStatus === PAYMENT_STATUS.OVERDUE ||
+          isPaymentDocumentOverdue(doc)
+        ) {
+          overdue++;
+        }
+      }
     });
 
     return {
@@ -327,15 +346,35 @@ export default function PaymentDocumentsView({
       // 3. Lọc theo trạng thái
       if (selectedStatus !== 'ALL') {
         const effStatus = getEffectivePaymentStatus(doc);
+        const isOverdue =
+          effStatus === PAYMENT_STATUS.OVERDUE_TVGS ||
+          effStatus === PAYMENT_STATUS.OVERDUE_INVESTOR ||
+          effStatus === PAYMENT_STATUS.OVERDUE ||
+          effStatus === PAYMENT_STATUS.OVERDUE_ASSIGNMENT ||
+          effStatus === PAYMENT_STATUS.OVERDUE_REVIEW ||
+          isPaymentDocumentOverdue(doc);
+
         if (selectedStatus === PAYMENT_STATUS.OVERDUE) {
-          const isOverdue =
-            effStatus === PAYMENT_STATUS.OVERDUE_TVGS ||
-            effStatus === PAYMENT_STATUS.OVERDUE_INVESTOR ||
-            effStatus === PAYMENT_STATUS.OVERDUE ||
-            effStatus === PAYMENT_STATUS.OVERDUE_ASSIGNMENT ||
-            effStatus === PAYMENT_STATUS.OVERDUE_REVIEW;
           if (!isOverdue) return false;
-        } else if (effStatus !== selectedStatus) {
+        } else if (selectedStatus === PAYMENT_STATUS.OVERDUE_TVGS) {
+          if (effStatus !== PAYMENT_STATUS.OVERDUE_TVGS) return false;
+        } else if (selectedStatus === PAYMENT_STATUS.OVERDUE_INVESTOR) {
+          if (effStatus !== PAYMENT_STATUS.OVERDUE_INVESTOR) return false;
+        } else if (selectedStatus === PAYMENT_STATUS.WAITING_ASSIGNMENT) {
+          if (doc.status === PAYMENT_STATUS.APPROVED || doc.status === PAYMENT_STATUS.REJECTED) return false;
+          const isTvgsAccepted = doc.assignedTvgs?.status === 'ACCEPTED';
+          const isWaitingAssign = !isTvgsAccepted
+            ? (!doc.assignedTvgs?.assignee && !doc.assignedTvgs?.uid) || doc.assignedTvgs?.status === 'WAITING_ASSIGNMENT'
+            : (!doc.assignedInvestor?.assignee && !doc.assignedInvestor?.uid) || doc.assignedInvestor?.status === 'WAITING_ASSIGNMENT';
+          if (!isWaitingAssign) return false;
+        } else if (selectedStatus === PAYMENT_STATUS.SENT) {
+          if (doc.status === PAYMENT_STATUS.APPROVED || doc.status === PAYMENT_STATUS.REJECTED) return false;
+          const isTvgsAccepted = doc.assignedTvgs?.status === 'ACCEPTED';
+          const isWaitingAssign = !isTvgsAccepted
+            ? (!doc.assignedTvgs?.assignee && !doc.assignedTvgs?.uid) || doc.assignedTvgs?.status === 'WAITING_ASSIGNMENT'
+            : (!doc.assignedInvestor?.assignee && !doc.assignedInvestor?.uid) || doc.assignedInvestor?.status === 'WAITING_ASSIGNMENT';
+          if (isWaitingAssign) return false;
+        } else if (effStatus !== selectedStatus && doc.status !== selectedStatus) {
           return false;
         }
       }

@@ -949,6 +949,25 @@ export const saveShopDocument = async (shopDocData) => {
         })
       };
     }
+    if (Array.isArray(cleanData.attachmentVersions)) {
+      firestorePayload = {
+        ...firestorePayload,
+        attachmentVersions: cleanData.attachmentVersions.map(v => ({
+          ...v,
+          files: Array.isArray(v.files) ? v.files.map(f => {
+            if (f && typeof f.dataUrl === 'string' && f.dataUrl.length > 700000) {
+              return {
+                id: f.id,
+                name: f.name,
+                size: f.size,
+                isStoredLocally: true
+              };
+            }
+            return f;
+          }) : []
+        }))
+      };
+    }
 
     await setDoc(docRef, firestorePayload);
     console.log('[Firestore Cloud] Đã lưu hồ sơ shop thành công:', cleanData?.title);
@@ -1099,6 +1118,25 @@ export const savePaymentDocument = async (paymentDocData) => {
           }
           return f;
         })
+      };
+    }
+    if (Array.isArray(cleanData.attachmentVersions)) {
+      firestorePayload = {
+        ...firestorePayload,
+        attachmentVersions: cleanData.attachmentVersions.map(v => ({
+          ...v,
+          files: Array.isArray(v.files) ? v.files.map(f => {
+            if (f && typeof f.dataUrl === 'string' && f.dataUrl.length > 700000) {
+              return {
+                id: f.id,
+                name: f.name,
+                size: f.size,
+                isStoredLocally: true
+              };
+            }
+            return f;
+          }) : []
+        }))
       };
     }
 

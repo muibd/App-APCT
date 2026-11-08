@@ -154,6 +154,7 @@ import {
   saveToIndexedDB,
   getAllFromIndexedDB, 
   clearAllFromIndexedDB, 
+  deleteFromIndexedDB,
   clearAllAPCTStorage 
 } from './utils/storageHelper';
 
@@ -1035,8 +1036,9 @@ export default function App() {
     getAllFromIndexedDB('reports').then(idbReports => {
       if (idbReports && idbReports.length > 0) {
         setReports(prev => {
+          const isPrevEmpty = !prev || prev.length === 0;
           const map = new Map();
-          prev.forEach(r => map.set(r.id, r));
+          (prev || []).forEach(r => map.set(r.id, r));
           idbReports.forEach(rawIr => {
             const ir = sanitizeReportData(rawIr);
             const key = ir.id;
@@ -1045,7 +1047,11 @@ export default function App() {
             if (!key || (created && created < OLD_DATA_CUTOFF)) return;
             const existing = map.get(key);
             if (!existing) {
-              map.set(key, ir);
+              // Chỉ thêm mới từ IndexedDB nếu danh sách hiện tại đang rỗng (phục hồi khi mất localStorage)
+              // Không thêm nếu đã có danh sách để tránh hồi sinh các bản ghi đã xóa
+              if (isPrevEmpty) {
+                map.set(key, ir);
+              }
             } else {
               const idbTime = new Date(ir.updatedAt || ir.createdAt || 0).getTime();
               const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
@@ -1069,8 +1075,9 @@ export default function App() {
     getAllFromIndexedDB('requests').then(idbRequests => {
       if (idbRequests && idbRequests.length > 0) {
         setRequests(prev => {
+          const isPrevEmpty = !prev || prev.length === 0;
           const map = new Map();
-          prev.forEach(r => map.set(r.id, r));
+          (prev || []).forEach(r => map.set(r.id, r));
           idbRequests.forEach(ir => {
             const key = ir.id;
             const created = ir.createdAt || '';
@@ -1079,7 +1086,11 @@ export default function App() {
             const existing = map.get(key);
             const sanitizedIr = sanitizeRequestData(ir);
             if (!existing) {
-              map.set(key, sanitizedIr);
+              // Chỉ thêm mới từ IndexedDB nếu danh sách hiện tại đang rỗng (phục hồi khi mất localStorage)
+              // Không thêm nếu đã có danh sách để tránh hồi sinh các bản ghi đã xóa
+              if (isPrevEmpty) {
+                map.set(key, sanitizedIr);
+              }
             } else if (existing.status === 'COMPLETED') {
               map.set(key, { ...existing, ...sanitizedIr, status: 'COMPLETED' });
             } else if (sanitizedIr.status === 'RECTIFIED' && existing.status !== 'RECTIFIED') {
@@ -1096,11 +1107,14 @@ export default function App() {
     getAllFromIndexedDB('shop_documents').then(idbShopDocs => {
       if (idbShopDocs && idbShopDocs.length > 0) {
         setShopDocuments(prev => {
+          const isPrevEmpty = !prev || prev.length === 0;
           const map = new Map();
           (prev || []).forEach(d => { if (d?.id) map.set(d.id, d); });
           idbShopDocs.forEach(d => {
             if (d?.id && !map.has(d.id)) {
-              map.set(d.id, d);
+              if (isPrevEmpty) {
+                map.set(d.id, d);
+              }
             }
           });
           const merged = Array.from(map.values());
@@ -1114,11 +1128,14 @@ export default function App() {
     getAllFromIndexedDB('payment_documents').then(idbPaymentDocs => {
       if (idbPaymentDocs && idbPaymentDocs.length > 0) {
         setPaymentDocuments(prev => {
+          const isPrevEmpty = !prev || prev.length === 0;
           const map = new Map();
           (prev || []).forEach(d => { if (d?.id) map.set(d.id, d); });
           idbPaymentDocs.forEach(d => {
             if (d?.id && !map.has(d.id)) {
-              map.set(d.id, d);
+              if (isPrevEmpty) {
+                map.set(d.id, d);
+              }
             }
           });
           const merged = Array.from(map.values());
@@ -1538,15 +1555,39 @@ export default function App() {
           }
         });
 
-        // 2. Bảo toàn bản nháp offline và dữ liệu PDF cục bộ
+        // 2. Bảo toàn hồ sơ cục bộ và dữ liệu tệp đính kèm đa phiên bản v1, v2, v3...
         (prev || []).forEach(localItem => {
           if (!localItem?.id) return;
-          if (localItem._isOfflineDraft && !map.has(localItem.id)) {
+          if (!map.has(localItem.id)) {
+            // Giữ lại các hồ sơ cục bộ (tránh bị mất khi cloud sync trễ hoặc chưa kịp lên cloud)
             map.set(localItem.id, localItem);
-          } else if (map.has(localItem.id)) {
+          } else {
             const cloudItem = map.get(localItem.id);
+            const localTime = new Date(localItem.updatedAt || localItem.createdAt || 0).getTime();
+            const cloudTime = new Date(cloudItem.updatedAt || cloudItem.createdAt || 0).getTime();
+
+            // Nếu localItem mới hơn cloudItem thì ưu tiên localItem
+            const baseItem = localTime > cloudTime ? { ...cloudItem, ...localItem } : { ...localItem, ...cloudItem };
             const finalPdf = localItem.pdfFile?.dataUrl ? localItem.pdfFile : (cloudItem.pdfFile || localItem.pdfFile);
-            map.set(localItem.id, { ...cloudItem, pdfFile: finalPdf });
+
+            // Bảo toàn file đính kèm đa phiên bản v1, v2, v3...
+            const finalAttachmentVersions = (cloudItem.attachmentVersions || localItem.attachmentVersions || []).map((cv, vIdx) => {
+              const lv = (localItem.attachmentVersions || [])[vIdx];
+              if (!lv) return cv;
+              return {
+                ...cv,
+                files: (cv.files || []).map((cf, fIdx) => {
+                  const lf = (lv.files || [])[fIdx];
+                  return (lf?.dataUrl && !cf?.dataUrl) ? { ...cf, dataUrl: lf.dataUrl } : (cf || lf);
+                })
+              };
+            });
+
+            map.set(localItem.id, {
+              ...baseItem,
+              pdfFile: finalPdf,
+              attachmentVersions: finalAttachmentVersions.length > 0 ? finalAttachmentVersions : (localItem.attachmentVersions || cloudItem.attachmentVersions)
+            });
           }
         });
 
@@ -1585,15 +1626,39 @@ export default function App() {
           }
         });
 
-        // 2. Bảo toàn bản nháp offline và dữ liệu PDF cục bộ
+        // 2. Bảo toàn hồ sơ cục bộ và dữ liệu tệp đính kèm đa phiên bản v1, v2, v3...
         (prev || []).forEach(localItem => {
           if (!localItem?.id) return;
-          if (localItem._isOfflineDraft && !map.has(localItem.id)) {
+          if (!map.has(localItem.id)) {
+            // Giữ lại các hồ sơ cục bộ (tránh bị mất khi cloud sync trễ hoặc chưa kịp lên cloud)
             map.set(localItem.id, localItem);
-          } else if (map.has(localItem.id)) {
+          } else {
             const cloudItem = map.get(localItem.id);
+            const localTime = new Date(localItem.updatedAt || localItem.createdAt || 0).getTime();
+            const cloudTime = new Date(cloudItem.updatedAt || cloudItem.createdAt || 0).getTime();
+
+            // Nếu localItem mới hơn cloudItem thì ưu tiên localItem
+            const baseItem = localTime > cloudTime ? { ...cloudItem, ...localItem } : { ...localItem, ...cloudItem };
             const finalPdf = localItem.pdfFile?.dataUrl ? localItem.pdfFile : (cloudItem.pdfFile || localItem.pdfFile);
-            map.set(localItem.id, { ...cloudItem, pdfFile: finalPdf });
+
+            // Bảo toàn file đính kèm đa phiên bản v1, v2, v3...
+            const finalAttachmentVersions = (cloudItem.attachmentVersions || localItem.attachmentVersions || []).map((cv, vIdx) => {
+              const lv = (localItem.attachmentVersions || [])[vIdx];
+              if (!lv) return cv;
+              return {
+                ...cv,
+                files: (cv.files || []).map((cf, fIdx) => {
+                  const lf = (lv.files || [])[fIdx];
+                  return (lf?.dataUrl && !cf?.dataUrl) ? { ...cf, dataUrl: lf.dataUrl } : (cf || lf);
+                })
+              };
+            });
+
+            map.set(localItem.id, {
+              ...baseItem,
+              pdfFile: finalPdf,
+              attachmentVersions: finalAttachmentVersions.length > 0 ? finalAttachmentVersions : (localItem.attachmentVersions || cloudItem.attachmentVersions)
+            });
           }
         });
 
@@ -2310,6 +2375,7 @@ export default function App() {
   const handleDeleteShopDocument = async (docId) => {
     try {
       await deleteShopDocument(docId);
+      deleteFromIndexedDB('shop_documents', docId).catch(() => {});
       setShopDocuments(prev => {
         const next = prev.filter(d => d.id !== docId);
         saveStoredShopDocuments(next);
@@ -3131,6 +3197,7 @@ export default function App() {
   const handleDeletePaymentDocument = async (docId) => {
     try {
       await deletePaymentDocument(docId);
+      deleteFromIndexedDB('payment_documents', docId).catch(() => {});
       setPaymentDocuments(prev => {
         const next = prev.filter(d => d.id !== docId);
         saveStoredPaymentDocuments(next);
@@ -5461,6 +5528,7 @@ export default function App() {
           setRequests(nextRequests);
           safeSaveLocalStorage(REQUESTS_STORAGE_KEY, nextRequests);
           try {
+            if (typeof deleteFromIndexedDB === 'function') deleteFromIndexedDB('requests', requestId);
             if (typeof saveToIndexedDB === 'function') saveToIndexedDB('requests', nextRequests);
           } catch (e) {
             console.warn('Lỗi saveToIndexedDB requests:', e);
@@ -5472,6 +5540,7 @@ export default function App() {
             setReports(nextReports);
             safeSaveLocalStorage(REPORTS_STORAGE_KEY, nextReports);
             try {
+              if (typeof deleteFromIndexedDB === 'function') deleteFromIndexedDB('reports', targetReport.id);
               if (typeof saveToIndexedDB === 'function') saveToIndexedDB('reports', nextReports);
             } catch (e) {
               console.warn('Lỗi saveToIndexedDB reports:', e);
