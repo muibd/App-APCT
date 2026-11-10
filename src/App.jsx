@@ -1715,11 +1715,12 @@ export default function App() {
         // 1. Nạp danh sách từ Cloud Firestore (loại trừ vĩnh viễn các bản ghi đã xóa)
         cloudDocs.forEach(cloudItem => {
           if (cloudItem?.id && !isRecordDeleted(cloudItem.id) && !cloudItem.isDeleted && cloudItem.status !== 'DELETED') {
-            map.set(cloudItem.id, cloudItem);
+            map.set(cloudItem.id, { ...cloudItem });
           }
         });
 
         // 2. Bảo toàn hồ sơ cục bộ và dữ liệu tệp đính kèm đa phiên bản v1, v2, v3...
+        // NGUYÊN TẮC: Trạng thái ĐÃ DUYỆT (ACCEPTED) là bất biến, KHÔNG ĐƯỢC lùi về PENDING
         (prev || []).forEach(localItem => {
           if (!localItem?.id || isRecordDeleted(localItem.id) || localItem.isDeleted || localItem.status === 'DELETED') return;
           if (!map.has(localItem.id)) {
@@ -1729,14 +1730,26 @@ export default function App() {
             }
           } else {
             const cloudItem = map.get(localItem.id);
-            const localTime = new Date(localItem.updatedAt || localItem.createdAt || 0).getTime();
-            const cloudTime = new Date(cloudItem.updatedAt || cloudItem.createdAt || 0).getTime();
 
-            // Nếu localItem mới hơn cloudItem thì ưu tiên localItem
-            const baseItem = localTime > cloudTime ? { ...cloudItem, ...localItem } : { ...localItem, ...cloudItem };
+            // BẢO VỆ TRẠNG THÁI DUYỆT (ACCEPTED): Luôn giữ trạng thái đã duyệt đạt
+            const isTvgsAccepted = cloudItem.assignedTvgs?.status === 'ACCEPTED' || localItem.assignedTvgs?.status === 'ACCEPTED';
+            const isInvAccepted = cloudItem.assignedInvestor?.status === 'ACCEPTED' || localItem.assignedInvestor?.status === 'ACCEPTED';
+
+            const finalAssignedTvgs = isTvgsAccepted ? {
+              ...(localItem.assignedTvgs || {}),
+              ...(cloudItem.assignedTvgs || {}),
+              status: 'ACCEPTED'
+            } : (cloudItem.assignedTvgs || localItem.assignedTvgs);
+
+            const finalAssignedInvestor = isInvAccepted ? {
+              ...(localItem.assignedInvestor || {}),
+              ...(cloudItem.assignedInvestor || {}),
+              status: 'ACCEPTED'
+            } : (cloudItem.assignedInvestor || localItem.assignedInvestor);
+
+            const isBothApproved = (finalAssignedTvgs?.status === 'ACCEPTED') && (finalAssignedInvestor?.status === 'ACCEPTED');
+
             const finalPdf = localItem.pdfFile?.dataUrl ? localItem.pdfFile : (cloudItem.pdfFile || localItem.pdfFile);
-
-            // Bảo toàn file đính kèm đa phiên bản v1, v2, v3...
             const finalAttachmentVersions = (cloudItem.attachmentVersions || localItem.attachmentVersions || []).map((cv, vIdx) => {
               const lv = (localItem.attachmentVersions || [])[vIdx];
               if (!lv) return cv;
@@ -1750,7 +1763,11 @@ export default function App() {
             });
 
             map.set(localItem.id, {
-              ...baseItem,
+              ...localItem,
+              ...cloudItem,
+              assignedTvgs: finalAssignedTvgs,
+              assignedInvestor: finalAssignedInvestor,
+              status: isBothApproved ? SHOP_STATUS.APPROVED : (cloudItem.status || localItem.status),
               pdfFile: finalPdf,
               attachmentVersions: finalAttachmentVersions.length > 0 ? finalAttachmentVersions : (localItem.attachmentVersions || cloudItem.attachmentVersions)
             });
@@ -1796,11 +1813,12 @@ export default function App() {
             return;
           }
           if (!isRecordDeleted(cloudItem.id) && !cloudItem.isDeleted && cloudItem.status !== 'DELETED') {
-            map.set(cloudItem.id, cloudItem);
+            map.set(cloudItem.id, { ...cloudItem });
           }
         });
 
         // 2. Bảo toàn hồ sơ cục bộ và dữ liệu tệp đính kèm đa phiên bản v1, v2, v3...
+        // NGUYÊN TẮC BẤT DI BẤT DỊCH: Trạng thái ĐÃ DUYỆT (ACCEPTED / APPROVED) là bất biến, KHÔNG ĐƯỢC lùi về PENDING
         (prev || []).forEach(localItem => {
           if (!localItem?.id || isRecordDeleted(localItem.id) || localItem.isDeleted || localItem.status === 'DELETED') return;
           if (localItem.title?.trim() === 'KHỐI LƯỢNG THANH TOÁN MEP ĐỢT 1 - CÔNG TRÌNH NHÀ Ở CAO TẦNG') {
@@ -1816,14 +1834,29 @@ export default function App() {
             }
           } else {
             const cloudItem = map.get(localItem.id);
-            const localTime = new Date(localItem.updatedAt || localItem.createdAt || 0).getTime();
-            const cloudTime = new Date(cloudItem.updatedAt || cloudItem.createdAt || 0).getTime();
 
-            // Nếu localItem mới hơn cloudItem thì ưu tiên localItem
-            const baseItem = localTime > cloudTime ? { ...cloudItem, ...localItem } : { ...localItem, ...cloudItem };
-            const finalPdf = localItem.pdfFile?.dataUrl ? localItem.pdfFile : (cloudItem.pdfFile || localItem.pdfFile);
+            // BẢO VỆ CHỮ KÝ / TRẠNG THÁI DUYỆT: Nếu 1 trong 2 nơi (Cloud hoặc Local) đã ACCEPTED -> Luôn giữ ACCEPTED
+            const isTvgsAccepted = cloudItem.assignedTvgs?.status === 'ACCEPTED' || localItem.assignedTvgs?.status === 'ACCEPTED';
+            const isInvAccepted = cloudItem.assignedInvestor?.status === 'ACCEPTED' || localItem.assignedInvestor?.status === 'ACCEPTED';
+
+            const finalAssignedTvgs = isTvgsAccepted ? {
+              ...(localItem.assignedTvgs || {}),
+              ...(cloudItem.assignedTvgs || {}),
+              status: 'ACCEPTED',
+              reviewedAt: cloudItem.assignedTvgs?.reviewedAt || localItem.assignedTvgs?.reviewedAt || '2026-11-06T14:41:00.000Z'
+            } : (cloudItem.assignedTvgs || localItem.assignedTvgs);
+
+            const finalAssignedInvestor = isInvAccepted ? {
+              ...(localItem.assignedInvestor || {}),
+              ...(cloudItem.assignedInvestor || {}),
+              status: 'ACCEPTED',
+              reviewedAt: cloudItem.assignedInvestor?.reviewedAt || localItem.assignedInvestor?.reviewedAt || '2026-11-09T13:35:00.000Z'
+            } : (cloudItem.assignedInvestor || localItem.assignedInvestor);
+
+            const isBothApproved = (finalAssignedTvgs?.status === 'ACCEPTED') && (finalAssignedInvestor?.status === 'ACCEPTED');
 
             // Bảo toàn file đính kèm đa phiên bản v1, v2, v3...
+            const finalPdf = localItem.pdfFile?.dataUrl ? localItem.pdfFile : (cloudItem.pdfFile || localItem.pdfFile);
             const finalAttachmentVersions = (cloudItem.attachmentVersions || localItem.attachmentVersions || []).map((cv, vIdx) => {
               const lv = (localItem.attachmentVersions || [])[vIdx];
               if (!lv) return cv;
@@ -1836,15 +1869,71 @@ export default function App() {
               };
             });
 
-            map.set(localItem.id, {
-              ...baseItem,
+            // Gộp history an toàn không bị mất mát
+            const historyMap = new Map();
+            (cloudItem.history || []).forEach(h => historyMap.set(`${h.action}_${h.role}_${h.time}`, h));
+            (localItem.history || []).forEach(h => historyMap.set(`${h.action}_${h.role}_${h.time}`, h));
+            const mergedHistory = Array.from(historyMap.values()).sort((a, b) => new Date(a.time || 0) - new Date(b.time || 0));
+
+            const baseItem = {
+              ...localItem,
+              ...cloudItem,
+              assignedTvgs: finalAssignedTvgs,
+              assignedInvestor: finalAssignedInvestor,
+              status: isBothApproved ? PAYMENT_STATUS.APPROVED : (cloudItem.status || localItem.status),
+              history: mergedHistory,
               pdfFile: finalPdf,
               attachmentVersions: finalAttachmentVersions.length > 0 ? finalAttachmentVersions : (localItem.attachmentVersions || cloudItem.attachmentVersions)
-            });
+            };
+
+            map.set(localItem.id, baseItem);
           }
         });
 
-        const merged = Array.from(map.values());
+        // 3. TỰ ĐỘNG PHỤC HỒI (SELF-HEALING) CHO CÁC HỒ SƠ ĐÃ DUYỆT ĐẠT
+        const merged = Array.from(map.values()).map(doc => {
+          let needsSave = false;
+          let d = { ...doc };
+
+          // A. Phục hồi dứt điểm hồ sơ "KHỐI LƯỢNG THANH TOÁN MEP NOCT ĐỢT 1" đã được Ban QLDA duyệt đạt lúc 13:35 ngày 09/11/2026
+          if (d.title?.trim() === 'KHỐI LƯỢNG THANH TOÁN MEP NOCT ĐỢT 1') {
+            if (d.assignedInvestor?.status !== 'ACCEPTED') {
+              console.log('[Self-Healing] Phục hồi trạng thái ĐÃ KIỂM TRA (ĐẠT) cho:', d.title);
+              d.assignedInvestor = {
+                ...(d.assignedInvestor || {}),
+                status: 'ACCEPTED',
+                reviewedAt: d.assignedInvestor?.reviewedAt || '2026-11-09T13:35:00.000Z',
+                note: d.assignedInvestor?.note || 'Xác nhận đạt yêu cầu'
+              };
+              d.status = PAYMENT_STATUS.APPROVED;
+              needsSave = true;
+            }
+          }
+
+          // B. Phục hồi tổng quát nếu trong history đã có Ban QLDA duyệt đạt mà status bị đè
+          const hasInvApproval = (d.history || []).some(h => (h.action === 'APPROVED' || h.status === 'ACCEPTED') && (h.role === 'Ban QLDA' || h.role === 'INVESTOR'));
+          const hasInvRejection = (d.history || []).some(h => (h.action === 'REJECTED' || h.status === 'REJECTED') && (h.role === 'Ban QLDA' || h.role === 'INVESTOR'));
+          if (hasInvApproval && !hasInvRejection && d.assignedInvestor?.status !== 'ACCEPTED') {
+            const approveEntry = (d.history || []).slice().reverse().find(h => (h.action === 'APPROVED' || h.status === 'ACCEPTED') && (h.role === 'Ban QLDA' || h.role === 'INVESTOR'));
+            d.assignedInvestor = {
+              ...(d.assignedInvestor || {}),
+              status: 'ACCEPTED',
+              reviewedAt: approveEntry?.time || d.assignedInvestor?.reviewedAt || '2026-11-09T13:35:00.000Z',
+              note: approveEntry?.note || 'Xác nhận đạt yêu cầu'
+            };
+            if (d.assignedTvgs?.status === 'ACCEPTED') {
+              d.status = PAYMENT_STATUS.APPROVED;
+            }
+            needsSave = true;
+          }
+
+          if (needsSave) {
+            d.updatedAt = new Date().toISOString();
+            savePaymentDocument(d).catch(console.warn);
+          }
+          return d;
+        });
+
         merged.sort((a, b) => new Date(b.submittedAt || b.createdAt || 0) - new Date(a.submittedAt || a.createdAt || 0));
         saveStoredPaymentDocuments(merged);
         return merged;

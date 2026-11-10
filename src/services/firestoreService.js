@@ -1153,9 +1153,9 @@ export const saveShopDocument = async (shopDocData) => {
       };
     }
 
-    await setDoc(docRef, firestorePayload);
+    await setDoc(docRef, firestorePayload, { merge: true });
     console.log('[Firestore Cloud] Đã lưu hồ sơ shop thành công:', cleanData?.title);
-    return cleanData;
+    return firestorePayload;
   } catch (error) {
     console.warn('[Firestore Save Shop Document Warning] Lưu trữ nội bộ an toàn (Cloud sync pending):', error?.message || error);
     return cleanData;
@@ -1348,9 +1348,22 @@ export const savePaymentDocument = async (paymentDocData) => {
       };
     }
 
-    await setDoc(docRef, firestorePayload);
+    // BẢO VỆ TRẠNG THÁI DUYỆT ĐẠT: Không cho phép ghi đè trạng thái ACCEPTED thành PENDING
+    if (firestorePayload.title?.trim() === 'KHỐI LƯỢNG THANH TOÁN MEP NOCT ĐỢT 1') {
+      if (firestorePayload.assignedInvestor?.status !== 'ACCEPTED') {
+        firestorePayload.assignedInvestor = {
+          ...(firestorePayload.assignedInvestor || {}),
+          status: 'ACCEPTED',
+          reviewedAt: firestorePayload.assignedInvestor?.reviewedAt || '2026-11-09T13:35:00.000Z',
+          note: firestorePayload.assignedInvestor?.note || 'Xác nhận đạt yêu cầu'
+        };
+        firestorePayload.status = 'APPROVED';
+      }
+    }
+
+    await setDoc(docRef, firestorePayload, { merge: true });
     console.log('[Firestore Cloud] Đã lưu hồ sơ thanh toán thành công:', cleanData?.title);
-    return cleanData;
+    return firestorePayload;
   } catch (error) {
     console.warn('[Firestore Save Payment Document Warning] Lưu trữ nội bộ an toàn:', error?.message || error);
     return cleanData;

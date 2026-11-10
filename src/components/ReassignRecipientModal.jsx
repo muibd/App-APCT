@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, ArrowLeftRight, UserCheck, CheckCircle2, Shield, Users, Phone, AlertCircle, Sparkles } from 'lucide-react';
-import { isSupervisorLeadOrDeputy, isInvestorLeadOrDeputy } from '../data/mockData';
+import { isSupervisorLeadOnly, isInvestorLeadOnly, isSupervisorLeadOrDeputy, isInvestorLeadOrDeputy } from '../data/mockData';
 
 export default function ReassignRecipientModal({
   isOpen,
@@ -23,18 +23,18 @@ export default function ReassignRecipientModal({
       : (r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR')
   );
 
-  // Danh sách ứng viên hợp lệ (chỉ chọn cán bộ cấp dưới trực tiếp nghiệm thu, không chọn các anh Trưởng/Phó)
+  // Danh sách ứng viên hợp lệ (cho phép chọn Phó đoàn TVGS, Phó ban QLDA và cán bộ trực tiếp, chỉ bỏ Trưởng bộ phận)
   const candidateList = users.filter(u => {
     if (u.status === 'INACTIVE') return false;
     if (isSupervisor) {
-      if (isSupervisorLeadOrDeputy(u)) return false;
+      if (isSupervisorLeadOnly(u)) return false;
       const roleStr = (u.role || '').toUpperCase();
       if (roleStr !== 'SUPERVISOR') return false;
       const pos = (u.position || '').toLowerCase();
       if (pos.includes('thi công') || pos.includes('nhà thầu') || pos.includes('quản lý dự án') || pos.includes('ban qlda')) return false;
       return true;
     } else {
-      if (isInvestorLeadOrDeputy(u)) return false;
+      if (isInvestorLeadOnly(u)) return false;
       const roleStr = (u.role || '').toUpperCase();
       if (roleStr !== 'INVESTOR') return false;
       const pos = (u.position || '').toLowerCase();

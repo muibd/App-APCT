@@ -1083,6 +1083,27 @@ export const isSupervisorLeadOrDeputy = (user) => {
 };
 
 /**
+ * Kiểm tra xem người dùng có phải là Trưởng TVGS (TVGS Trưởng / Giám sát trưởng) hay không (KHÔNG bao gồm Phó đoàn):
+ * Dùng để lọc danh sách cán bộ đi nghiệm thu hiện trường - Các anh Phó đoàn TVGS (như Nguyễn Đông Vũ) vẫn đi nghiệm thu bình thường.
+ */
+export const isSupervisorLeadOnly = (user) => {
+  if (!user) return false;
+  const role = user.role;
+  if (role === 'LEAD_SUPERVISOR') return true;
+  if (user.isLead && !user.isDeputy) {
+    const pos = normalizeRoleString(user.position);
+    if (!pos.includes('pho')) return true;
+  }
+  const pos = normalizeRoleString(user.position);
+  if (pos.includes('pho')) return false; // Nếu là Phó (ví dụ: Phó đoàn TVGS) thì KHÔNG phải LeadOnly
+  return (
+    pos.includes('truong') ||
+    pos.includes('giam sat truong') ||
+    pos.includes('doan truong')
+  );
+};
+
+/**
  * Kiểm tra xem người dùng có phải là Lãnh đạo Chủ đầu tư / Ban QLDA (Trưởng Ban hoặc Phó Ban QLDA) hay không:
  * - Role là LEAD_INVESTOR
  * - Hoặc Role INVESTOR có isLead / isDeputy = true
@@ -1101,6 +1122,26 @@ export const isInvestorLeadOrDeputy = (user) => {
     pos.includes('giam doc') ||
     pos.includes('pho ban') ||
     pos.includes('pho giam doc')
+  );
+};
+
+/**
+ * Kiểm tra xem người dùng có phải là Trưởng Ban QLDA / CĐT Trưởng hay không (KHÔNG bao gồm Phó Ban):
+ * Dùng để lọc danh sách cán bộ đi nghiệm thu hiện trường - Các anh Phó Ban QLDA (như Nguyễn Thành Trung) vẫn đi nghiệm thu bình thường.
+ */
+export const isInvestorLeadOnly = (user) => {
+  if (!user) return false;
+  const role = user.role;
+  if (role === 'LEAD_INVESTOR') return true;
+  if (user.isLead && !user.isDeputy) {
+    const pos = normalizeRoleString(user.position);
+    if (!pos.includes('pho')) return true;
+  }
+  const pos = normalizeRoleString(user.position);
+  if (pos.includes('pho')) return false; // Nếu là Phó (ví dụ: Phó Ban QLDA) thì KHÔNG phải LeadOnly
+  return (
+    pos.includes('truong') ||
+    pos.includes('giam doc')
   );
 };
 

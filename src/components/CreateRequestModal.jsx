@@ -4,7 +4,7 @@ import {
   AlertCircle, Building, Camera, ImagePlus, Zap, Trash2, Plus, Clock,
   FileSpreadsheet, Package, Hash, ChevronRight, Check, Layers, Building2, Loader2
 } from 'lucide-react';
-import { MOCK_PROJECT, MOCK_USERS, isSupervisorLeadOrDeputy, isInvestorLeadOrDeputy } from '../data/mockData';
+import { MOCK_PROJECT, MOCK_USERS, isSupervisorLeadOnly, isInvestorLeadOnly, isSupervisorLeadOrDeputy, isInvestorLeadOrDeputy } from '../data/mockData';
 import { compressImageFile, compressImageToBlob } from '../utils/storageHelper';
 import { uploadEvidenceImage } from '../services/storageService';
 import {
@@ -37,13 +37,12 @@ export default function CreateRequestModal({
   const activeMandatory = (standardsData?.mandatory && standardsData.mandatory.length > 0) ? standardsData.mandatory : GENERAL_MANDATORY_STANDARDS;
 
   // Lọc danh sách cán bộ tiếp nhận nghiệm thu:
-  // QUY TẮC NGHIỆP VỤ: KHÔNG hiển thị các anh Trưởng/Phó (TVGS Trưởng, Phó đoàn TVGS, Trưởng Ban QLDA, Phó Ban QLDA) để chọn.
-  // Chỉ hiển thị các cán bộ cấp dưới trực tiếp nghiệm thu tại hiện trường.
-  // Các anh Trưởng và Phó sẽ tự động theo dõi / quản lý hồ sơ của cấp dưới mình.
+  // QUY TẮC NGHIỆP VỤ: Chỉ lọc bỏ các anh Trưởng bộ phận (TVGS Trưởng, Trưởng Ban QLDA) vì giữ vai trò quản lý cấp cao.
+  // Các anh Phó đoàn TVGS (như Nguyễn Đông Vũ) và Phó Ban QLDA (như Nguyễn Thành Trung) cùng cán bộ kỹ thuật trực tiếp ĐỀU ĐƯỢC CHỌN để nghiệm thu.
   const supervisorList = useMemo(() => {
     return (users || []).filter(u => {
       if (u.status === 'INACTIVE') return false;
-      if (isSupervisorLeadOrDeputy(u)) return false;
+      if (isSupervisorLeadOnly(u)) return false;
       const roleStr = (u.role || '').toUpperCase();
       if (roleStr !== 'SUPERVISOR') return false;
       const pos = (u.position || '').toLowerCase();
@@ -57,7 +56,7 @@ export default function CreateRequestModal({
   const investorList = useMemo(() => {
     return (users || []).filter(u => {
       if (u.status === 'INACTIVE') return false;
-      if (isInvestorLeadOrDeputy(u)) return false;
+      if (isInvestorLeadOnly(u)) return false;
       const roleStr = (u.role || '').toUpperCase();
       if (roleStr !== 'INVESTOR') return false;
       const pos = (u.position || '').toLowerCase();
