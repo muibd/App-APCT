@@ -397,11 +397,15 @@ export default function InspectionReportModal({
   // Kiểm tra trạng thái ký số độc lập của 3 bên
   const isSupervisorSigned = Boolean(
     signatures?.supervisor || 
+    reportState?.signatures?.supervisor ||
+    report?.signatures?.supervisor ||
     reportState?.attendees?.supervisor?.signed ||
     report?.attendees?.supervisor?.signed ||
     reportState?.status === 'WAITING_INVESTOR' ||
     report?.status === 'WAITING_INVESTOR' ||
+    relatedRequest?.signatures?.supervisor ||
     relatedRequest?.status === 'WAITING_INVESTOR' ||
+    request?.signatures?.supervisor ||
     request?.status === 'WAITING_INVESTOR' ||
     reportState?.status === 'COMPLETED' ||
     report?.status === 'COMPLETED' ||
@@ -410,8 +414,12 @@ export default function InspectionReportModal({
   );
   const isInvestorSigned = Boolean(
     signatures?.investor || 
+    reportState?.signatures?.investor ||
+    report?.signatures?.investor ||
     reportState?.attendees?.investor?.signed ||
     report?.attendees?.investor?.signed ||
+    relatedRequest?.signatures?.investor ||
+    request?.signatures?.investor ||
     reportState?.status === 'COMPLETED' ||
     report?.status === 'COMPLETED' ||
     relatedRequest?.status === 'COMPLETED' ||
@@ -886,14 +894,20 @@ export default function InspectionReportModal({
 
     const supSigned = Boolean(
       report.attendees?.supervisor?.signed ||
+      report.signatures?.supervisor ||
+      reportState?.signatures?.supervisor ||
       report.status === 'WAITING_INVESTOR' ||
       report.status === 'COMPLETED' ||
+      currentRelReq?.signatures?.supervisor ||
       currentRelReq?.status === 'WAITING_INVESTOR' ||
       currentRelReq?.status === 'COMPLETED'
     );
     const invSigned = Boolean(
       report.attendees?.investor?.signed ||
+      report.signatures?.investor ||
+      reportState?.signatures?.investor ||
       report.status === 'COMPLETED' ||
+      currentRelReq?.signatures?.investor ||
       currentRelReq?.status === 'COMPLETED'
     );
 
@@ -1056,6 +1070,7 @@ export default function InspectionReportModal({
             signedAt: nowFormatted
           }
         },
+        signatures: nextSignatures,
         status: nextStatus,
         updatedAt: now
       };

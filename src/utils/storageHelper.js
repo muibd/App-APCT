@@ -143,11 +143,61 @@ export async function clearAllAPCTStorage() {
     localStorage.removeItem('apct_notifications_list');
     localStorage.removeItem('apct_daily_logs_v1');
     localStorage.removeItem('apct_completion_reports_v1');
+    localStorage.removeItem('apct_shop_documents');
+    localStorage.removeItem('apct_payment_documents');
     await clearAllFromIndexedDB(STORE_REPORTS);
     await clearAllFromIndexedDB(STORE_REQUESTS);
+    await clearAllFromIndexedDB(STORE_SHOP_DOCUMENTS);
+    await clearAllFromIndexedDB(STORE_PAYMENT_DOCUMENTS);
     return true;
   } catch (err) {
     console.warn('Lỗi dọn sạch APCT Storage:', err);
+    return false;
+  }
+}
+
+/**
+ * Cập nhật ứng dụng triệt để: Xóa toàn bộ cache trình duyệt, service worker, 
+ * cache LocalStorage và IndexedDB để nạp mã nguồn và dữ liệu chuẩn mới nhất từ Cloud
+ */
+export async function forceUpdateAppAndClearCache() {
+  try {
+    // 1. Dọn sạch Cache Storage của trình duyệt (HTML, JS, CSS cũ)
+    if (typeof window !== 'undefined' && 'caches' in window) {
+      try {
+        const cacheKeys = await window.caches.keys();
+        await Promise.all(cacheKeys.map(k => window.caches.delete(k)));
+      } catch (e) {
+        console.warn('Lỗi dọn Cache Storage:', e);
+      }
+    }
+
+    // 2. Hủy đăng ký Service Worker cũ để ép nạp bundle mới nhất
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registrations) {
+          try {
+            await reg.update();
+            await reg.unregister();
+          } catch (_) {}
+        }
+      } catch (e) {
+        console.warn('Lỗi dọn Service Worker:', e);
+      }
+    }
+
+    // 3. Dọn sạch toàn bộ cache dữ liệu nội bộ
+    await clearAllAPCTStorage();
+
+    // 4. Tải lại trang với query tham số mới để vượt qua CDN / HTTP disk cache
+    const cacheBuster = Date.now();
+    const cleanUrl = window.location.origin + window.location.pathname + '?v=' + cacheBuster;
+    window.location.replace(cleanUrl);
+    return true;
+  } catch (err) {
+    console.error('Lỗi khi force update app:', err);
+    window.location.reload();
     return false;
   }
 }

@@ -136,7 +136,10 @@ import {
   subscribeToProjectsCatalog,
   saveSystemProjectsCatalog,
   subscribeToDocTypes,
-  saveSystemDocTypes
+  saveSystemDocTypes,
+  isRecordDeleted,
+  markRecordAsDeleted,
+  subscribeToDeletedRecords
 } from './services/firestoreService';
 import { 
   requestPushPermission, 
@@ -1109,10 +1112,14 @@ export default function App() {
         setShopDocuments(prev => {
           const isPrevEmpty = !prev || prev.length === 0;
           const map = new Map();
-          (prev || []).forEach(d => { if (d?.id) map.set(d.id, d); });
+          (prev || []).forEach(d => { 
+            if (d?.id && !isRecordDeleted(d.id) && !d.isDeleted && d.status !== 'DELETED') {
+              map.set(d.id, d); 
+            }
+          });
           idbShopDocs.forEach(d => {
-            if (d?.id && !map.has(d.id)) {
-              if (isPrevEmpty) {
+            if (d?.id && !isRecordDeleted(d.id) && !d.isDeleted && d.status !== 'DELETED' && !map.has(d.id)) {
+              if (isPrevEmpty && d._isOfflineDraft) {
                 map.set(d.id, d);
               }
             }
@@ -1130,10 +1137,14 @@ export default function App() {
         setPaymentDocuments(prev => {
           const isPrevEmpty = !prev || prev.length === 0;
           const map = new Map();
-          (prev || []).forEach(d => { if (d?.id) map.set(d.id, d); });
+          (prev || []).forEach(d => { 
+            if (d?.id && !isRecordDeleted(d.id) && !d.isDeleted && d.status !== 'DELETED') {
+              map.set(d.id, d); 
+            }
+          });
           idbPaymentDocs.forEach(d => {
-            if (d?.id && !map.has(d.id)) {
-              if (isPrevEmpty) {
+            if (d?.id && !isRecordDeleted(d.id) && !d.isDeleted && d.status !== 'DELETED' && !map.has(d.id)) {
+              if (isPrevEmpty && d._isOfflineDraft) {
                 map.set(d.id, d);
               }
             }
@@ -1186,17 +1197,31 @@ export default function App() {
               map.set(key, localItem);
             }
           } else {
+            let needsCloudSync = false;
+            let mergedItem = { ...cloudItem };
+
+            // Nếu local có trạng thái WAITING_INVESTOR hoặc COMPLETED mà cloud chưa nhận
+            if ((localItem.status === 'WAITING_INVESTOR' || localItem.status === 'COMPLETED') && cloudItem.status !== localItem.status && cloudItem.status !== 'COMPLETED') {
+              mergedItem.status = localItem.status;
+              needsCloudSync = true;
+            }
+
             const localHasRectification = localItem.status === 'RECTIFIED' || Boolean(localItem.rectificationPhotos?.length) || Boolean(localItem.rectificationNotes);
             const cloudHasRectification = cloudItem.status === 'RECTIFIED' || Boolean(cloudItem.rectificationPhotos?.length) || Boolean(cloudItem.rectificationNotes);
 
             if (localHasRectification && !cloudHasRectification) {
-              map.set(key, { ...cloudItem, ...localItem });
-            } else {
-              const cloudTime = new Date(cloudItem.updatedAt || cloudItem.createdAt || 0).getTime();
-              const localTime = new Date(localItem.updatedAt || localItem.createdAt || 0).getTime();
-              if (localTime > cloudTime) {
-                map.set(key, { ...cloudItem, ...localItem });
-              }
+              mergedItem = {
+                ...mergedItem,
+                status: 'RECTIFIED',
+                rectificationPhotos: localItem.rectificationPhotos || [],
+                rectificationNotes: localItem.rectificationNotes || ''
+              };
+              needsCloudSync = true;
+            }
+
+            map.set(key, mergedItem);
+            if (needsCloudSync) {
+              saveInspectionRequest(mergedItem).catch(console.warn);
             }
           }
         });
@@ -1204,6 +1229,14 @@ export default function App() {
         const merged = Array.from(map.values());
         merged.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
         safeSaveLocalStorage(REQUESTS_STORAGE_KEY, merged);
+
+        // Đồng bộ thời gian thực cho request của modal đang mở (nếu có)
+        setSelectedReportRequest(currentReq => {
+          if (!currentReq) return null;
+          const matching = merged.find(r => r.id === currentReq.id || (currentReq.reportId && r.reportId === currentReq.reportId));
+          return matching ? { ...currentReq, ...matching } : currentReq;
+        });
+
         return merged;
       });
     });
@@ -1217,7 +1250,7 @@ export default function App() {
         if (!Array.isArray(cloudReports)) return prev;
         const map = new Map();
 
-        // Nạp danh sách từ Firestore bằng ID duy nhất (loại bỏ dữ liệu cũ trước 26/10/2026)
+        // 1. Nạp danh sách từ Firestore Cloud làm chuẩn (loại bỏ dữ liệu cũ trước 26/10/2026)
         cloudReports.forEach(item => {
           const key = item.id;
           const created = item.createdAt || '';
@@ -1226,35 +1259,117 @@ export default function App() {
           }
         });
 
-        // Chỉ giữ lại bản ghi nháp cục bộ đang chờ đồng bộ offline
+        // 2. Xử lý bản ghi cục bộ (prev / localStorage):
+        // NGUYÊN TẮC: Firestore Cloud là nguồn dữ liệu chuẩn (Single Source of Truth)!
+        // - TUYỆT ĐỐI không để timestamp cục bộ cũ đè mất chữ ký hoặc trạng thái đã duyệt trên Cloud!
+        // - Tự động phục hồi (Self-Healing) đẩy lên Cloud nếu thiết bị này vừa ký số mà Cloud chưa nhận
         (prev || []).forEach(localItem => {
           const key = localItem?.id;
           const created = localItem?.createdAt || '';
           if (!key || (created && created < OLD_DATA_CUTOFF)) return;
           const cloudItem = map.get(key);
+
           if (!cloudItem) {
+            // Chỉ giữ lại bản ghi nháp cục bộ đang chờ đồng bộ offline
             if (localItem._isOfflineDraft) {
               map.set(key, localItem);
             }
           } else {
-            const localHasRectification = localItem.status === 'RECTIFIED' || Boolean(localItem.rectification?.photos?.length);
-            const cloudHasRectification = cloudItem.status === 'RECTIFIED' || Boolean(cloudItem.rectification?.photos?.length);
+            const cloudSupSigned = Boolean(cloudItem.attendees?.supervisor?.signed || cloudItem.signatures?.supervisor || cloudItem.status === 'WAITING_INVESTOR' || cloudItem.status === 'COMPLETED');
+            const localSupSigned = Boolean(localItem.attendees?.supervisor?.signed || localItem.signatures?.supervisor || localItem.status === 'WAITING_INVESTOR' || localItem.status === 'COMPLETED');
+            const cloudInvSigned = Boolean(cloudItem.attendees?.investor?.signed || cloudItem.signatures?.investor || cloudItem.status === 'COMPLETED');
+            const localInvSigned = Boolean(localItem.attendees?.investor?.signed || localItem.signatures?.investor || localItem.status === 'COMPLETED');
 
+            let needsCloudSync = false;
+            let mergedItem = { ...cloudItem };
+
+            // Nếu Cloud đã có chữ ký TVGS: LUÔN BẢO VỆ CHỮ KÝ CLOUD!
+            if (cloudSupSigned) {
+              mergedItem.attendees = {
+                ...(mergedItem.attendees || {}),
+                supervisor: {
+                  ...(mergedItem.attendees?.supervisor || {}),
+                  ...(cloudItem.attendees?.supervisor || {}),
+                  signed: true
+                }
+              };
+              mergedItem.signatures = {
+                ...(mergedItem.signatures || {}),
+                supervisor: true
+              };
+              if (mergedItem.status === 'PENDING_APPROVAL') {
+                mergedItem.status = 'WAITING_INVESTOR';
+              }
+            } else if (localSupSigned) {
+              // Tự phục hồi: máy này đã ký TVGS mà Cloud chưa có -> đẩy ngay lên Cloud
+              mergedItem.status = mergedItem.status === 'COMPLETED' ? 'COMPLETED' : 'WAITING_INVESTOR';
+              mergedItem.attendees = {
+                ...(mergedItem.attendees || {}),
+                supervisor: {
+                  ...(mergedItem.attendees?.supervisor || {}),
+                  ...(localItem.attendees?.supervisor || {}),
+                  signed: true
+                }
+              };
+              mergedItem.signatures = {
+                ...(mergedItem.signatures || {}),
+                supervisor: true
+              };
+              needsCloudSync = true;
+            }
+
+            // Nếu Cloud đã có chữ ký CĐT: LUÔN BẢO VỆ CHỮ KÝ CLOUD!
+            if (cloudInvSigned) {
+              mergedItem.status = 'COMPLETED';
+              mergedItem.attendees = {
+                ...(mergedItem.attendees || {}),
+                investor: {
+                  ...(mergedItem.attendees?.investor || {}),
+                  ...(cloudItem.attendees?.investor || {}),
+                  signed: true
+                }
+              };
+              mergedItem.signatures = {
+                ...(mergedItem.signatures || {}),
+                investor: true
+              };
+            } else if (localInvSigned) {
+              mergedItem.status = 'COMPLETED';
+              mergedItem.attendees = {
+                ...(mergedItem.attendees || {}),
+                investor: {
+                  ...(mergedItem.attendees?.investor || {}),
+                  ...(localItem.attendees?.investor || {}),
+                  signed: true
+                }
+              };
+              mergedItem.signatures = {
+                ...(mergedItem.signatures || {}),
+                investor: true
+              };
+              needsCloudSync = true;
+            }
+
+            // Bảo vệ ảnh hiện trường
             const localHasPhotos = Array.isArray(localItem.evidencePhotos) && localItem.evidencePhotos.length > 0;
             const cloudHasPhotos = Array.isArray(cloudItem.evidencePhotos) && cloudItem.evidencePhotos.length > 0;
+            if (localHasPhotos && !cloudHasPhotos) {
+              mergedItem.evidencePhotos = localItem.evidencePhotos;
+              needsCloudSync = true;
+            }
 
+            // Bảo vệ khắc phục
+            const localHasRectification = localItem.status === 'RECTIFIED' || Boolean(localItem.rectification?.photos?.length);
+            const cloudHasRectification = cloudItem.status === 'RECTIFIED' || Boolean(cloudItem.rectification?.photos?.length);
             if (localHasRectification && !cloudHasRectification) {
-              map.set(key, { ...cloudItem, ...localItem });
-            } else if (localHasPhotos && !cloudHasPhotos) {
-              const mergedItem = { ...cloudItem, ...localItem };
-              map.set(key, mergedItem);
+              mergedItem.rectification = localItem.rectification;
+              mergedItem.status = 'RECTIFIED';
+              needsCloudSync = true;
+            }
+
+            map.set(key, mergedItem);
+            if (needsCloudSync) {
               saveInspectionReport(mergedItem).catch(console.warn);
-            } else {
-              const cloudTime = new Date(cloudItem.updatedAt || cloudItem.createdAt || 0).getTime();
-              const localTime = new Date(localItem.updatedAt || localItem.createdAt || 0).getTime();
-              if (localTime > cloudTime) {
-                map.set(key, { ...cloudItem, ...localItem });
-              }
             }
           }
         });
@@ -1262,6 +1377,26 @@ export default function App() {
         const merged = Array.from(map.values());
         merged.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
         safeSaveLocalStorage(REPORTS_STORAGE_KEY, merged);
+
+        // ĐỒNG BỘ THỜI GIAN THỰC CHO MODAL ĐANG MỞ (Nếu cán bộ đang xem biên bản trên màn hình):
+        setSelectedReport(currentSelected => {
+          if (!currentSelected) return null;
+          const matching = merged.find(r => r.id === currentSelected.id || (currentSelected.requestId && r.requestId === currentSelected.requestId));
+          if (!matching) return currentSelected;
+          return {
+            ...currentSelected,
+            ...matching,
+            attendees: {
+              ...(currentSelected.attendees || {}),
+              ...(matching.attendees || {})
+            },
+            signatures: {
+              ...(currentSelected.signatures || {}),
+              ...(matching.signatures || {})
+            }
+          };
+        });
+
         return merged;
       });
     });
@@ -1540,6 +1675,35 @@ export default function App() {
     }
   };
 
+  // 4d-2. Lắng nghe danh sách Tombstone (các bản ghi đã xóa trên toàn hệ thống) để dọn dẹp tức thì
+  useEffect(() => {
+    const unsubscribe = subscribeToDeletedRecords((deletedIds) => {
+      if (!Array.isArray(deletedIds) || deletedIds.length === 0) return;
+      const deletedSet = new Set(deletedIds);
+
+      // 1. Dọn dẹp Payment Documents
+      setPaymentDocuments(prev => {
+        const next = (prev || []).filter(d => !deletedSet.has(d.id));
+        if (next.length !== (prev || []).length) {
+          saveStoredPaymentDocuments(next);
+          deletedIds.forEach(id => deleteFromIndexedDB('payment_documents', id).catch(() => {}));
+        }
+        return next;
+      });
+
+      // 2. Dọn dẹp Shop Documents
+      setShopDocuments(prev => {
+        const next = (prev || []).filter(d => !deletedSet.has(d.id));
+        if (next.length !== (prev || []).length) {
+          saveStoredShopDocuments(next);
+          deletedIds.forEach(id => deleteFromIndexedDB('shop_documents', id).catch(() => {}));
+        }
+        return next;
+      });
+    });
+    return () => unsubscribe();
+  }, []);
+
   // 4e. Đồng bộ Real-Time Hồ Sơ Bộ Phận Shop từ Firestore (Firestore là chuẩn chân thực)
   useEffect(() => {
     const unsubscribe = subscribeToShopDocuments((cloudDocs) => {
@@ -1548,19 +1712,21 @@ export default function App() {
       setShopDocuments(prev => {
         const map = new Map();
 
-        // 1. Nạp danh sách từ Cloud Firestore
+        // 1. Nạp danh sách từ Cloud Firestore (loại trừ vĩnh viễn các bản ghi đã xóa)
         cloudDocs.forEach(cloudItem => {
-          if (cloudItem?.id) {
+          if (cloudItem?.id && !isRecordDeleted(cloudItem.id) && !cloudItem.isDeleted && cloudItem.status !== 'DELETED') {
             map.set(cloudItem.id, cloudItem);
           }
         });
 
         // 2. Bảo toàn hồ sơ cục bộ và dữ liệu tệp đính kèm đa phiên bản v1, v2, v3...
         (prev || []).forEach(localItem => {
-          if (!localItem?.id) return;
+          if (!localItem?.id || isRecordDeleted(localItem.id) || localItem.isDeleted || localItem.status === 'DELETED') return;
           if (!map.has(localItem.id)) {
-            // Giữ lại các hồ sơ cục bộ (tránh bị mất khi cloud sync trễ hoặc chưa kịp lên cloud)
-            map.set(localItem.id, localItem);
+            // Tuyệt đối không giữ lại các bản ghi đã bị xóa trên Cloud Firestore
+            if (localItem._isOfflineDraft) {
+              map.set(localItem.id, localItem);
+            }
           } else {
             const cloudItem = map.get(localItem.id);
             const localTime = new Date(localItem.updatedAt || localItem.createdAt || 0).getTime();
@@ -1619,19 +1785,35 @@ export default function App() {
       setPaymentDocuments(prev => {
         const map = new Map();
 
-        // 1. Nạp danh sách từ Cloud Firestore
+        // 1. Nạp danh sách từ Cloud Firestore (loại trừ vĩnh viễn các bản ghi đã xóa)
         cloudDocs.forEach(cloudItem => {
-          if (cloudItem?.id) {
+          if (!cloudItem?.id) return;
+          // Tự động xóa dứt điểm hồ sơ ma đã yêu cầu xóa nhiều lần
+          if (cloudItem.title?.trim() === 'KHỐI LƯỢNG THANH TOÁN MEP ĐỢT 1 - CÔNG TRÌNH NHÀ Ở CAO TẦNG') {
+            markRecordAsDeleted(cloudItem.id);
+            deletePaymentDocument(cloudItem.id).catch(() => {});
+            deleteFromIndexedDB('payment_documents', cloudItem.id).catch(() => {});
+            return;
+          }
+          if (!isRecordDeleted(cloudItem.id) && !cloudItem.isDeleted && cloudItem.status !== 'DELETED') {
             map.set(cloudItem.id, cloudItem);
           }
         });
 
         // 2. Bảo toàn hồ sơ cục bộ và dữ liệu tệp đính kèm đa phiên bản v1, v2, v3...
         (prev || []).forEach(localItem => {
-          if (!localItem?.id) return;
+          if (!localItem?.id || isRecordDeleted(localItem.id) || localItem.isDeleted || localItem.status === 'DELETED') return;
+          if (localItem.title?.trim() === 'KHỐI LƯỢNG THANH TOÁN MEP ĐỢT 1 - CÔNG TRÌNH NHÀ Ở CAO TẦNG') {
+            markRecordAsDeleted(localItem.id);
+            deletePaymentDocument(localItem.id).catch(() => {});
+            deleteFromIndexedDB('payment_documents', localItem.id).catch(() => {});
+            return;
+          }
           if (!map.has(localItem.id)) {
-            // Giữ lại các hồ sơ cục bộ (tránh bị mất khi cloud sync trễ hoặc chưa kịp lên cloud)
-            map.set(localItem.id, localItem);
+            // Tuyệt đối không giữ lại các bản ghi đã bị xóa trên Cloud Firestore
+            if (localItem._isOfflineDraft) {
+              map.set(localItem.id, localItem);
+            }
           } else {
             const cloudItem = map.get(localItem.id);
             const localTime = new Date(localItem.updatedAt || localItem.createdAt || 0).getTime();
@@ -2374,14 +2556,19 @@ export default function App() {
   // 6. Xóa hồ sơ shop
   const handleDeleteShopDocument = async (docId) => {
     try {
-      await deleteShopDocument(docId);
-      deleteFromIndexedDB('shop_documents', docId).catch(() => {});
+      markRecordAsDeleted(docId);
+      // 1. Cập nhật state nội bộ và local storage ngay lập tức (Optimistic UI)
       setShopDocuments(prev => {
         const next = prev.filter(d => d.id !== docId);
         saveStoredShopDocuments(next);
         return next;
       });
+      deleteFromIndexedDB('shop_documents', docId).catch(() => {});
       setSelectedShopDoc(null);
+
+      // 2. Xóa khỏi Cloud Firestore
+      await deleteShopDocument(docId);
+
       showAlert({
         type: 'success',
         title: 'Đã Xóa',
@@ -2410,6 +2597,11 @@ export default function App() {
       const updatedDocs = shopDocuments.map(doc => {
         let changed = false;
         let d = { ...doc };
+
+        // Bỏ qua nếu hồ sơ đã bị xóa
+        if (d.isDeleted || d.status === 'DELETED' || isRecordDeleted(d.id)) {
+          return d;
+        }
 
         // 1. Kiểm tra chậm phân công (> 24h từ lúc tạo)
         if (isShopAssignmentOverdue(d)) {
@@ -2566,12 +2758,16 @@ export default function App() {
           }
         }
 
-        if (changed) {
+        if (changed && !isRecordDeleted(d.id)) {
           hasUpdates = true;
-          saveShopDocument(d).catch(console.warn);
+          // Chỉ cấp quản lý mới đồng bộ trạng thái quá hạn lên Cloud, tránh các tab / máy khác vô tình ghi đè hoặc hồi sinh
+          const canSyncCloud = currentUser?.role === 'ADMIN' || currentUser?.isSuperAdmin || currentRole === 'ADMIN' || currentUser?.role === 'LEAD_SUPERVISOR' || currentUser?.role === 'LEAD_INVESTOR';
+          if (canSyncCloud) {
+            saveShopDocument(d).catch(console.warn);
+          }
         }
         return d;
-      });
+      }).filter(d => !isRecordDeleted(d.id));
 
       if (hasUpdates) {
         setShopDocuments(updatedDocs);
@@ -3196,14 +3392,19 @@ export default function App() {
   // 6. Xóa hồ sơ thanh toán
   const handleDeletePaymentDocument = async (docId) => {
     try {
-      await deletePaymentDocument(docId);
-      deleteFromIndexedDB('payment_documents', docId).catch(() => {});
+      markRecordAsDeleted(docId);
+      // 1. Cập nhật state nội bộ và local storage ngay lập tức (Optimistic UI)
       setPaymentDocuments(prev => {
         const next = prev.filter(d => d.id !== docId);
         saveStoredPaymentDocuments(next);
         return next;
       });
+      deleteFromIndexedDB('payment_documents', docId).catch(() => {});
       setSelectedPaymentDoc(null);
+
+      // 2. Xóa khỏi Cloud Firestore
+      await deletePaymentDocument(docId);
+
       showAlert({
         type: 'success',
         title: 'Đã Xóa',
@@ -3229,6 +3430,11 @@ export default function App() {
       const updatedDocs = paymentDocuments.map(doc => {
         let changed = false;
         let d = { ...doc };
+
+        // Bỏ qua nếu hồ sơ đã bị xóa
+        if (d.isDeleted || d.status === 'DELETED' || isRecordDeleted(d.id)) {
+          return d;
+        }
 
         // 1. Kiểm tra chậm phân công (> 24h từ lúc tạo)
         if (isPaymentAssignmentOverdue(d)) {
@@ -3356,43 +3562,47 @@ export default function App() {
                 d.investorReviewOverdueNotified = true;
                 changed = true;
 
-              const invName = d.assignedInvestor?.assignee?.fullName || d.assignedInvestor?.fullName || 'Cán bộ QLDA';
-              const invUid = d.assignedInvestor?.assignee?.uid || d.assignedInvestor?.uid;
-              const notifTitle = `⏰ [Chậm phản hồi] Ban QLDA quá hạn phê duyệt: ${d.title}`;
-              const notifBody = `Cán bộ Ban QLDA (${invName}) đã quá hạn phê duyệt hồ sơ thanh toán "${d.title}". Thông báo cảnh báo được gửi đến Trưởng Ban QLDA (${leadInv.fullName}), CĐT và cán bộ chậm.`;
+                const invName = d.assignedInvestor?.assignee?.fullName || d.assignedInvestor?.fullName || 'Cán bộ QLDA';
+                const invUid = d.assignedInvestor?.assignee?.uid || d.assignedInvestor?.uid;
+                const notifTitle = `⏰ [Chậm phản hồi] Ban QLDA quá hạn phê duyệt: ${d.title}`;
+                const notifBody = `Cán bộ Ban QLDA (${invName}) đã quá hạn phê duyệt hồ sơ thanh toán "${d.title}". Thông báo cảnh báo được gửi đến Trưởng Ban QLDA (${leadInv.fullName}), CĐT và cán bộ chậm.`;
 
-              const notif = {
-                id: `notif_overdue_review_inv_${d.id}_${Date.now()}`,
-                type: 'PAYMENT_DOCUMENT_REVIEW_OVERDUE',
-                title: notifTitle,
-                body: notifBody,
-                targetPaymentDocId: d.id,
-                actionText: 'Xem hồ sơ & Xử lý gấp',
-                recipientUid: invUid,
-                extraRecipientUids: [invUid, leadInv.uid].filter(Boolean),
-                targetRoles: ['INVESTOR', 'LEAD_INVESTOR', 'ADMIN'],
-                createdAt: new Date().toISOString(),
-                time: 'Vừa xong',
-                isRead: false
-              };
+                const notif = {
+                  id: `notif_overdue_review_inv_${d.id}_${Date.now()}`,
+                  type: 'PAYMENT_DOCUMENT_REVIEW_OVERDUE',
+                  title: notifTitle,
+                  body: notifBody,
+                  targetPaymentDocId: d.id,
+                  actionText: 'Xem hồ sơ & Xử lý gấp',
+                  recipientUid: invUid,
+                  extraRecipientUids: [invUid, leadInv.uid].filter(Boolean),
+                  targetRoles: ['INVESTOR', 'LEAD_INVESTOR', 'ADMIN'],
+                  createdAt: new Date().toISOString(),
+                  time: 'Vừa xong',
+                  isRead: false
+                };
 
-              setNotifications(prev => [notif, ...prev]);
-              saveSystemNotification(notif).catch(console.warn);
-              if (checkNotificationRecipient(notif, currentUser)) {
-                setActivePushToast(notif);
-                showSystemNotification(notifTitle, notifBody);
+                setNotifications(prev => [notif, ...prev]);
+                saveSystemNotification(notif).catch(console.warn);
+                if (checkNotificationRecipient(notif, currentUser)) {
+                  setActivePushToast(notif);
+                  showSystemNotification(notifTitle, notifBody);
+                }
               }
             }
           }
         }
-      }
 
-        if (changed) {
+        if (changed && !isRecordDeleted(d.id)) {
           hasUpdates = true;
-          savePaymentDocument(d).catch(console.warn);
+          // Chỉ cấp quản lý mới đồng bộ trạng thái quá hạn lên Cloud, tránh các tab / máy khác vô tình ghi đè hoặc hồi sinh
+          const canSyncCloud = currentUser?.role === 'ADMIN' || currentUser?.isSuperAdmin || currentRole === 'ADMIN' || currentUser?.role === 'LEAD_SUPERVISOR' || currentUser?.role === 'LEAD_INVESTOR';
+          if (canSyncCloud) {
+            savePaymentDocument(d).catch(console.warn);
+          }
         }
         return d;
-      });
+      }).filter(d => !isRecordDeleted(d.id));
 
       if (hasUpdates) {
         setPaymentDocuments(updatedDocs);
@@ -3402,6 +3612,7 @@ export default function App() {
 
     checkOverduePaymentDocs();
     const interval = setInterval(checkOverduePaymentDocs, 60000);
+    return () => clearInterval(interval);
     return () => clearInterval(interval);
   }, [paymentDocuments, users]);
 
@@ -4719,7 +4930,7 @@ export default function App() {
               company: assignedSup?.company || rep.attendees?.supervisor?.company || leadSup.company,
               leadPerson: rep.attendees?.supervisor?.leadPerson || leadSup.fullName,
               leadPosition: rep.attendees?.supervisor?.leadPosition || leadSup.position,
-              signed: Boolean(rep.attendees?.supervisor?.signed || isCompleted || isWaitingInv)
+              signed: Boolean(rep.attendees?.supervisor?.signed || rep.signatures?.supervisor || targetReq?.signatures?.supervisor || isCompleted || isWaitingInv)
             },
             investor: {
               ...rep.attendees?.investor,
@@ -4730,7 +4941,8 @@ export default function App() {
               position: assignedInv?.position || rep.attendees?.investor?.position || leadInv.position,
               company: assignedInv?.company || rep.attendees?.investor?.company || leadInv.company,
               leadPerson: rep.attendees?.investor?.leadPerson || leadInv.fullName,
-              leadPosition: rep.attendees?.investor?.leadPosition || leadInv.position
+              leadPosition: rep.attendees?.investor?.leadPosition || leadInv.position,
+              signed: Boolean(rep.attendees?.investor?.signed || rep.signatures?.investor || targetReq?.signatures?.investor || isCompleted)
             },
             contractor: {
               ...rep.attendees?.contractor,
@@ -4740,6 +4952,12 @@ export default function App() {
               leadPerson: leadContractor.fullName,
               leadPosition: 'Chỉ huy trưởng'
             }
+          },
+          signatures: {
+            ...(rep.signatures || {}),
+            contractor: rep.attendees?.contractor?.signed !== false,
+            supervisor: Boolean(rep.attendees?.supervisor?.signed || rep.signatures?.supervisor || targetReq?.signatures?.supervisor || isCompleted || isWaitingInv),
+            investor: Boolean(rep.attendees?.investor?.signed || rep.signatures?.investor || targetReq?.signatures?.investor || isCompleted)
           }
         };
       }
@@ -5735,6 +5953,23 @@ export default function App() {
     const updatedReport = {
       ...targetReport,
       status: finalStatus,
+      attendees: {
+        ...(targetReport.attendees || {}),
+        supervisor: {
+          ...(targetReport.attendees?.supervisor || {}),
+          signed: isSupervisorSigned
+        },
+        investor: {
+          ...(targetReport.attendees?.investor || {}),
+          signed: isInvestorSigned
+        }
+      },
+      signatures: {
+        ...(targetReport.signatures || {}),
+        contractor: isContractorSigned,
+        supervisor: isSupervisorSigned,
+        investor: isInvestorSigned
+      },
       updatedAt: now
     };
 
@@ -5801,7 +6036,7 @@ export default function App() {
         assignedRecipients: updatedReq?.assignedRecipients || targetReport.assignedRecipients || [],
         createdByUid: updatedReq?.createdByUid || targetReport.createdByUid,
         createdByName: updatedReq?.createdByName || targetReport.createdByName,
-        targetRoles: ['INVESTOR', 'LEAD_INVESTOR', 'SUPERVISOR', 'LEAD_SUPERVISOR', 'CONTRACTOR'],
+        targetRoles: ['ADMIN', 'INVESTOR', 'LEAD_INVESTOR', 'SUPERVISOR', 'LEAD_SUPERVISOR', 'CONTRACTOR'],
         createdAt: new Date().toISOString(),
         time: 'Vừa xong',
         isRead: false
@@ -5885,15 +6120,26 @@ export default function App() {
   const handleSaveReport = async (updatedReport) => {
     const prevReport = reports.find(r => r.id === updatedReport.id);
     const tvgsJustSigned = 
-      updatedReport.attendees?.supervisor?.signed && 
-      (!prevReport || !prevReport.attendees?.supervisor?.signed);
+      (updatedReport.attendees?.supervisor?.signed || updatedReport.signatures?.supervisor) && 
+      (!prevReport || (!prevReport.attendees?.supervisor?.signed && !prevReport.signatures?.supervisor));
+
+    const isSupervisorSigned = Boolean(
+      updatedReport.attendees?.supervisor?.signed || 
+      updatedReport.signatures?.supervisor ||
+      updatedReport.status === 'WAITING_INVESTOR' ||
+      updatedReport.status === 'COMPLETED'
+    );
+
+    const isInvestorSigned = Boolean(
+      updatedReport.attendees?.investor?.signed ||
+      updatedReport.signatures?.investor ||
+      updatedReport.status === 'COMPLETED'
+    );
 
     const isAllSigned = 
-      Boolean(updatedReport.attendees?.investor?.signed) &&
-      Boolean(updatedReport.attendees?.supervisor?.signed) &&
+      isInvestorSigned &&
+      isSupervisorSigned &&
       Boolean(updatedReport.attendees?.contractor?.signed !== false);
-
-    const isSupervisorSigned = Boolean(updatedReport.attendees?.supervisor?.signed);
 
     let finalStatus = updatedReport.status || 'PENDING_APPROVAL';
     if (isAllSigned) {
@@ -5907,6 +6153,23 @@ export default function App() {
     const finalReport = {
       ...updatedReport,
       status: finalStatus,
+      attendees: {
+        ...(updatedReport.attendees || {}),
+        supervisor: {
+          ...(updatedReport.attendees?.supervisor || {}),
+          signed: isSupervisorSigned
+        },
+        investor: {
+          ...(updatedReport.attendees?.investor || {}),
+          signed: isInvestorSigned
+        }
+      },
+      signatures: {
+        ...(updatedReport.signatures || {}),
+        contractor: updatedReport.attendees?.contractor?.signed !== false,
+        supervisor: isSupervisorSigned,
+        investor: isInvestorSigned
+      },
       updatedAt: new Date().toISOString()
     };
 
@@ -5918,7 +6181,7 @@ export default function App() {
       return nextReports;
     });
 
-    if (selectedReport && selectedReport.id === finalReport.id) {
+    if (selectedReport && (selectedReport.id === finalReport.id || (finalReport.requestId && selectedReport.requestId === finalReport.requestId))) {
       setSelectedReport(finalReport);
     }
 
@@ -5935,6 +6198,7 @@ export default function App() {
         contractorCompany: newContCompany || targetReq.contractorCompany,
         hasReport: true,
         reportId: finalReport.id,
+        signatures: finalReport.signatures,
         updatedAt: new Date().toISOString()
       };
       setRequests(prev => {
@@ -5942,6 +6206,9 @@ export default function App() {
         safeSaveLocalStorage(REQUESTS_STORAGE_KEY, nextRequests);
         return nextRequests;
       });
+      if (selectedReportRequest && selectedReportRequest.id === updatedReq.id) {
+        setSelectedReportRequest(updatedReq);
+      }
     }
 
     try {
@@ -5966,7 +6233,7 @@ export default function App() {
           assignedRecipients: updatedReq?.assignedRecipients || finalReport.assignedRecipients || [],
           createdByUid: updatedReq?.createdByUid || finalReport.createdByUid,
           createdByName: updatedReq?.createdByName || finalReport.createdByName,
-          targetRoles: ['INVESTOR', 'LEAD_INVESTOR', 'CONTRACTOR', 'LEAD_SUPERVISOR'],
+          targetRoles: ['ADMIN', 'INVESTOR', 'LEAD_INVESTOR', 'CONTRACTOR', 'LEAD_SUPERVISOR'],
           createdAt: new Date().toISOString(),
           time: 'Vừa xong',
           isRead: false
@@ -6315,7 +6582,11 @@ export default function App() {
         ...rep.attendees,
         supervisor: {
           ...rep.attendees?.supervisor,
-          signed: Boolean(rep.attendees?.supervisor?.signed || isCompleted || isWaitingInv)
+          signed: Boolean(rep.attendees?.supervisor?.signed || rep.signatures?.supervisor || targetReq?.signatures?.supervisor || isCompleted || isWaitingInv)
+        },
+        investor: {
+          ...rep.attendees?.investor,
+          signed: Boolean(rep.attendees?.investor?.signed || rep.signatures?.investor || targetReq?.signatures?.investor || isCompleted)
         },
         contractor: {
           ...rep.attendees?.contractor,
@@ -6323,6 +6594,12 @@ export default function App() {
           person: targetReq?.createdByName || rep.attendees?.contractor?.person || 'KS. Lê Văn Kỹ Thuật',
           position: targetReq?.createdByRole || rep.attendees?.contractor?.position || 'Kỹ thuật hiện trường'
         }
+      },
+      signatures: {
+        ...(rep.signatures || {}),
+        contractor: rep.attendees?.contractor?.signed !== false,
+        supervisor: Boolean(rep.attendees?.supervisor?.signed || rep.signatures?.supervisor || targetReq?.signatures?.supervisor || isCompleted || isWaitingInv),
+        investor: Boolean(rep.attendees?.investor?.signed || rep.signatures?.investor || targetReq?.signatures?.investor || isCompleted)
       }
     };
 

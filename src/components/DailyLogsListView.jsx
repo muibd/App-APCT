@@ -573,16 +573,44 @@ export default function DailyLogsListView({
                 }}
                 onClick={() => handleOpen && handleOpen(log)}
               >
-                {/* TOP BAR */}
-                <div className="card-top-bar">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <span className="card-req-number" style={{ background: '#ecfdf5', color: '#065f46', borderColor: '#a7f3d0' }}>
-                      {log.logNumber}
+                {/* DÒNG 1: NGÀY (GÓC TRÁI) / CÔNG TRÌNH / GÓI THẦU / TRẠNG THÁI (GÓC PHẢI) */}
+                <div className="card-top-bar" style={{ marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', flex: '1 1 auto' }}>
+                    {log.logNumber && (
+                      <span className="card-req-number" style={{ background: '#ecfdf5', color: '#065f46', borderColor: '#a7f3d0' }}>
+                        {log.logNumber}
+                      </span>
+                    )}
+
+                    {/* Ngày (để góc trái) */}
+                    <div style={{ fontSize: '0.84rem', color: '#047857', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 700 }}>
+                      <Calendar size={14} color="#059669" />
+                      <span>{log.date ? log.date.split('-').reverse().join('/') : 'Hôm nay'}</span>
+                    </div>
+
+                    <span style={{ color: '#cbd5e1' }}>/</span>
+
+                    {/* Công trình */}
+                    <span style={{ fontSize: '0.83rem', color: '#1e293b', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      🏢 {log.buildingName || docProjName || 'Chung cư nhà ở xã hội 2'}
                     </span>
 
+                    {(docPkgName || log.packageName) && (
+                      <>
+                        <span style={{ color: '#cbd5e1' }}>/</span>
+                        {/* Gói thầu */}
+                        <span style={{ fontSize: '0.83rem', color: '#475569', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          📦 {docPkgName || log.packageName}
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Trạng thái (để góc phải) */}
+                  <div>
                     {isConfirmed ? (
                       <span className="badge-status badge-approved" style={{ background: '#ecfdf5', color: '#059669', borderColor: '#a7f3d0' }}>
-                        <CheckCircle2 size={13} /> Đã Xác Nhận 3 Bên (ĐVTC, TVGS, CĐT)
+                        <CheckCircle2 size={13} /> Đã Xác Nhận 3 Bên
                       </span>
                     ) : (
                       <span className="badge-status" style={{ background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -590,10 +618,40 @@ export default function DailyLogsListView({
                       </span>
                     )}
                   </div>
+                </div>
 
-                  <div style={{ fontSize: '0.82rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
-                    <Calendar size={14} color="#059669" />
-                    <span>{log.date ? log.date.split('-').reverse().join('/') : 'Hôm nay'}</span>
+                {/* DÒNG 2: TÊN KỸ THUẬT HIỆN TRƯỜNG VÀ TVGS */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '12px',
+                  flexWrap: 'wrap',
+                  padding: '7px 12px',
+                  background: '#f8fafc',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  fontSize: '0.83rem',
+                  color: '#334155',
+                  marginBottom: '10px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '0.95rem' }}>👷‍♂️</span>
+                    <span style={{ color: '#64748b' }}>Kỹ thuật hiện trường:</span>
+                    <strong style={{ color: '#0f172a' }}>
+                      {log.createdByName || log.representatives?.contractor?.createdBy || log.signatures?.contractor?.name || 'KS. Lê Văn Kỹ Thuật'}
+                    </strong>
+                    {log.manpower?.otherPersonnel?.length > 0 && (
+                      <span style={{ color: '#2563eb', fontSize: '0.78rem' }}> (+{log.manpower.otherPersonnel.length} KT khác)</span>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '0.95rem' }}>📋</span>
+                    <span style={{ color: '#64748b' }}>TVGS:</span>
+                    <strong style={{ color: '#0f172a' }}>
+                      {log.assignedSupervisor?.name || log.supervisorFullName || log.signatures?.supervisor?.name || log.representatives?.supervisor?.representative || log.representatives?.supervisor?.officer || 'Võ Văn Tỏn'}
+                    </strong>
                   </div>
                 </div>
 
@@ -602,7 +660,7 @@ export default function DailyLogsListView({
                   display: 'flex',
                   alignItems: 'center',
                   gap: '12px',
-                  margin: '8px 0 10px 0',
+                  margin: '0 0 10px 0',
                   padding: '6px 12px',
                   background: '#f8fafc',
                   borderRadius: '8px',
@@ -630,31 +688,33 @@ export default function DailyLogsListView({
                   {log.workContent}
                 </h3>
 
-                {/* BREADCRUMB CÔNG TRÌNH / GÓI THẦU / HẠNG MỤC */}
-                <div className="card-hierarchy-breadcrumb" style={{ marginBottom: '10px' }}>
-                  <span>🏢 {log.buildingName || docProjName}</span>
-                  {docPkgName && (
-                    <>
-                      <span>›</span>
-                      <span>📦 {docPkgName}</span>
-                    </>
-                  )}
-                  <span>›</span>
-                  <span>📑 {log.itemName || docItemName}</span>
-                </div>
-
-                {/* TÌNH HÌNH NHÂN LỰC & THIẾT BỊ */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '8px', fontSize: '0.82rem', color: '#475569', marginBottom: '12px', padding: '8px 10px', background: '#f1f5f9', borderRadius: '8px' }}>
-                  <div>
-                    👷‍♂️ <strong>Kỹ thuật:</strong> {log.createdByName || 'KS. Lê Văn Kỹ Thuật'}
-                    {log.manpower?.otherPersonnel?.length > 0 && (
-                      <span style={{ color: '#2563eb' }}> (+{log.manpower.otherPersonnel.length} KT khác)</span>
+                {/* HẠNG MỤC & CÔNG NHÂN */}
+                {(log.itemName || docItemName || log.manpower?.workers) && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '16px',
+                    flexWrap: 'wrap',
+                    fontSize: '0.82rem',
+                    color: '#64748b',
+                    marginBottom: '10px'
+                  }}>
+                    {(log.itemName || docItemName) && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span>📑</span>
+                        <span>Hạng mục:</span>
+                        <strong style={{ color: '#334155' }}>{log.itemName || docItemName}</strong>
+                      </div>
+                    )}
+                    {log.manpower?.workers && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span>👥</span>
+                        <span>Công nhân:</span>
+                        <strong style={{ color: '#334155' }}>{log.manpower.workers}</strong>
+                      </div>
                     )}
                   </div>
-                  <div>
-                    👥 <strong>Công nhân:</strong> {log.manpower?.workers || '35 công nhân'}
-                  </div>
-                </div>
+                )}
 
                 {/* Ý KIẾN TVGS NẾU ĐÃ KÝ */}
                 {isConfirmed && log.supervisorComments && (

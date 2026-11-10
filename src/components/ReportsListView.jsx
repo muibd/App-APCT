@@ -29,9 +29,9 @@ export default function ReportsListView({
     if (report.status === 'CANCELLED') {
       return 'CANCELLED';
     }
-    const inv = report.attendees?.investor?.signed;
-    const sup = report.attendees?.supervisor?.signed;
-    const con = report.attendees?.contractor?.signed;
+    const inv = Boolean(report.attendees?.investor?.signed || report.signatures?.investor);
+    const sup = Boolean(report.attendees?.supervisor?.signed || report.signatures?.supervisor || report.status === 'WAITING_INVESTOR' || report.status === 'COMPLETED');
+    const con = report.attendees?.contractor?.signed !== false;
     if (report.status === 'COMPLETED' || (inv && sup && con !== false)) {
       return 'COMPLETED';
     }
@@ -522,9 +522,9 @@ export default function ReportsListView({
             const isCompleted = status === 'COMPLETED';
             const isWaitingInvestor = status === 'WAITING_INVESTOR';
 
-            const investorSigned = report.attendees?.investor?.signed;
-            const supervisorSigned = report.attendees?.supervisor?.signed;
-            const contractorSigned = report.attendees?.contractor?.signed;
+            const investorSigned = Boolean(report.attendees?.investor?.signed || report.signatures?.investor || isCompleted);
+            const supervisorSigned = Boolean(report.attendees?.supervisor?.signed || report.signatures?.supervisor || isWaitingInvestor || isCompleted);
+            const contractorSigned = report.attendees?.contractor?.signed !== false;
 
             const signedCount = [investorSigned, supervisorSigned, contractorSigned].filter(Boolean).length;
 

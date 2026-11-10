@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import {
   Building2, Mail, Lock, Eye, EyeOff, ArrowRight,
-  AlertCircle, ShieldCheck, HardHat, Briefcase, CheckCircle2, Award
+  AlertCircle, ShieldCheck, HardHat, Briefcase, CheckCircle2, Award,
+  RefreshCw
 } from 'lucide-react';
 import { MOCK_USERS } from '../data/mockData';
+import { forceUpdateAppAndClearCache } from '../utils/storageHelper';
 
 export default function LoginScreen({ onLogin, users = MOCK_USERS }) {
   const [email, setEmail] = useState('');
@@ -11,6 +13,18 @@ export default function LoginScreen({ onLogin, users = MOCK_USERS }) {
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const handleUpdateApp = async () => {
+    if (isUpdating) return;
+    setIsUpdating(true);
+    try {
+      await forceUpdateAppAndClearCache();
+    } catch (err) {
+      console.warn('Lỗi cập nhật app:', err);
+      window.location.reload();
+    }
+  };
 
   const handleLoginSubmit = (e) => {
     e.preventDefault();
@@ -277,6 +291,50 @@ export default function LoginScreen({ onLogin, users = MOCK_USERS }) {
           </button>
 
         </form>
+
+        {/* NÚT CẬP NHẬT ỨNG DỤNG & LÀM MỚI DỮ LIỆU */}
+        <div style={{ marginTop: '16px', textAlign: 'center' }}>
+          <button
+            type="button"
+            onClick={handleUpdateApp}
+            disabled={isUpdating}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              background: '#f8fafc',
+              color: '#0369a1',
+              border: '1.5px solid #bae6fd',
+              borderRadius: '12px',
+              height: '42px',
+              fontSize: '0.86rem',
+              fontWeight: 700,
+              cursor: isUpdating ? 'wait' : 'pointer',
+              transition: 'all 0.2s ease',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)'
+            }}
+            onMouseOver={(e) => {
+              if (!isUpdating) {
+                e.currentTarget.style.background = '#f0f9ff';
+                e.currentTarget.style.borderColor = '#38bdf8';
+              }
+            }}
+            onMouseOut={(e) => {
+              if (!isUpdating) {
+                e.currentTarget.style.background = '#f8fafc';
+                e.currentTarget.style.borderColor = '#bae6fd';
+              }
+            }}
+          >
+            <RefreshCw size={16} style={{ animation: isUpdating ? 'spin 1s linear infinite' : 'none' }} />
+            <span>{isUpdating ? 'Đang dọn cache & tải bản mới...' : '🔄 Cập Nhật Ứng Dụng (Làm Mới Data)'}</span>
+          </button>
+          <p style={{ margin: '6px 0 0 0', fontSize: '0.74rem', color: '#94a3b8' }}>
+            💡 Bấm nút này để xóa sạch cache cũ, nạp mã nguồn và dữ liệu chuẩn mới nhất từ Cloud
+          </p>
+        </div>
 
         {/* Footer info */}
         <div style={{

@@ -34,6 +34,83 @@ const DAILY_LOGS_COLLECTION = 'construction_daily_logs';
 const COMPLETION_REPORTS_COLLECTION = 'completion_reports';
 const SHOP_DOCUMENTS_COLLECTION = 'shop_documents';
 const PAYMENT_DOCUMENTS_COLLECTION = 'payment_documents';
+export const DELETED_RECORDS_COLLECTION = 'system_deleted_records';
+export const DELETED_RECORDS_STORAGE_KEY = 'apct_deleted_record_ids';
+
+// ============================================================================
+// HỆ THỐNG TOMBSTONE: CHỐNG HỒI SINH ZOMBIE DOCUMENTS KHI XÓA
+// Đồng bộ danh sách ID đã xóa thời gian thực giữa tất cả các máy / tab / điện thoại
+// ============================================================================
+const getInitialDeletedIds = () => {
+  if (typeof window === 'undefined' || !window.localStorage) return new Set();
+  try {
+    const raw = localStorage.getItem(DELETED_RECORDS_STORAGE_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return new Set(arr);
+    }
+  } catch (e) {}
+  return new Set();
+};
+
+const deletedRecordIds = getInitialDeletedIds();
+
+export const isRecordDeleted = (id) => {
+  if (!id) return false;
+  return deletedRecordIds.has(String(id));
+};
+
+export const markRecordAsDeleted = (id) => {
+  if (!id) return;
+  const strId = String(id);
+  deletedRecordIds.add(strId);
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.setItem(DELETED_RECORDS_STORAGE_KEY, JSON.stringify(Array.from(deletedRecordIds)));
+    }
+  } catch (e) {}
+};
+
+/**
+ * Lắng nghe thời gian thực danh sách các bản ghi đã xóa trên Cloud Firestore
+ */
+export const subscribeToDeletedRecords = (callback) => {
+  if (!isFirebaseConfigured || !db) {
+    if (callback) callback(Array.from(deletedRecordIds));
+    return () => {};
+  }
+
+  try {
+    const colRef = collection(db, DELETED_RECORDS_COLLECTION);
+    const unsubscribe = onSnapshot(colRef, (snapshot) => {
+      let hasNew = false;
+      snapshot.forEach(docSnap => {
+        const id = docSnap.id;
+        if (id && !deletedRecordIds.has(id)) {
+          deletedRecordIds.add(id);
+          hasNew = true;
+        }
+      });
+      if (hasNew) {
+        try {
+          if (typeof window !== 'undefined' && window.localStorage) {
+            localStorage.setItem(DELETED_RECORDS_STORAGE_KEY, JSON.stringify(Array.from(deletedRecordIds)));
+          }
+        } catch (e) {}
+      }
+      if (callback) callback(Array.from(deletedRecordIds));
+    }, (error) => {
+      console.warn('[Firestore] Lỗi lắng nghe danh sách bản ghi đã xóa:', error);
+      if (callback) callback(Array.from(deletedRecordIds));
+    });
+
+    return unsubscribe;
+  } catch (e) {
+    console.warn('[Firestore Deleted Records Exception]', e);
+    if (callback) callback(Array.from(deletedRecordIds));
+    return () => {};
+  }
+};
 
 // ============================================================================
 // 1. PHIẾU YÊU CẦU NGHIỆM THU (INSPECTION REQUESTS)
@@ -123,6 +200,20 @@ export const saveInspectionRequest = async (requestData) => {
     return cleanData;
   } catch (error) {
     console.error('[Firestore Save Request Error]', error);
+    try {
+      // Fallback merge cứu sinh: đảm bảo status & liên kết biên bản luôn được lưu
+      const docRef = doc(db, REQUESTS_COLLECTION, cleanData.id);
+      await setDoc(docRef, {
+        status: cleanData.status,
+        hasReport: Boolean(cleanData.hasReport),
+        reportId: cleanData.reportId || null,
+        signatures: cleanData.signatures || null,
+        updatedAt: cleanData.updatedAt || new Date().toISOString()
+      }, { merge: true });
+      console.log('[Firestore Cloud Fallback] Đã merge status phiếu thành công:', cleanData.requestNumber);
+    } catch (e2) {
+      console.error('[Firestore Fallback Save Request Error]', e2);
+    }
     return cleanData;
   }
 };
@@ -153,10 +244,30 @@ export const updateRecipientResponse = async (requestId, assignedRecipients, new
  * Xóa Phiếu yêu cầu nghiệm thu và Biên bản liên quan khỏi Firestore
  */
 export const deleteInspectionRequest = async (requestId, matchingReportId = null) => {
+  if (!requestId) return true;
+  markRecordAsDeleted(requestId);
+  if (matchingReportId) markRecordAsDeleted(matchingReportId);
+
   if (!isFirebaseConfigured || !db) {
     return true;
   }
   try {
+    const tombstoneRef = doc(db, DELETED_RECORDS_COLLECTION, requestId);
+    await setDoc(tombstoneRef, {
+      id: requestId,
+      collection: REQUESTS_COLLECTION,
+      deletedAt: new Date().toISOString()
+    }).catch(console.warn);
+
+    if (matchingReportId) {
+      const repTombstoneRef = doc(db, DELETED_RECORDS_COLLECTION, matchingReportId);
+      await setDoc(repTombstoneRef, {
+        id: matchingReportId,
+        collection: REPORTS_COLLECTION,
+        deletedAt: new Date().toISOString()
+      }).catch(console.warn);
+    }
+
     const docRef = doc(db, REQUESTS_COLLECTION, requestId);
     await deleteDoc(docRef);
     if (matchingReportId) {
@@ -219,6 +330,34 @@ export const saveInspectionReport = async (reportData) => {
     return cleanData;
   }
 
+  // Chuẩn hóa cấu trúc chữ ký đảm bảo không bao giờ bị null
+  const supSigned = Boolean(
+    cleanData.attendees?.supervisor?.signed || 
+    cleanData.signatures?.supervisor || 
+    cleanData.status === 'WAITING_INVESTOR' || 
+    cleanData.status === 'COMPLETED'
+  );
+  const invSigned = Boolean(
+    cleanData.attendees?.investor?.signed || 
+    cleanData.signatures?.investor || 
+    cleanData.status === 'COMPLETED'
+  );
+  const conSigned = cleanData.attendees?.contractor?.signed !== false;
+
+  cleanData.signatures = {
+    ...(cleanData.signatures || {}),
+    contractor: conSigned,
+    supervisor: supSigned,
+    investor: invSigned
+  };
+
+  if (supSigned && cleanData.attendees?.supervisor) {
+    cleanData.attendees.supervisor.signed = true;
+  }
+  if (invSigned && cleanData.attendees?.investor) {
+    cleanData.attendees.investor.signed = true;
+  }
+
   try {
     const projId = cleanData.projectCode || cleanData.projectId || '2203';
     if (Array.isArray(cleanData.evidencePhotos) && cleanData.evidencePhotos.length > 0) {
@@ -237,6 +376,20 @@ export const saveInspectionReport = async (reportData) => {
     return cleanData;
   } catch (error) {
     console.error('[Firestore Save Report Error]', error);
+    try {
+      // Fallback merge cứu sinh: Đảm bảo chữ ký số 3 bên và tiến trình phê duyệt 100% được ghi nhận lên Firestore
+      const docRef = doc(db, REPORTS_COLLECTION, cleanData.id);
+      await setDoc(docRef, {
+        status: cleanData.status,
+        attendees: cleanData.attendees,
+        signatures: cleanData.signatures,
+        conclusion: cleanData.conclusion,
+        updatedAt: cleanData.updatedAt || new Date().toISOString()
+      }, { merge: true });
+      console.log('[Firestore Cloud Fallback] Đã merge chữ ký & trạng thái biên bản thành công:', cleanData.reportNumber);
+    } catch (e2) {
+      console.error('[Firestore Fallback Save Report Error]', e2);
+    }
     return cleanData;
   }
 };
@@ -695,8 +848,17 @@ export const updateDailyLog = async (logId, updateData) => {
  * Xóa một Nhật ký thi công
  */
 export const deleteDailyLog = async (logId) => {
+  if (!logId) return true;
+  markRecordAsDeleted(logId);
   if (!isFirebaseConfigured || !db) return true;
   try {
+    const tombstoneRef = doc(db, DELETED_RECORDS_COLLECTION, logId);
+    await setDoc(tombstoneRef, {
+      id: logId,
+      collection: DAILY_LOGS_COLLECTION,
+      deletedAt: new Date().toISOString()
+    }).catch(console.warn);
+
     const docRef = doc(db, DAILY_LOGS_COLLECTION, logId);
     await deleteDoc(docRef);
     console.log('[Firestore Cloud] Đã xóa nhật ký:', logId);
@@ -800,8 +962,17 @@ export const updateCompletionReport = async (reportId, updateData) => {
  * Xóa một Biên bản Nghiệm Thu Hoàn Thành
  */
 export const deleteCompletionReport = async (reportId) => {
+  if (!reportId) return true;
+  markRecordAsDeleted(reportId);
   if (!isFirebaseConfigured || !db) return true;
   try {
+    const tombstoneRef = doc(db, DELETED_RECORDS_COLLECTION, reportId);
+    await setDoc(tombstoneRef, {
+      id: reportId,
+      collection: COMPLETION_REPORTS_COLLECTION,
+      deletedAt: new Date().toISOString()
+    }).catch(console.warn);
+
     const docRef = doc(db, COMPLETION_REPORTS_COLLECTION, reportId);
     await deleteDoc(docRef);
     console.log('[Firestore Cloud] Đã xóa biên bản nghiệm thu hoàn thành:', reportId);
@@ -886,7 +1057,12 @@ export const subscribeToShopDocuments = (callback) => {
     const unsubscribe = onSnapshot(colRef, (snapshot) => {
       const items = [];
       snapshot.forEach(docSnap => {
-        items.push({ id: docSnap.id, ...docSnap.data() });
+        const id = docSnap.id;
+        const data = docSnap.data();
+        if (data?.isDeleted || data?.status === 'DELETED' || isRecordDeleted(id)) {
+          return;
+        }
+        items.push({ id, ...data });
       });
       // Sắp xếp giảm dần theo thời gian tạo
       items.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
@@ -907,6 +1083,14 @@ export const subscribeToShopDocuments = (callback) => {
  * Lưu hoặc cập nhật Hồ sơ Shop lên Firestore
  */
 export const saveShopDocument = async (shopDocData) => {
+  if (!shopDocData || !shopDocData.id) return shopDocData;
+
+  // TUYỆT ĐỐI CHẶN HỒI SINH HỒ SƠ ĐÃ BỊ XÓA
+  if (shopDocData.isDeleted || shopDocData.status === 'DELETED' || isRecordDeleted(shopDocData.id)) {
+    console.warn('[Firestore Guard] Chặn lưu/hồi sinh hồ sơ shop đã bị xóa:', shopDocData.id);
+    return shopDocData;
+  }
+
   const cleanData = sanitizeData({
     ...shopDocData,
     updatedAt: new Date().toISOString()
@@ -982,11 +1166,22 @@ export const saveShopDocument = async (shopDocData) => {
  * Xóa một hồ sơ shop trên Firestore
  */
 export const deleteShopDocument = async (shopDocId) => {
+  if (!shopDocId) return;
+  const strId = String(shopDocId);
+  markRecordAsDeleted(strId);
+
   if (!isFirebaseConfigured || !db) return;
   try {
-    const docRef = doc(db, SHOP_DOCUMENTS_COLLECTION, shopDocId);
+    const tombstoneRef = doc(db, DELETED_RECORDS_COLLECTION, strId);
+    await setDoc(tombstoneRef, {
+      id: strId,
+      collection: SHOP_DOCUMENTS_COLLECTION,
+      deletedAt: new Date().toISOString()
+    }).catch(console.warn);
+
+    const docRef = doc(db, SHOP_DOCUMENTS_COLLECTION, strId);
     await deleteDoc(docRef);
-    console.log('[Firestore Cloud] Đã xóa hồ sơ shop:', shopDocId);
+    console.log('[Firestore Cloud] Đã xóa vĩnh viễn hồ sơ shop:', strId);
   } catch (error) {
     console.error('[Firestore Delete Shop Document Error]', error);
     throw error;
@@ -1061,7 +1256,12 @@ export const subscribeToPaymentDocuments = (callback) => {
     const unsubscribe = onSnapshot(colRef, (snapshot) => {
       const items = [];
       snapshot.forEach(docSnap => {
-        items.push({ id: docSnap.id, ...docSnap.data() });
+        const id = docSnap.id;
+        const data = docSnap.data();
+        if (data?.isDeleted || data?.status === 'DELETED' || isRecordDeleted(id)) {
+          return;
+        }
+        items.push({ id, ...data });
       });
       items.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
       callback(items);
@@ -1080,6 +1280,14 @@ export const subscribeToPaymentDocuments = (callback) => {
  * Lưu hoặc cập nhật Hồ sơ Thanh Toán lên Firestore
  */
 export const savePaymentDocument = async (paymentDocData) => {
+  if (!paymentDocData || !paymentDocData.id) return paymentDocData;
+
+  // TUYỆT ĐỐI CHẶN HỒI SINH HỒ SƠ ĐÃ BỊ XÓA
+  if (paymentDocData.isDeleted || paymentDocData.status === 'DELETED' || isRecordDeleted(paymentDocData.id)) {
+    console.warn('[Firestore Guard] Chặn lưu/hồi sinh hồ sơ thanh toán đã bị xóa:', paymentDocData.id);
+    return paymentDocData;
+  }
+
   const cleanData = sanitizeData({
     ...paymentDocData,
     updatedAt: new Date().toISOString()
@@ -1153,11 +1361,22 @@ export const savePaymentDocument = async (paymentDocData) => {
  * Xóa một hồ sơ thanh toán trên Firestore
  */
 export const deletePaymentDocument = async (paymentDocId) => {
+  if (!paymentDocId) return;
+  const strId = String(paymentDocId);
+  markRecordAsDeleted(strId);
+
   if (!isFirebaseConfigured || !db) return;
   try {
-    const docRef = doc(db, PAYMENT_DOCUMENTS_COLLECTION, paymentDocId);
+    const tombstoneRef = doc(db, DELETED_RECORDS_COLLECTION, strId);
+    await setDoc(tombstoneRef, {
+      id: strId,
+      collection: PAYMENT_DOCUMENTS_COLLECTION,
+      deletedAt: new Date().toISOString()
+    }).catch(console.warn);
+
+    const docRef = doc(db, PAYMENT_DOCUMENTS_COLLECTION, strId);
     await deleteDoc(docRef);
-    console.log('[Firestore Cloud] Đã xóa hồ sơ thanh toán:', paymentDocId);
+    console.log('[Firestore Cloud] Đã xóa vĩnh viễn hồ sơ thanh toán:', strId);
   } catch (error) {
     console.error('[Firestore Delete Payment Document Error]', error);
     throw error;
