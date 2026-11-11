@@ -540,7 +540,7 @@ export const saveDeviceFCMToken = async (userId, userRole, token) => {
  */
 export const subscribeToUsers = (callback) => {
   if (!isFirebaseConfigured || !db) {
-    callback([]);
+    callback(null);
     return () => {};
   }
 
@@ -551,16 +551,19 @@ export const subscribeToUsers = (callback) => {
       snapshot.forEach(docSnap => {
         usersList.push({ uid: docSnap.id, ...docSnap.data() });
       });
+      if (usersList.length === 0 && snapshot.metadata?.fromCache) {
+        return;
+      }
       callback(usersList);
     }, (error) => {
       console.warn('[Firestore] Lỗi lắng nghe cán bộ:', error);
-      callback([]);
+      callback(null);
     });
 
     return unsubscribe;
   } catch (e) {
     console.warn('[Firestore Users Exception]', e);
-    callback([]);
+    callback(null);
     return () => {};
   }
 };
@@ -605,8 +608,12 @@ export const deleteSystemUser = async (userId) => {
  */
 export const seedOfficialUsersToCloud = async (customUsers = null) => {
   if (!isFirebaseConfigured || !db) return false;
+  if (!Array.isArray(customUsers) || customUsers.length === 0) {
+    console.warn('[Firestore Seed Users] Bỏ qua đồng bộ vì danh sách truyền vào rỗng.');
+    return false;
+  }
   try {
-    const listToSeed = (Array.isArray(customUsers) && customUsers.length > 0) ? customUsers : MOCK_USERS;
+    const listToSeed = customUsers;
     const promises = listToSeed.map(u => {
       const cleanData = sanitizeData({
         ...u,

@@ -47,7 +47,8 @@ import {
   getContractorChief,
   isSupervisorLeadOrDeputy,
   isInvestorLeadOrDeputy,
-  isContractorLeadOrDeputy
+  isContractorLeadOrDeputy,
+  isSameContractorCompany
 } from './data/mockData';
 import { getSuggestedStandards, loadStoredStandards, STANDARDS_STORAGE_KEY, INITIAL_STANDARDS_DATA } from './data/standardsRules';
 import { 
@@ -189,6 +190,33 @@ if (typeof window !== 'undefined' && window.localStorage) {
   }
 }
 
+function isLegacyTestUser(u) {
+  if (!u) return false;
+  const uid = (u.uid || '').toLowerCase();
+  const email = (u.email || '').toLowerCase();
+  return uid === 'uid_muitvgsv' || uid === 'uid_muicdt' ||
+         uid === 'uid_custom_1792576174520' || uid === 'uid_custom_1792576233247' ||
+         email.includes('muitvgs') || email.includes('muicdt');
+}
+
+function getActiveUsersPool(customUsers) {
+  if (Array.isArray(customUsers) && customUsers.length > 0) {
+    return customUsers;
+  }
+  try {
+    const saved = typeof window !== 'undefined' && window.localStorage
+      ? localStorage.getItem(USERS_STORAGE_KEY)
+      : null;
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {}
+  return !isFirebaseConfigured ? MOCK_USERS : [];
+}
+
 // Hàm chuẩn hóa tên công ty ĐVTC: Lấy trực tiếp từ tên công ty đã lưu hoặc tra cứu trực tiếp tài khoản người tạo
 function resolveCleanContractorCompany(rawComp, personName, textContext, uid, customUsers) {
   // 1. Ưu tiên cao nhất: Lấy trực tiếp từ tên công ty hợp lệ đã lưu (bỏ qua tên giả lập cũ An Phú Gia nếu có)
@@ -196,8 +224,8 @@ function resolveCleanContractorCompany(rawComp, personName, textContext, uid, cu
     return rawComp.trim();
   }
 
-  // 2. Tra cứu trực tiếp người tạo trong danh sách tài khoản người dùng
-  const userList = customUsers || (typeof users !== 'undefined' ? users : MOCK_USERS);
+  // 2. Tra cứu trực tiếp người tạo trong danh sách tài khoản người dùng thực tế
+  const userList = getActiveUsersPool(customUsers);
   const foundUser = (userList || []).find(u => 
     (uid && u.uid === uid) ||
     (personName && (u.fullName || '').trim().toLowerCase() === (personName || '').trim().toLowerCase())
@@ -210,12 +238,14 @@ function resolveCleanContractorCompany(rawComp, personName, textContext, uid, cu
 }
 
 // Chuẩn hóa dữ liệu phiếu yêu cầu:
-function sanitizeRequestData(req) {
+function sanitizeRequestData(req, customUsers) {
   if (!req) return req;
   const cleanComp = resolveCleanContractorCompany(
     req.contractorCompany,
     req.createdByName,
-    `${req.taskContent || ''} ${req.itemName || ''} ${req.packageName || ''}`
+    `${req.taskContent || ''} ${req.itemName || ''} ${req.packageName || ''}`,
+    req.createdByUid,
+    customUsers
   );
   return {
     ...req,
@@ -224,7 +254,7 @@ function sanitizeRequestData(req) {
 }
 
 // Chuẩn hóa dữ liệu biên bản: số biên bản là WA hoặc MI, mã căn cứ theo cấu trúc [Mã CT]/[WA|MI]/[ddMMyy]-[revStr].01
-function sanitizeReportData(r) {
+function sanitizeReportData(r, customUsers) {
   if (!r) return r;
   const isMat = r.reportTemplate === 'FORM_12' || r.inspectionType === 'MATERIAL';
   const docCode = isMat ? 'MI' : 'WA';
@@ -256,12 +286,15 @@ function sanitizeReportData(r) {
     }
   }
 
+  const userList = getActiveUsersPool(customUsers);
   const cleanContComp = resolveCleanContractorCompany(
     r.attendees?.contractor?.company || r.contractorCompany,
     r.attendees?.contractor?.person,
-    `${r.inspectionObject || ''} ${r.projectInfo?.itemName || ''} ${r.projectInfo?.packageName || ''}`
+    `${r.inspectionObject || ''} ${r.projectInfo?.itemName || ''} ${r.projectInfo?.packageName || ''}`,
+    r.attendees?.contractor?.uid || r.createdByUid,
+    userList
   );
-  const contractorChief = getContractorChief(cleanContComp, MOCK_USERS, {
+  const contractorChief = getContractorChief(cleanContComp, userList, {
     itemName: r.projectInfo?.itemName || r.itemName,
     packageName: r.projectInfo?.packageName || r.packageName,
     taskContent: r.inspectionObject || r.taskContent,
@@ -298,58 +331,31 @@ function sanitizeReportData(r) {
 }
 
 export default function App() {
-  // Quản lý danh sách cán bộ: ưu tiên dữ liệu mới nhất, tự động đồng bộ tài khoản thật
+  // Quản lý danh sách cán bộ: Firestore Cloud là nguồn dữ liệu chuẩn duy nhất khi trực tuyến (không trộn/ghi đè ngược từ MOCK_USERS)
   const [users, setUsers] = useState(() => {
     try {
       const saved = localStorage.getItem(USERS_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const filtered = parsed.filter(u => {
-            const uid = (u?.uid || '').toLowerCase();
-            const email = (u?.email || '').toLowerCase();
-            return !(uid === 'uid_muitvgsv' || uid === 'uid_muicdt' ||
-                     uid === 'uid_custom_1792576174520' || uid === 'uid_custom_1792576233247' ||
-                     email.includes('muitvgs') || email.includes('muicdt'));
-          });
-          // Cập nhật thông tin chuẩn từ MOCK_USERS mới nếu trong cache vẫn còn thông tin giả lập cũ
-          const updatedCached = filtered.map(u => {
-            const mock = MOCK_USERS.find(m => m.uid === u.uid);
-            if (mock) {
-              const isOldMock = u.fullName === 'Phan Văn Lê' || u.fullName === 'Trần Kỹ Thuật PCCC' ||
-                                (u.company && u.company.includes('An Phú Gia')) ||
-                                (u.email && (u.email.includes('lephan.phanle') || u.email.includes('pccc.phanle')));
-              if (isOldMock) {
-                return { ...u, ...mock };
-              }
-            }
-            return u;
-          });
-          const merged = [...updatedCached];
-          MOCK_USERS.forEach(m => {
-            const existingIdx = merged.findIndex(u => u.uid === m.uid || ((u.email || '').toLowerCase() === (m.email || '').toLowerCase()));
-            if (existingIdx === -1) {
-              merged.push(m);
-            }
-          });
-          return merged.map(u => {
-            const mock = MOCK_USERS.find(m => m.uid === u.uid || ((u.email || '').toLowerCase() === (m.email || '').toLowerCase()));
-            return {
+          const filtered = parsed.filter(u => !isLegacyTestUser(u));
+          if (filtered.length > 0) {
+            return filtered.map(u => ({
               ...u,
-              role: u.role || mock?.role || 'CONTRACTOR',
-              leaderId: u.leaderId !== undefined ? u.leaderId : mock?.leaderId,
-              subordinateIds: (Array.isArray(u.subordinateIds) && u.subordinateIds.length > 0) ? u.subordinateIds : (mock?.subordinateIds || u.subordinateIds || []),
+              role: u.role || 'CONTRACTOR',
+              subordinateIds: Array.isArray(u.subordinateIds) ? u.subordinateIds : [],
               password: u.password || '123456',
               status: u.status || 'ACTIVE'
-            };
-          });
+            }));
+          }
         }
       }
     } catch (e) {
       console.warn('Lỗi đọc danh sách cán bộ từ localStorage:', e);
     }
-    return MOCK_USERS;
+    return !isFirebaseConfigured ? MOCK_USERS : [];
   });
+  const [isUsersLoadedFromCloud, setIsUsersLoadedFromCloud] = useState(!isFirebaseConfigured);
 
   // Mốc thời gian bắt đầu ngày 26/10/2026 giờ VN (Xóa toàn bộ dữ liệu kiểm thử cũ từ hôm qua trở về trước)
   const OLD_DATA_CUTOFF = '2026-10-25T17:00:00.000Z';
@@ -361,7 +367,7 @@ export default function App() {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
           const filtered = parsed
-            .map(sanitizeRequestData)
+            .map(item => sanitizeRequestData(item))
             .filter(item => {
               const c = item.createdAt || '';
               return !c || c >= OLD_DATA_CUTOFF;
@@ -373,7 +379,7 @@ export default function App() {
     } catch (e) {
       console.warn('Lỗi đọc requests từ localStorage:', e);
     }
-    return INITIAL_REQUESTS.map(sanitizeRequestData);
+    return INITIAL_REQUESTS.map(item => sanitizeRequestData(item));
   });
 
   const [reports, setReports] = useState(() => {
@@ -383,7 +389,7 @@ export default function App() {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
           const sanitized = parsed
-            .map(sanitizeReportData)
+            .map(item => sanitizeReportData(item))
             .filter(item => {
               const c = item.createdAt || '';
               return !c || c >= OLD_DATA_CUTOFF;
@@ -463,12 +469,7 @@ export default function App() {
       const saved = localStorage.getItem('apct_logged_user');
       if (saved) {
         const parsed = JSON.parse(saved);
-        const uid = (parsed?.uid || '').toLowerCase();
-        const email = (parsed?.email || '').toLowerCase();
-        const isTest = uid === 'uid_muitvgsv' || uid === 'uid_muicdt' ||
-                       uid === 'uid_custom_1792576174520' || uid === 'uid_custom_1792576233247' ||
-                       email.includes('muitvgs') || email.includes('muicdt');
-        if (isTest) {
+        if (isLegacyTestUser(parsed)) {
           localStorage.removeItem('apct_logged_user');
           return null;
         }
@@ -480,8 +481,9 @@ export default function App() {
     }
   });
 
-  // Tự động đồng bộ users vào localStorage
+  // Tự động đồng bộ users vào localStorage (không ghi đè cache bằng mảng rỗng khi đang chờ tải từ Cloud)
   useEffect(() => {
+    if (!Array.isArray(users) || users.length === 0) return;
     try {
       localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
     } catch (e) {
@@ -549,7 +551,8 @@ export default function App() {
     const curNormName = normalizePersonName(user.fullName);
 
     // 2. Phân hệ Đơn Vị Thi Công (CONTRACTOR):
-    // "Ai xem được của người đó": Mỗi cán bộ ĐVTC chỉ xem phiếu/biên bản do chính mình tạo ra hoặc đứng tên ký
+    // - Chỉ huy trưởng / Chỉ huy phó: xem được toàn bộ phiếu/biên bản thuộc công ty ĐVTC của mình
+    // - Kỹ thuật hiện trường: chỉ xem phiếu/biên bản do chính mình lập hoặc đứng tên ký
     if (role === 'CONTRACTOR') {
       const reqCreatedUid = req?.createdByUid;
       const reqCreatedName = (req?.createdByName || '').trim().toLowerCase();
@@ -567,7 +570,30 @@ export default function App() {
         (curNormName && repContractorNorm && curNormName === repContractorNorm)
       );
 
-      return isMyInspection;
+      if (isMyInspection) return true;
+
+      if (isContractorLeadOrDeputy(user)) {
+        const userCompany = user.company || '';
+        const userPool = (Array.isArray(allUsers) && allUsers.length > 0) ? allUsers : (usersRef.current || []);
+        const creatorUser = userPool.find(u =>
+          (reqCreatedUid && u.uid === reqCreatedUid) ||
+          (repContractorUid && u.uid === repContractorUid) ||
+          (reqCreatedName && (u.fullName || '').trim().toLowerCase() === reqCreatedName) ||
+          (repContractorPerson && (u.fullName || '').trim().toLowerCase() === repContractorPerson)
+        );
+        const inspectionCompany =
+          creatorUser?.company ||
+          req?.contractorCompany ||
+          rep?.attendees?.contractor?.company ||
+          rep?.contractorCompany ||
+          '';
+
+        if (userCompany && inspectionCompany && isSameContractorCompany(userCompany, inspectionCompany)) {
+          return true;
+        }
+      }
+
+      return false;
     }
 
     // 3. Phân hệ Tư Vấn Giám Sát (SUPERVISOR & LEAD_SUPERVISOR):
@@ -1043,7 +1069,7 @@ export default function App() {
           const map = new Map();
           (prev || []).forEach(r => map.set(r.id, r));
           idbReports.forEach(rawIr => {
-            const ir = sanitizeReportData(rawIr);
+            const ir = sanitizeReportData(rawIr, usersRef.current);
             const key = ir.id;
             const created = ir.createdAt || '';
             // Bỏ qua các bản ghi trước ngày cutoff
@@ -1087,7 +1113,7 @@ export default function App() {
             // Bỏ qua các bản ghi trước ngày cutoff
             if (!key || (created && created < OLD_DATA_CUTOFF)) return;
             const existing = map.get(key);
-            const sanitizedIr = sanitizeRequestData(ir);
+            const sanitizedIr = sanitizeRequestData(ir, usersRef.current);
             if (!existing) {
               // Chỉ thêm mới từ IndexedDB nếu danh sách hiện tại đang rỗng (phục hồi khi mất localStorage)
               // Không thêm nếu đã có danh sách để tránh hồi sinh các bản ghi đã xóa
@@ -1182,7 +1208,7 @@ export default function App() {
           const key = item.id;
           const created = item.createdAt || '';
           if (key && (!created || created >= OLD_DATA_CUTOFF)) {
-            map.set(key, sanitizeRequestData(item));
+            map.set(key, sanitizeRequestData(item, usersRef.current));
           }
         });
 
@@ -1255,7 +1281,7 @@ export default function App() {
           const key = item.id;
           const created = item.createdAt || '';
           if (key && (!created || created >= OLD_DATA_CUTOFF)) {
-            map.set(key, sanitizeReportData(item));
+            map.set(key, sanitizeReportData(item, usersRef.current));
           }
         });
 
@@ -1436,78 +1462,40 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // 4. Đồng bộ Real-Time Danh sách Cán bộ từ Firestore (Lấy Firestore Cloud làm chuẩn)
+  // 4. Đồng bộ Real-Time Danh sách Cán bộ từ Firestore (Firestore Cloud là nguồn dữ liệu chuẩn duy nhất)
   useEffect(() => {
     const unsubscribe = subscribeToUsers((cloudUsers) => {
-      if (cloudUsers && cloudUsers.length > 0) {
+      // cloudUsers === null: lỗi lắng nghe hoặc chế độ offline chưa cấu hình Firebase -> giữ nguyên state hiện tại
+      if (!Array.isArray(cloudUsers)) {
+        setIsUsersLoadedFromCloud(true);
+        return;
+      }
+
+      setIsUsersLoadedFromCloud(true);
+
+      if (cloudUsers.length > 0) {
         // Dọn dẹp và loại bỏ các tài khoản test cũ khỏi danh sách chính thức
         const cleanUsers = cloudUsers.filter(u => {
-          const uid = (u?.uid || '').toLowerCase();
-          const email = (u?.email || '').toLowerCase();
-          const isTest = uid === 'uid_muitvgsv' || uid === 'uid_muicdt' ||
-                         uid === 'uid_custom_1792576174520' || uid === 'uid_custom_1792576233247' ||
-                         email.includes('muitvgs') || email.includes('muicdt');
+          const isTest = isLegacyTestUser(u);
           if (isTest && isFirebaseConfigured && u.uid) {
             deleteSystemUser(u.uid).catch(() => {});
           }
           return !isTest;
         });
 
-        // Chuẩn hóa chính xác thông tin cán bộ theo bảng phân công
-        cleanUsers.forEach(u => {
-          if (u.uid === 'uid_dvtc_ghvp_00' || (u.email || '').toLowerCase() === 'trongnhan@gmail.com') {
-            u.fullName = 'Nguyễn Trọng Nhân';
-            u.position = 'Chỉ huy trưởng Mep';
-            u.email = 'trongnhan@gmail.com';
-            u.company = 'Công ty TNHH Gia Huy Vĩnh Phúc';
-          } else if (u.uid === 'uid_dvtc_ghvp_01' || (u.email || '').toLowerCase() === 'manhhung1020558@gmail.com') {
-            u.fullName = 'Trần Mạnh Hưng';
-            u.position = 'Chỉ huy trưởng';
-            u.phone = '0907682870';
-            u.email = 'manhhung1020558@gmail.com';
-            u.company = 'Công ty TNHH Gia Huy Vĩnh Phúc';
-          } else if (u.uid === 'uid_dvtc_phanle_01' || (u.email || '').toLowerCase() === 'daothanhthao@gmail.com') {
-            u.fullName = 'Đào Thanh Thảo';
-            u.position = 'Chỉ huy trưởng';
-            u.phone = '0917355318';
-            u.email = 'daothanhthao@gmail.com';
-            u.company = 'Công ty TNHH Phát Triển Xây Dựng Phan Lê';
-          } else if (u.uid === 'uid_dvtc_phanle_02' || (u.email || '').toLowerCase() === 'molam200297@gmail.com') {
-            u.fullName = 'Lâm Ước Mơ';
-            u.position = 'Chỉ huy phó kiêm QS,QC';
-            u.phone = '0379600330';
-            u.email = 'molam200297@gmail.com';
-            u.company = 'Công ty TNHH Phát Triển Xây Dựng Phan Lê';
-          } else if (u.uid === 'uid_custom_1792999445622' || (u.email || '').toLowerCase() === 'lothanhcao@gmail.com') {
-            u.fullName = 'Lo Thanh Cao';
-            u.position = 'Chỉ huy phó';
-            u.phone = '0909094864';
-            u.email = 'lothanhcao@gmail.com';
-            u.company = 'Công ty TNHH Phát Triển Xây Dựng Phan Lê';
-          } else if (u.uid === 'uid_custom_1792999632414' || (u.email || '').toLowerCase() === 'minhpham06081999@gmail.com') {
-            u.fullName = 'Phạm Duy Minh';
-            u.position = 'Cán bộ kỹ thuật';
-            u.phone = '0332268561';
-            u.email = 'minhpham06081999@gmail.com';
-            u.company = 'Công ty TNHH Phát Triển Xây Dựng Phan Lê';
-          }
-        });
-
         setUsers(cleanUsers);
         try {
-          localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(cleanUsers));
+          if (cleanUsers.length > 0) {
+            localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(cleanUsers));
+          }
         } catch (e) {
           console.warn('Lỗi lưu users vào cache:', e);
         }
 
-        // Tự động đồng bộ với currentUser nếu thông tin tài khoản đang đăng nhập được cập nhật
+        // Tự động đồng bộ với currentUser nếu thông tin tài khoản đang đăng nhập được cập nhật trên Cloud
         setCurrentUser(curr => {
           if (!curr) return curr;
-          const curUid = (curr.uid || '').toLowerCase();
-          const curEmail = (curr.email || '').toLowerCase();
-          if (curUid === 'uid_muitvgsv' || curUid === 'uid_muicdt' ||
-              curUid === 'uid_custom_1792576174520' || curUid === 'uid_custom_1792576233247' ||
-              curEmail.includes('muitvgs') || curEmail.includes('muicdt')) {
+          if (isLegacyTestUser(curr)) {
             try { localStorage.removeItem('apct_logged_user'); } catch (e) {}
             return null;
           }
@@ -1521,9 +1509,6 @@ export default function App() {
           }
           return curr;
         });
-      } else if (isFirebaseConfigured) {
-        // Tự động seed lên Firestore nếu trên cloud chưa có
-        seedOfficialUsersToCloud(MOCK_USERS).catch(console.warn);
       }
     });
     return () => unsubscribe();
@@ -4102,85 +4087,103 @@ export default function App() {
   };
 
   // QUẢN LÝ CÁN BỘ (Personnel Management Handlers - Sync Firestore Cloud & Two-Way Hierarchy Sync)
-  const handleAddUser = async (newUser) => {
-    setUsers(prev => {
-      let updatedUsers = [newUser, ...prev];
-
-      // Nếu tạo Trưởng hoặc Phó có danh sách cấp dưới (subordinateIds) -> cập nhật leaderId cho các cấp dưới đó
-      const isNewLeadOrDeputy = (newUser.role === 'LEAD_SUPERVISOR' || newUser.role === 'LEAD_INVESTOR' || isSupervisorLeadOrDeputy(newUser) || isInvestorLeadOrDeputy(newUser));
-      if (isNewLeadOrDeputy && Array.isArray(newUser.subordinateIds)) {
-        updatedUsers = updatedUsers.map(u => {
-          if (u.uid === newUser.uid) return u;
-          if (newUser.subordinateIds.includes(u.uid)) {
-            return { ...u, leaderId: newUser.uid };
-          }
-          return u;
-        });
-      }
-
-      // Nếu tạo cán bộ cấp dưới có leaderId -> thêm cán bộ này vào subordinateIds của vị Trưởng đó
-      if (newUser.leaderId) {
-        updatedUsers = updatedUsers.map(u => {
-          if (u.uid === newUser.leaderId) {
-            const curSubs = Array.isArray(u.subordinateIds) ? u.subordinateIds : [];
-            if (!curSubs.includes(newUser.uid)) {
-              return { ...u, subordinateIds: [...curSubs, newUser.uid] };
-            }
-          }
-          return u;
-        });
-      }
-
-      safeSaveLocalStorage(USERS_STORAGE_KEY, updatedUsers);
-      return updatedUsers;
+  const syncChangedUsersToCloud = async (prevList, nextList, extraIds = []) => {
+    const prevMap = new Map((prevList || []).map(u => [u.uid, u]));
+    const extraSet = new Set(extraIds.filter(Boolean));
+    const usersToSave = (nextList || []).filter(nextU => {
+      if (!nextU?.uid) return false;
+      if (extraSet.has(nextU.uid)) return true;
+      const prevU = prevMap.get(nextU.uid);
+      if (!prevU) return true;
+      return (
+        (prevU.leaderId || null) !== (nextU.leaderId || null) ||
+        JSON.stringify(prevU.subordinateIds || []) !== JSON.stringify(nextU.subordinateIds || [])
+      );
     });
+    if (usersToSave.length > 0) {
+      await Promise.all(usersToSave.map(u => saveSystemUser(u)));
+    }
+  };
+
+  const handleAddUser = async (newUser) => {
+    const prevUsers = Array.isArray(usersRef.current) ? usersRef.current : users;
+    let updatedUsers = [newUser, ...prevUsers];
+
+    // Nếu tạo Trưởng hoặc Phó có danh sách cấp dưới (subordinateIds) -> cập nhật leaderId cho các cấp dưới đó
+    const isNewLeadOrDeputy = (newUser.role === 'LEAD_SUPERVISOR' || newUser.role === 'LEAD_INVESTOR' || isSupervisorLeadOrDeputy(newUser) || isInvestorLeadOrDeputy(newUser));
+    if (isNewLeadOrDeputy && Array.isArray(newUser.subordinateIds)) {
+      updatedUsers = updatedUsers.map(u => {
+        if (u.uid === newUser.uid) return u;
+        if (newUser.subordinateIds.includes(u.uid)) {
+          return { ...u, leaderId: newUser.uid };
+        }
+        return u;
+      });
+    }
+
+    // Nếu tạo cán bộ cấp dưới có leaderId -> thêm cán bộ này vào subordinateIds của vị Trưởng đó
+    if (newUser.leaderId) {
+      updatedUsers = updatedUsers.map(u => {
+        if (u.uid === newUser.leaderId) {
+          const curSubs = Array.isArray(u.subordinateIds) ? u.subordinateIds : [];
+          if (!curSubs.includes(newUser.uid)) {
+            return { ...u, subordinateIds: [...curSubs, newUser.uid] };
+          }
+        }
+        return u;
+      });
+    }
+
+    usersRef.current = updatedUsers;
+    setUsers(updatedUsers);
+    safeSaveLocalStorage(USERS_STORAGE_KEY, updatedUsers);
 
     try {
-      await saveSystemUser(newUser);
+      await syncChangedUsersToCloud(prevUsers, updatedUsers, [newUser.uid]);
     } catch (e) {
       console.warn('Lỗi lưu cán bộ lên Firestore:', e);
     }
   };
 
   const handleUpdateUser = async (updatedUser) => {
-    setUsers(prev => {
-      let updatedUsers = prev.map(u => u.uid === updatedUser.uid ? updatedUser : u);
+    const prevUsers = Array.isArray(usersRef.current) ? usersRef.current : users;
+    let updatedUsers = prevUsers.map(u => u.uid === updatedUser.uid ? updatedUser : u);
 
-      // Nếu cập nhật Trưởng hoặc Phó -> đồng bộ hai chiều với các cấp dưới
-      const isUpdatedLeadOrDeputy = (updatedUser.role === 'LEAD_SUPERVISOR' || updatedUser.role === 'LEAD_INVESTOR' || isSupervisorLeadOrDeputy(updatedUser) || isInvestorLeadOrDeputy(updatedUser));
-      if (isUpdatedLeadOrDeputy) {
-        const newSubs = Array.isArray(updatedUser.subordinateIds) ? updatedUser.subordinateIds : [];
-        updatedUsers = updatedUsers.map(u => {
-          if (u.uid === updatedUser.uid) return u;
-          if (newSubs.includes(u.uid)) {
-            return { ...u, leaderId: updatedUser.uid };
-          }
-          if (u.leaderId === updatedUser.uid && !newSubs.includes(u.uid)) {
-            return { ...u, leaderId: null };
-          }
-          return u;
-        });
-      }
+    // Nếu cập nhật Trưởng hoặc Phó -> đồng bộ hai chiều với các cấp dưới
+    const isUpdatedLeadOrDeputy = (updatedUser.role === 'LEAD_SUPERVISOR' || updatedUser.role === 'LEAD_INVESTOR' || isSupervisorLeadOrDeputy(updatedUser) || isInvestorLeadOrDeputy(updatedUser));
+    if (isUpdatedLeadOrDeputy) {
+      const newSubs = Array.isArray(updatedUser.subordinateIds) ? updatedUser.subordinateIds : [];
+      updatedUsers = updatedUsers.map(u => {
+        if (u.uid === updatedUser.uid) return u;
+        if (newSubs.includes(u.uid)) {
+          return { ...u, leaderId: updatedUser.uid };
+        }
+        if (u.leaderId === updatedUser.uid && !newSubs.includes(u.uid)) {
+          return { ...u, leaderId: null };
+        }
+        return u;
+      });
+    }
 
-      // Nếu cập nhật cán bộ thường có leaderId -> đồng bộ vào subordinateIds của Trưởng
-      if (updatedUser.role === 'SUPERVISOR' || updatedUser.role === 'INVESTOR') {
-        updatedUsers = updatedUsers.map(u => {
-          if (u.uid === updatedUser.uid) return u;
-          const curSubs = Array.isArray(u.subordinateIds) ? u.subordinateIds : [];
-          if (u.uid === updatedUser.leaderId) {
-            if (!curSubs.includes(updatedUser.uid)) {
-              return { ...u, subordinateIds: [...curSubs, updatedUser.uid] };
-            }
-          } else if (curSubs.includes(updatedUser.uid) && u.uid !== updatedUser.leaderId) {
-            return { ...u, subordinateIds: curSubs.filter(id => id !== updatedUser.uid) };
+    // Nếu cập nhật cán bộ thường có leaderId -> đồng bộ vào subordinateIds của Trưởng
+    if (updatedUser.role === 'SUPERVISOR' || updatedUser.role === 'INVESTOR') {
+      updatedUsers = updatedUsers.map(u => {
+        if (u.uid === updatedUser.uid) return u;
+        const curSubs = Array.isArray(u.subordinateIds) ? u.subordinateIds : [];
+        if (u.uid === updatedUser.leaderId) {
+          if (!curSubs.includes(updatedUser.uid)) {
+            return { ...u, subordinateIds: [...curSubs, updatedUser.uid] };
           }
-          return u;
-        });
-      }
+        } else if (curSubs.includes(updatedUser.uid) && u.uid !== updatedUser.leaderId) {
+          return { ...u, subordinateIds: curSubs.filter(id => id !== updatedUser.uid) };
+        }
+        return u;
+      });
+    }
 
-      safeSaveLocalStorage(USERS_STORAGE_KEY, updatedUsers);
-      return updatedUsers;
-    });
+    usersRef.current = updatedUsers;
+    setUsers(updatedUsers);
+    safeSaveLocalStorage(USERS_STORAGE_KEY, updatedUsers);
 
     if (currentUser?.uid === updatedUser.uid) {
       const refreshedCurrentUser = {
@@ -4196,7 +4199,7 @@ export default function App() {
     }
 
     try {
-      await saveSystemUser(updatedUser);
+      await syncChangedUsersToCloud(prevUsers, updatedUsers, [updatedUser.uid]);
     } catch (e) {
       console.warn('Lỗi cập nhật cán bộ lên Firestore:', e);
     }
@@ -4213,23 +4216,27 @@ export default function App() {
   };
 
   const handleDeleteUser = async (userId) => {
-    setUsers(prev => {
-      const filtered = prev.filter(u => u.uid !== userId).map(u => {
-        if (u.leaderId === userId) return { ...u, leaderId: null };
-        if (Array.isArray(u.subordinateIds) && u.subordinateIds.includes(userId)) {
-          return { ...u, subordinateIds: u.subordinateIds.filter(id => id !== userId) };
-        }
-        return u;
-      });
-      safeSaveLocalStorage(USERS_STORAGE_KEY, filtered);
-      return filtered;
+    const prevUsers = Array.isArray(usersRef.current) ? usersRef.current : users;
+    const filtered = prevUsers.filter(u => u.uid !== userId).map(u => {
+      if (u.leaderId === userId) return { ...u, leaderId: null };
+      if (Array.isArray(u.subordinateIds) && u.subordinateIds.includes(userId)) {
+        return { ...u, subordinateIds: u.subordinateIds.filter(id => id !== userId) };
+      }
+      return u;
     });
+
+    usersRef.current = filtered;
+    setUsers(filtered);
+    safeSaveLocalStorage(USERS_STORAGE_KEY, filtered);
 
     if (currentUser?.uid === userId) {
       handleLogout();
     }
     try {
-      await deleteSystemUser(userId);
+      await Promise.all([
+        deleteSystemUser(userId),
+        syncChangedUsersToCloud(prevUsers, filtered)
+      ]);
     } catch (e) {
       console.warn('Lỗi xóa cán bộ trên Firestore:', e);
     }
@@ -4292,6 +4299,10 @@ export default function App() {
 
   // Đồng bộ toàn bộ danh sách cán bộ hiện có lên Google Firestore Cloud
   const handleSyncAllUsersToCloud = async () => {
+    if (!Array.isArray(users) || users.length === 0) {
+      console.warn('Bỏ qua đồng bộ lên Cloud vì danh sách cán bộ đang trống.');
+      return false;
+    }
     try {
       await seedOfficialUsersToCloud(users);
       safeSaveLocalStorage(USERS_STORAGE_KEY, users);
@@ -6971,7 +6982,13 @@ export default function App() {
 
   // NẾU CHƯA ĐĂNG NHẬP -> HIỆN MÀN HÌNH LOGIN (Đặt sau toàn bộ Hooks để tuân thủ quy tắc React Hook)
   if (!currentUser) {
-    return <LoginScreen onLogin={handleLogin} users={users} />;
+    return (
+      <LoginScreen
+        onLogin={handleLogin}
+        users={users}
+        isLoadingUsers={!isUsersLoadedFromCloud && users.length === 0}
+      />
+    );
   }
 
   return (

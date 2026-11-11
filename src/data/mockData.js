@@ -945,18 +945,8 @@ export function getContractorChief(companyName, usersList = [], context = {}) {
   // Lọc các cán bộ thuộc Đơn vị thi công và thuộc công ty tương ứng
   const contractorUsers = pool.filter(u => {
     if (u.role !== 'CONTRACTOR') return false;
-    const uComp = (u.company || '').toLowerCase().trim();
     if (!cleanComp) return true;
-    if (cleanComp.includes('gia huy') || cleanComp.includes('an phú gia')) {
-      return uComp.includes('gia huy') || uComp.includes('an phú gia');
-    }
-    if (cleanComp.includes('phan lê')) {
-      return uComp.includes('phan lê');
-    }
-    if (cleanComp.includes('bình hoà') || cleanComp.includes('bình hòa')) {
-      return uComp.includes('bình hoà') || uComp.includes('bình hòa');
-    }
-    return uComp.includes(cleanComp) || cleanComp.includes(uComp);
+    return isSameContractorCompany(u.company, companyName);
   });
 
   // 1. Công ty TNHH Phát Triển Xây Dựng Phan Lê: Luôn là Đào Thanh Thảo
@@ -1071,10 +1061,9 @@ export const isSupervisorLeadOrDeputy = (user) => {
   if (role !== 'SUPERVISOR' && role !== 'LEAD_SUPERVISOR') return false;
   if (role === 'LEAD_SUPERVISOR') return true;
   if (user.isLead || user.isDeputy) return true;
-  const pos = normalizeRoleString(user.position);
+  const pos = normalizeRoleString(user.position).replace(/\bhien truong\b/g, ' ');
   return (
-    pos.includes('truong') ||
-    pos.includes('pho') ||
+    /\b(truong|pho)\b/.test(pos) ||
     pos.includes('giam sat truong') ||
     pos.includes('doan truong') ||
     pos.includes('pho doan') ||
@@ -1092,12 +1081,12 @@ export const isSupervisorLeadOnly = (user) => {
   if (role === 'LEAD_SUPERVISOR') return true;
   if (user.isLead && !user.isDeputy) {
     const pos = normalizeRoleString(user.position);
-    if (!pos.includes('pho')) return true;
+    if (!/\bpho\b/.test(pos)) return true;
   }
-  const pos = normalizeRoleString(user.position);
-  if (pos.includes('pho')) return false; // Nếu là Phó (ví dụ: Phó đoàn TVGS) thì KHÔNG phải LeadOnly
+  const pos = normalizeRoleString(user.position).replace(/\bhien truong\b/g, ' ');
+  if (/\bpho\b/.test(pos)) return false; // Nếu là Phó (ví dụ: Phó đoàn TVGS) thì KHÔNG phải LeadOnly
   return (
-    pos.includes('truong') ||
+    /\btruong\b/.test(pos) ||
     pos.includes('giam sat truong') ||
     pos.includes('doan truong')
   );
@@ -1115,10 +1104,9 @@ export const isInvestorLeadOrDeputy = (user) => {
   if (role !== 'INVESTOR' && role !== 'LEAD_INVESTOR') return false;
   if (role === 'LEAD_INVESTOR') return true;
   if (user.isLead || user.isDeputy) return true;
-  const pos = normalizeRoleString(user.position);
+  const pos = normalizeRoleString(user.position).replace(/\bhien truong\b/g, ' ');
   return (
-    pos.includes('truong') ||
-    pos.includes('pho') ||
+    /\b(truong|pho)\b/.test(pos) ||
     pos.includes('giam doc') ||
     pos.includes('pho ban') ||
     pos.includes('pho giam doc')
@@ -1135,12 +1123,12 @@ export const isInvestorLeadOnly = (user) => {
   if (role === 'LEAD_INVESTOR') return true;
   if (user.isLead && !user.isDeputy) {
     const pos = normalizeRoleString(user.position);
-    if (!pos.includes('pho')) return true;
+    if (!/\bpho\b/.test(pos)) return true;
   }
-  const pos = normalizeRoleString(user.position);
-  if (pos.includes('pho')) return false; // Nếu là Phó (ví dụ: Phó Ban QLDA) thì KHÔNG phải LeadOnly
+  const pos = normalizeRoleString(user.position).replace(/\bhien truong\b/g, ' ');
+  if (/\bpho\b/.test(pos)) return false; // Nếu là Phó (ví dụ: Phó Ban QLDA) thì KHÔNG phải LeadOnly
   return (
-    pos.includes('truong') ||
+    /\btruong\b/.test(pos) ||
     pos.includes('giam doc')
   );
 };
@@ -1153,7 +1141,34 @@ export const isContractorLeadOrDeputy = (user) => {
   const role = user.role;
   if (role !== 'CONTRACTOR') return false;
   if (user.isLead || user.isDeputy) return true;
-  const pos = normalizeRoleString(user.position);
-  return pos.includes('chi huy') || pos.includes('truong') || pos.includes('pho');
+  const pos = normalizeRoleString(user.position).replace(/\bhien truong\b/g, ' ');
+  return (
+    pos.includes('chi huy') ||
+    pos.includes('giam doc') ||
+    /\b(truong|pho)\b/.test(pos)
+  );
+};
+
+/**
+ * So sánh 2 tên công ty ĐVTC (chuẩn hóa dấu tiếng Việt và gom tên cũ An Phú Gia với Gia Huy)
+ */
+export const isSameContractorCompany = (companyA, companyB) => {
+  const a = normalizeRoleString(companyA);
+  const b = normalizeRoleString(companyB);
+  if (!a || !b) return false;
+
+  const isGiaHuyA = a.includes('gia huy') || a.includes('an phu gia');
+  const isGiaHuyB = b.includes('gia huy') || b.includes('an phu gia');
+  if (isGiaHuyA || isGiaHuyB) return isGiaHuyA && isGiaHuyB;
+
+  const isPhanLeA = a.includes('phan le');
+  const isPhanLeB = b.includes('phan le');
+  if (isPhanLeA || isPhanLeB) return isPhanLeA && isPhanLeB;
+
+  const isBinhHoaA = a.includes('binh hoa');
+  const isBinhHoaB = b.includes('binh hoa');
+  if (isBinhHoaA || isBinhHoaB) return isBinhHoaA && isBinhHoaB;
+
+  return a === b || a.includes(b) || b.includes(a);
 };
 

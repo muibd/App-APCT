@@ -187,8 +187,9 @@ export async function forceUpdateAppAndClearCache() {
       }
     }
 
-    // 3. Dọn sạch toàn bộ cache dữ liệu nội bộ
+    // 3. Dọn sạch toàn bộ cache dữ liệu nội bộ (kể cả cache danh sách cán bộ để nạp lại bản chuẩn từ Firestore)
     await clearAllAPCTStorage();
+    localStorage.removeItem('apct_users_list');
 
     // 4. Tải lại trang với query tham số mới để vượt qua CDN / HTTP disk cache
     const cacheBuster = Date.now();

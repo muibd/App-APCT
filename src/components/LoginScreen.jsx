@@ -5,9 +5,13 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { MOCK_USERS } from '../data/mockData';
+import { isFirebaseConfigured } from '../services/firebase';
 import { forceUpdateAppAndClearCache } from '../utils/storageHelper';
 
-export default function LoginScreen({ onLogin, users = MOCK_USERS }) {
+export default function LoginScreen({ onLogin, users = [], isLoadingUsers = false }) {
+  const effectiveUsers = (Array.isArray(users) && users.length > 0)
+    ? users
+    : (!isFirebaseConfigured ? MOCK_USERS : []);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -41,12 +45,20 @@ export default function LoginScreen({ onLogin, users = MOCK_USERS }) {
       setErrorMsg('Vui lòng nhập mật khẩu!');
       return;
     }
+    if (isLoadingUsers && effectiveUsers.length === 0) {
+      setErrorMsg('Đang tải danh sách tài khoản từ Firestore Cloud, vui lòng chờ giây lát rồi thử lại!');
+      return;
+    }
+    if (!isLoadingUsers && effectiveUsers.length === 0 && isFirebaseConfigured) {
+      setErrorMsg('Không thể tải danh sách tài khoản từ Firestore Cloud. Vui lòng kiểm tra kết nối mạng và bấm Cập Nhật Ứng Dụng!');
+      return;
+    }
 
     setIsLoading(true);
 
-    // Tìm tài khoản trong danh sách users
+    // Tìm tài khoản trong danh sách users thực tế
     setTimeout(() => {
-      const foundUser = users.find(u => {
+      const foundUser = effectiveUsers.find(u => {
         const uEmail = (u.email || '').toLowerCase();
         const uUid = (u.uid || '').toLowerCase();
         const uPhone = (u.phone || '').replace(/\D/g, '');
@@ -274,7 +286,7 @@ export default function LoginScreen({ onLogin, users = MOCK_USERS }) {
           <button
             type="submit"
             className="btn-primary"
-            disabled={isLoading}
+            disabled={isLoading || (isLoadingUsers && effectiveUsers.length === 0)}
             style={{
               width: '100%',
               justifyContent: 'center',
@@ -283,10 +295,16 @@ export default function LoginScreen({ onLogin, users = MOCK_USERS }) {
               fontSize: '0.95rem',
               fontWeight: 700,
               boxShadow: '0 6px 18px rgba(37, 99, 235, 0.35)',
-              cursor: isLoading ? 'wait' : 'pointer'
+              cursor: (isLoading || (isLoadingUsers && effectiveUsers.length === 0)) ? 'wait' : 'pointer'
             }}
           >
-            <span>{isLoading ? 'Đang xác thực...' : 'Đăng Nhập Vào Hệ Thống'}</span>
+            <span>
+              {isLoading
+                ? 'Đang xác thực...'
+                : (isLoadingUsers && effectiveUsers.length === 0)
+                  ? 'Đang tải danh sách tài khoản Cloud...'
+                  : 'Đăng Nhập Vào Hệ Thống'}
+            </span>
             <ArrowRight size={18} />
           </button>
 
