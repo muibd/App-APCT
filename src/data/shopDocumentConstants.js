@@ -146,6 +146,17 @@ export const isAsBuiltDoc = (doc) => {
 };
 
 /**
+ * Kiểm tra một bước thẩm định (assignedTvgs / assignedInvestor) đã thực sự được phân công hay chưa.
+ * Chỉ coi là đã phân công khi có uid cán bộ VÀ trạng thái không còn ở WAITING_ASSIGNMENT
+ * (tránh kẹt UI khi merge bản ghi chỉ có uid mà chưa hoàn tất phân công).
+ */
+export const isStageAssigned = (stage) => {
+  if (!stage) return false;
+  const hasAssigneeUid = Boolean(stage.assignee?.uid || stage.uid || stage.assignee);
+  return hasAssigneeUid && stage.status !== 'WAITING_ASSIGNMENT';
+};
+
+/**
  * Kiểm tra hồ sơ có bị Chậm từ phía Tư Vấn Giám Sát (TVGS) hay không:
  * 1. Chậm giao: Quá 24h kể từ khi tạo phiếu mà TVGS Trưởng chưa giao cán bộ.
  * 2. Chậm duyệt: Cán bộ TVGS được giao quá hạn SLA mà chưa xác nhận ĐẠT.
@@ -162,10 +173,10 @@ export const getShopTvgsOverdueInfo = (doc) => {
   }
 
   const now = Date.now();
-  const isTvgsAssigned = Boolean(doc.assignedTvgs?.assignee || doc.assignedTvgs?.uid);
+  const isTvgsAssigned = isStageAssigned(doc.assignedTvgs);
 
   // 1. Kiểm tra chậm giao việc (Hạn 1 ngày / 24h kể từ thời điểm tạo phiếu)
-  if (!isTvgsAssigned || doc.assignedTvgs?.status === 'WAITING_ASSIGNMENT') {
+  if (!isTvgsAssigned) {
     const deadlineTime = doc.assignmentDeadline 
       ? new Date(doc.assignmentDeadline).getTime() 
       : (new Date(doc.createdAt || doc.submittedAt || Date.now()).getTime() + 24 * 60 * 60 * 1000);
@@ -225,10 +236,10 @@ export const getShopInvestorOverdueInfo = (doc) => {
     ? new Date(doc.assignedTvgs.reviewedAt).getTime() 
     : (doc.updatedAt ? new Date(doc.updatedAt).getTime() : now);
 
-  const isInvestorAssigned = Boolean(doc.assignedInvestor?.assignee || doc.assignedInvestor?.uid);
+  const isInvestorAssigned = isStageAssigned(doc.assignedInvestor);
 
   // 1. Kiểm tra chậm giao: Trưởng Ban QLDA có 1 ngày (24h) kể từ khi TVGS duyệt đạt để chọn cán bộ
-  if (!isInvestorAssigned || doc.assignedInvestor?.status === 'WAITING_ASSIGNMENT') {
+  if (!isInvestorAssigned) {
     const invAssignDeadline = tvgsReviewedTime + 24 * 60 * 60 * 1000;
     if (now > invAssignDeadline) {
       return { isOverdue: true, type: 'ASSIGNMENT', reason: 'Ban QLDA Chậm giao' };
@@ -297,8 +308,7 @@ export const getEffectiveShopStatus = (doc) => {
 
   // 2. NẾU TVGS CHƯA DUYỆT ĐẠT:
   if (doc.assignedTvgs?.status !== 'ACCEPTED') {
-    const isTvgsAssigned = Boolean(doc.assignedTvgs?.assignee || doc.assignedTvgs?.uid);
-    if (!isTvgsAssigned || doc.assignedTvgs?.status === 'WAITING_ASSIGNMENT') {
+    if (!isStageAssigned(doc.assignedTvgs)) {
       return SHOP_STATUS.WAITING_ASSIGNMENT;
     }
     return SHOP_STATUS.SENT;
@@ -310,8 +320,7 @@ export const getEffectiveShopStatus = (doc) => {
     return SHOP_STATUS.OVERDUE_INVESTOR;
   }
 
-  const isInvestorAssigned = Boolean(doc.assignedInvestor?.assignee || doc.assignedInvestor?.uid);
-  if (!isInvestorAssigned || doc.assignedInvestor?.status === 'WAITING_ASSIGNMENT') {
+  if (!isStageAssigned(doc.assignedInvestor)) {
     return SHOP_STATUS.WAITING_ASSIGNMENT;
   }
 

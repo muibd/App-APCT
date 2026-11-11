@@ -4,6 +4,9 @@
 // ============================================================================
 
 import { safeSaveLocalStorage } from '../utils/storageHelper';
+import { isStageAssigned } from './shopDocumentConstants';
+
+export { isStageAssigned };
 
 export const PAYMENT_DOCUMENTS_STORAGE_KEY = 'apct_payment_documents';
 export const PAYMENT_SLA_STORAGE_KEY = 'apct_payment_sla_configs';
@@ -138,10 +141,10 @@ export const getPaymentTvgsOverdueInfo = (doc) => {
   }
 
   const now = Date.now();
-  const isTvgsAssigned = Boolean(doc.assignedTvgs?.assignee || doc.assignedTvgs?.uid);
+  const isTvgsAssigned = isStageAssigned(doc.assignedTvgs);
 
   // 1. Kiểm tra chậm giao việc (Hạn 1 ngày / 24h kể từ khi tạo phiếu)
-  if (!isTvgsAssigned || doc.assignedTvgs?.status === 'WAITING_ASSIGNMENT') {
+  if (!isTvgsAssigned) {
     const deadlineTime = doc.assignmentDeadline 
       ? new Date(doc.assignmentDeadline).getTime() 
       : (new Date(doc.createdAt || doc.submittedAt || Date.now()).getTime() + 24 * 60 * 60 * 1000);
@@ -196,10 +199,10 @@ export const getPaymentInvestorOverdueInfo = (doc) => {
     ? new Date(doc.assignedTvgs.reviewedAt).getTime() 
     : (doc.updatedAt ? new Date(doc.updatedAt).getTime() : now);
 
-  const isInvestorAssigned = Boolean(doc.assignedInvestor?.assignee || doc.assignedInvestor?.uid);
+  const isInvestorAssigned = isStageAssigned(doc.assignedInvestor);
 
   // 1. Kiểm tra chậm giao: Trưởng Ban QLDA có 1 ngày (24h) kể từ khi TVGS duyệt đạt để chọn cán bộ
-  if (!isInvestorAssigned || doc.assignedInvestor?.status === 'WAITING_ASSIGNMENT') {
+  if (!isInvestorAssigned) {
     const invAssignDeadline = tvgsReviewedTime + 24 * 60 * 60 * 1000;
     if (now > invAssignDeadline) {
       return { isOverdue: true, type: 'ASSIGNMENT', reason: 'Ban QLDA Chậm giao' };
@@ -261,8 +264,7 @@ export const getEffectivePaymentStatus = (doc) => {
 
   // 2. NẾU TVGS CHƯA DUYỆT ĐẠT:
   if (doc.assignedTvgs?.status !== 'ACCEPTED') {
-    const isTvgsAssigned = Boolean(doc.assignedTvgs?.assignee || doc.assignedTvgs?.uid);
-    if (!isTvgsAssigned || doc.assignedTvgs?.status === 'WAITING_ASSIGNMENT') {
+    if (!isStageAssigned(doc.assignedTvgs)) {
       return PAYMENT_STATUS.WAITING_ASSIGNMENT;
     }
     return PAYMENT_STATUS.SENT;
@@ -274,8 +276,7 @@ export const getEffectivePaymentStatus = (doc) => {
     return PAYMENT_STATUS.OVERDUE_INVESTOR;
   }
 
-  const isInvestorAssigned = Boolean(doc.assignedInvestor?.assignee || doc.assignedInvestor?.uid);
-  if (!isInvestorAssigned || doc.assignedInvestor?.status === 'WAITING_ASSIGNMENT') {
+  if (!isStageAssigned(doc.assignedInvestor)) {
     return PAYMENT_STATUS.WAITING_ASSIGNMENT;
   }
 

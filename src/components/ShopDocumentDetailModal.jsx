@@ -12,7 +12,8 @@ import {
   isAsBuiltDoc,
   getShopTvgsOverdueInfo,
   getShopInvestorOverdueInfo,
-  getDocumentAttachmentVersions
+  getDocumentAttachmentVersions,
+  isStageAssigned
 } from '../data/shopDocumentConstants';
 import { openPdfInNewTab } from '../utils/pdfHelper';
 import { compressImageFile } from '../utils/storageHelper';
@@ -157,10 +158,10 @@ export default function ShopDocumentDetailModal({
 
   // Kiểm tra cán bộ đã được phân công chưa
   const tvgsAssignee = shopDoc.assignedTvgs?.assignee || (shopDoc.assignedTvgs?.uid ? shopDoc.assignedTvgs : null);
-  const isTvgsAssigned = Boolean(tvgsAssignee?.uid);
+  const isTvgsAssigned = isStageAssigned(shopDoc.assignedTvgs);
 
   const investorAssignee = shopDoc.assignedInvestor?.assignee || (shopDoc.assignedInvestor?.uid ? shopDoc.assignedInvestor : null);
-  const isInvestorAssigned = Boolean(investorAssignee?.uid);
+  const isInvestorAssigned = isStageAssigned(shopDoc.assignedInvestor);
 
   // Điều kiện tuần tự: TVGS phải duyệt đạt trước thì Ban QLDA mới đến lượt
   const isTvgsApproved = shopDoc.assignedTvgs?.status === 'ACCEPTED';
@@ -1375,6 +1376,11 @@ export default function ShopDocumentDetailModal({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
                     <div style={{ fontSize: '0.78rem', color: '#92400e', background: '#fef3c7', padding: '8px 10px', borderRadius: '6px', border: '1px solid #fde68a' }}>
                       Hồ sơ đã gửi đến <strong>TVGS Trưởng (Đinh Xuân Thám)</strong>. Thời hạn phân công cán bộ: 1 ngày (24h).
+                      {tvgsAssignee?.uid && !shopDoc.assignedTvgs?.assignedAt && (
+                        <div style={{ marginTop: '4px', fontSize: '0.74rem', color: '#b45309' }}>
+                          Lưu ý: Bản ghi trước đó chưa hoàn tất đồng bộ phân công ({tvgsAssignee.fullName || 'TVGS'}). Vui lòng bấm phân công lại bên dưới.
+                        </div>
+                      )}
                     </div>
 
                     {/* NÚT MỞ FORM PHÂN CÔNG NẾU LÀ TVGS TRƯỞNG HOẶC ADMIN */}
@@ -1382,7 +1388,7 @@ export default function ShopDocumentDetailModal({
                       <button
                         type="button"
                         onClick={() => {
-                          setTvgsAssigneeUid(currentUser?.uid || '');
+                          setTvgsAssigneeUid(tvgsAssignee?.uid || currentUser?.uid || '');
                           setTvgsSlaDays(shopDoc.assignedTvgs?.slaDays || 3);
                           setIsAssigningTvgs(true);
                         }}
@@ -1714,6 +1720,11 @@ export default function ShopDocumentDetailModal({
                         ) : (
                           <>TVGS đã duyệt đạt! Thời hạn phân công cán bộ Ban QLDA (24h): còn <strong>{remainingInvestor1DayHours}h</strong>{investorAssignmentDeadlineTime ? ` (Hạn: ${formatDateStr(new Date(investorAssignmentDeadlineTime).toISOString())})` : ''}.</>
                         )}
+                        {investorAssignee?.uid && !shopDoc.assignedInvestor?.assignedAt && (
+                          <div style={{ marginTop: '4px', fontSize: '0.74rem', color: '#b45309' }}>
+                            Lưu ý: Bản ghi trước đó chưa hoàn tất đồng bộ phân công ({investorAssignee.fullName || 'QLDA'}). Vui lòng bấm phân công lại bên dưới.
+                          </div>
+                        )}
                       </div>
 
                       {/* NÚT MỞ FORM PHÂN CÔNG NẾU LÀ TRƯỞNG BAN HOẶC ADMIN */}
@@ -1721,7 +1732,7 @@ export default function ShopDocumentDetailModal({
                         <button
                           type="button"
                           onClick={() => {
-                            setInvestorAssigneeUid(currentUser?.uid || '');
+                            setInvestorAssigneeUid(investorAssignee?.uid || currentUser?.uid || '');
                             setInvestorSlaDays(shopDoc.assignedInvestor?.slaDays || 3);
                             setIsAssigningInvestor(true);
                           }}

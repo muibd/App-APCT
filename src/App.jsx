@@ -68,8 +68,9 @@ import {
   SHOP_STATUS,
   getEffectiveShopStatus,
   calculateDueDate,
-  isShopAssignmentOverdue,
-  isShopReviewOverdue,
+  getShopTvgsOverdueInfo,
+  getShopInvestorOverdueInfo,
+  isStageAssigned,
   getShopLeadSupervisor,
   getShopLeadInvestor,
   isAsBuiltDoc,
@@ -85,8 +86,8 @@ import {
   DEFAULT_PAYMENT_SLA_CONFIGS,
   PAYMENT_STATUS,
   getEffectivePaymentStatus,
-  isPaymentAssignmentOverdue,
-  isPaymentReviewOverdue,
+  getPaymentTvgsOverdueInfo,
+  getPaymentInvestorOverdueInfo,
   getPaymentLeadSupervisor,
   getPaymentLeadInvestor,
   PAYMENT_DOCUMENTS_STORAGE_KEY,
@@ -125,11 +126,13 @@ import {
   saveInspectionStandards,
   subscribeToShopDocuments,
   saveShopDocument,
+  updateShopDocumentFlags,
   deleteShopDocument,
   subscribeToShopSlaConfigs,
   saveShopSlaConfigs,
   subscribeToPaymentDocuments,
   savePaymentDocument,
+  updatePaymentDocumentFlags,
   deletePaymentDocument,
   subscribeToPaymentSlaConfigs,
   savePaymentSlaConfigs,
@@ -330,6 +333,127 @@ function sanitizeReportData(r, customUsers) {
   };
 }
 
+// Trình trợ giúp dùng chung để đánh giá & đồng bộ CHỌN LỌC cờ quá hạn (tránh ghi đè toàn bộ hồ sơ từ cache cũ)
+const evaluateOverdueDocsBatch = ({
+  docs,
+  users,
+  currentUser,
+  currentRole,
+  getTvgsOverdue,
+  getInvestorOverdue,
+  getLeadSup,
+  getLeadInv,
+  docTypePrefix,
+  targetIdKey,
+  targetRolesConfig,
+  copyConfig,
+  patchFlagsFn,
+  setDocsFn,
+  saveStoredFn,
+  setNotifications,
+  setActivePushToast
+}) => {
+  const canSyncCloud = currentUser?.role === 'ADMIN' || currentUser?.isSuperAdmin || currentRole === 'ADMIN' || currentUser?.role === 'LEAD_SUPERVISOR' || currentUser?.role === 'LEAD_INVESTOR';
+  let hasUpdates = false;
+  const leadSup = getLeadSup(users);
+  const leadInv = getLeadInv(users);
+
+  const emitOverdueDocNotification = (notif) => {
+    setNotifications(prev => [notif, ...prev]);
+    saveSystemNotification(notif).catch(console.warn);
+    if (checkNotificationRecipient(notif, currentUser)) {
+      setActivePushToast(notif);
+      showSystemNotification(notif.title, notif.body);
+    }
+  };
+
+  const updatedDocs = docs.map(doc => {
+    let d = { ...doc };
+    if (d.isDeleted || d.status === 'DELETED' || isRecordDeleted(d.id)) {
+      return d;
+    }
+
+    const tvgsOverdue = getTvgsOverdue(d);
+    const invOverdue = getInvestorOverdue(d);
+    const overdueFlagsPatch = {};
+
+    const tryEmitStageOverdue = (shouldTrigger, flagKey, notifSpec) => {
+      if (!shouldTrigger || d[flagKey]) return;
+      d[flagKey] = true;
+      overdueFlagsPatch[flagKey] = true;
+      emitOverdueDocNotification({
+        ...notifSpec,
+        [targetIdKey]: d.id,
+        createdAt: new Date().toISOString(),
+        time: 'Vừa xong',
+        isRead: false
+      });
+    };
+
+    const tvgsName = d.assignedTvgs?.assignee?.fullName || d.assignedTvgs?.fullName || copyConfig.defaultTvgsName;
+    const tvgsUid = d.assignedTvgs?.assignee?.uid || d.assignedTvgs?.uid;
+    const invName = d.assignedInvestor?.assignee?.fullName || d.assignedInvestor?.fullName || 'Cán bộ QLDA';
+    const invUid = d.assignedInvestor?.assignee?.uid || d.assignedInvestor?.uid;
+
+    tryEmitStageOverdue(tvgsOverdue.type === 'ASSIGNMENT', 'assignmentTvgsOverdueNotified', {
+      id: `notif_overdue_assign_tvgs_${d.id}_${Date.now()}`,
+      type: `${docTypePrefix}_ASSIGNMENT_OVERDUE`,
+      title: copyConfig.assignTvgsTitle(d),
+      body: copyConfig.assignTvgsBody(d, leadSup),
+      actionText: 'Phân công ngay',
+      recipientUid: leadSup.uid,
+      extraRecipientUids: targetRolesConfig.assignTvgsExtras(leadSup, leadInv),
+      targetRoles: targetRolesConfig.assignTvgsRoles
+    });
+
+    tryEmitStageOverdue(invOverdue.type === 'ASSIGNMENT', 'assignmentInvestorOverdueNotified', {
+      id: `notif_overdue_assign_inv_${d.id}_${Date.now()}`,
+      type: `${docTypePrefix}_ASSIGNMENT_OVERDUE`,
+      title: copyConfig.assignInvTitle(d),
+      body: copyConfig.assignInvBody(d, leadInv),
+      actionText: 'Phân công ngay',
+      recipientUid: leadInv.uid,
+      extraRecipientUids: targetRolesConfig.assignInvExtras(leadSup, leadInv),
+      targetRoles: targetRolesConfig.assignInvRoles
+    });
+
+    tryEmitStageOverdue(tvgsOverdue.type === 'REVIEW', 'tvgsReviewOverdueNotified', {
+      id: `notif_overdue_review_tvgs_${d.id}_${Date.now()}`,
+      type: `${docTypePrefix}_REVIEW_OVERDUE`,
+      title: `⏰ [Chậm phản hồi] TVGS quá hạn thẩm định: ${d.title}`,
+      body: copyConfig.reviewTvgsBody(d, tvgsName, leadSup),
+      actionText: 'Xem hồ sơ & Xử lý gấp',
+      recipientUid: tvgsUid,
+      extraRecipientUids: [tvgsUid, leadSup.uid].filter(Boolean),
+      targetRoles: ['SUPERVISOR', 'LEAD_SUPERVISOR', 'LEAD_INVESTOR', 'ADMIN']
+    });
+
+    tryEmitStageOverdue(invOverdue.type === 'REVIEW', 'investorReviewOverdueNotified', {
+      id: `notif_overdue_review_inv_${d.id}_${Date.now()}`,
+      type: `${docTypePrefix}_REVIEW_OVERDUE`,
+      title: `⏰ [Chậm phản hồi] Ban QLDA quá hạn phê duyệt: ${d.title}`,
+      body: copyConfig.reviewInvBody(d, invName, leadInv),
+      actionText: 'Xem hồ sơ & Xử lý gấp',
+      recipientUid: invUid,
+      extraRecipientUids: [invUid, leadInv.uid].filter(Boolean),
+      targetRoles: ['INVESTOR', 'LEAD_INVESTOR', 'ADMIN']
+    });
+
+    if (Object.keys(overdueFlagsPatch).length > 0 && !isRecordDeleted(d.id)) {
+      hasUpdates = true;
+      if (canSyncCloud) {
+        patchFlagsFn(d.id, overdueFlagsPatch).catch(console.warn);
+      }
+    }
+    return d;
+  }).filter(d => !isRecordDeleted(d.id));
+
+  if (hasUpdates) {
+    setDocsFn(updatedDocs);
+    saveStoredFn(updatedDocs);
+  }
+};
+
 export default function App() {
   // Quản lý danh sách cán bộ: Firestore Cloud là nguồn dữ liệu chuẩn duy nhất khi trực tuyến (không trộn/ghi đè ngược từ MOCK_USERS)
   const [users, setUsers] = useState(() => {
@@ -480,6 +604,7 @@ export default function App() {
       return null;
     }
   });
+  const currentRole = currentUser?.role || 'CONTRACTOR';
 
   // Tự động đồng bộ users vào localStorage (không ghi đè cache bằng mảng rỗng khi đang chờ tải từ Cloud)
   useEffect(() => {
@@ -2118,8 +2243,8 @@ export default function App() {
       // Đối với Bản vẽ hoàn công: chỉ cần TVGS được phân công là chuyển sang SENT (Đang thẩm định)
       // Đối với hồ sơ khác: Cả 2 bên đều đã được phân công cán bộ -> Chuyển sang trạng thái SENT
       const bothAssigned = isAsBuilt 
-        ? Boolean(updatedTvgs?.assignee || updatedTvgs?.uid)
-        : (Boolean(updatedTvgs?.assignee || updatedTvgs?.uid) && Boolean(updatedInvestor?.assignee || updatedInvestor?.uid));
+        ? isStageAssigned(updatedTvgs)
+        : (isStageAssigned(updatedTvgs) && isStageAssigned(updatedInvestor));
 
       const updatedDoc = {
         ...doc,
@@ -2667,192 +2792,44 @@ export default function App() {
       if (now - lastOverdueCheckRef.current < 45000) return; // Kiểm tra tối đa 45s/lần
       lastOverdueCheckRef.current = now;
 
-      let hasUpdates = false;
-      const updatedDocs = shopDocuments.map(doc => {
-        let changed = false;
-        let d = { ...doc };
-
-        // Bỏ qua nếu hồ sơ đã bị xóa
-        if (d.isDeleted || d.status === 'DELETED' || isRecordDeleted(d.id)) {
-          return d;
-        }
-
-        // 1. Kiểm tra chậm phân công (> 24h từ lúc tạo)
-        if (isShopAssignmentOverdue(d)) {
-          const isTvgsAssigned = Boolean(d.assignedTvgs?.assignee || d.assignedTvgs?.uid);
-          const isInvestorAssigned = Boolean(d.assignedInvestor?.assignee || d.assignedInvestor?.uid);
-
-          const leadSup = getShopLeadSupervisor(users);
-          const leadInv = getShopLeadInvestor(users);
-
-          // Nếu TVGS chưa phân công
-          if (!isTvgsAssigned && !d.assignmentTvgsOverdueNotified) {
-            d.assignmentTvgsOverdueNotified = true;
-            changed = true;
-
-            const notifTitle = `🚨 [Chậm phân công] TVGS Trưởng chưa giao việc: ${d.title}`;
-            const notifBody = `Hồ sơ "${d.title}" đã quá hạn 1 ngày (24h) mà Tư vấn giám sát trưởng (${leadSup.fullName}) chưa phân công cán bộ phụ trách.`;
-            const notif = {
-              id: `notif_overdue_assign_tvgs_${d.id}_${Date.now()}`,
-              type: 'SHOP_DOCUMENT_ASSIGNMENT_OVERDUE',
-              title: notifTitle,
-              body: notifBody,
-              targetShopDocId: d.id,
-              actionText: 'Phân công ngay',
-              recipientUid: leadSup.uid,
-              extraRecipientUids: [leadSup.uid],
-              targetRoles: ['LEAD_SUPERVISOR', 'ADMIN', 'LEAD_INVESTOR'],
-              createdAt: new Date().toISOString(),
-              time: 'Vừa xong',
-              isRead: false
-            };
-
-            setNotifications(prev => [notif, ...prev]);
-            saveSystemNotification(notif).catch(console.warn);
-            if (checkNotificationRecipient(notif, currentUser)) {
-              setActivePushToast(notif);
-              showSystemNotification(notifTitle, notifBody);
-            }
-          }
-
-          // Nếu Ban QLDA chưa phân công
-          if (!isInvestorAssigned && !d.assignmentInvestorOverdueNotified) {
-            d.assignmentInvestorOverdueNotified = true;
-            changed = true;
-
-            const notifTitle = `🚨 [Chậm phân công] Trưởng Ban QLDA chưa giao việc: ${d.title}`;
-            const notifBody = `Hồ sơ "${d.title}" đã quá hạn 1 ngày (24h) mà Trưởng Ban QLDA (${leadInv.fullName}) chưa phân công cán bộ phụ trách.`;
-            const notif = {
-              id: `notif_overdue_assign_inv_${d.id}_${Date.now()}`,
-              type: 'SHOP_DOCUMENT_ASSIGNMENT_OVERDUE',
-              title: notifTitle,
-              body: notifBody,
-              targetShopDocId: d.id,
-              actionText: 'Phân công ngay',
-              recipientUid: leadInv.uid,
-              extraRecipientUids: [leadInv.uid],
-              targetRoles: ['LEAD_INVESTOR', 'ADMIN'],
-              createdAt: new Date().toISOString(),
-              time: 'Vừa xong',
-              isRead: false
-            };
-
-            setNotifications(prev => [notif, ...prev]);
-            saveSystemNotification(notif).catch(console.warn);
-            if (checkNotificationRecipient(notif, currentUser)) {
-              setActivePushToast(notif);
-              showSystemNotification(notifTitle, notifBody);
-            }
-          }
-        }
-
-        // 2. Kiểm tra chậm phản hồi thẩm định (> dueDate)
-        if (d.status === SHOP_STATUS.SENT) {
-          const leadSup = getShopLeadSupervisor(users);
-          const leadInv = getShopLeadInvestor(users);
-
-          // Kiểm tra TVGS quá hạn
-          const tvgsAssigned = d.assignedTvgs?.assignee || d.assignedTvgs?.uid;
-          if (tvgsAssigned && d.assignedTvgs?.status === 'PENDING') {
-            const tvgsDue = d.assignedTvgs?.dueDate ? new Date(d.assignedTvgs.dueDate).getTime() : (d.dueDate ? new Date(d.dueDate).getTime() : 0);
-            if (tvgsDue && now > tvgsDue && !d.tvgsReviewOverdueNotified) {
-              d.tvgsReviewOverdueNotified = true;
-              changed = true;
-
-              const tvgsName = d.assignedTvgs?.assignee?.fullName || d.assignedTvgs?.fullName || 'Cán bộ TVGS';
-              const tvgsUid = d.assignedTvgs?.assignee?.uid || d.assignedTvgs?.uid;
-              const notifTitle = `⏰ [Chậm phản hồi] TVGS quá hạn thẩm định: ${d.title}`;
-              const notifBody = `Cán bộ TVGS (${tvgsName}) đã quá hạn thẩm định hồ sơ "${d.title}". Thông báo cảnh báo được gửi đến TVGS Trưởng (${leadSup.fullName}), CĐT và cán bộ chậm.`;
-
-              const notif = {
-                id: `notif_overdue_review_tvgs_${d.id}_${Date.now()}`,
-                type: 'SHOP_DOCUMENT_REVIEW_OVERDUE',
-                title: notifTitle,
-                body: notifBody,
-                targetShopDocId: d.id,
-                actionText: 'Xem hồ sơ & Xử lý gấp',
-                recipientUid: tvgsUid,
-                extraRecipientUids: [tvgsUid, leadSup.uid].filter(Boolean),
-                targetRoles: ['SUPERVISOR', 'LEAD_SUPERVISOR', 'LEAD_INVESTOR', 'ADMIN'],
-                createdAt: new Date().toISOString(),
-                time: 'Vừa xong',
-                isRead: false
-              };
-
-              setNotifications(prev => [notif, ...prev]);
-              saveSystemNotification(notif).catch(console.warn);
-              if (checkNotificationRecipient(notif, currentUser)) {
-                setActivePushToast(notif);
-                showSystemNotification(notifTitle, notifBody);
-              }
-            }
-          }
-
-          // Kiểm tra Ban QLDA quá hạn (CHỈ KIỂM TRA KHI TVGS ĐÃ DUYỆT ĐẠT VÀ KHÔNG PHẢI BẢN VẼ HOÀN CÔNG!)
-          const invAssigned = !isAsBuiltDoc(d) && d.assignedTvgs?.status === 'ACCEPTED' && Boolean(d.assignedInvestor?.assignee || d.assignedInvestor?.uid);
-          if (invAssigned && d.assignedInvestor?.status === 'PENDING') {
-            const tvgsReviewedTime = d.assignedTvgs?.reviewedAt ? new Date(d.assignedTvgs.reviewedAt).getTime() : 0;
-            const invSlaDays = Number(d.assignedInvestor?.slaDays || d.slaDays || 3);
-            const invAssignedTime = d.assignedInvestor?.assignedAt ? new Date(d.assignedInvestor.assignedAt).getTime() : 0;
-            const invStartTime = Math.max(tvgsReviewedTime, invAssignedTime);
-            const invDue = (d.assignedInvestor?.dueDate && new Date(d.assignedInvestor.dueDate).getTime() > invStartTime)
-              ? new Date(d.assignedInvestor.dueDate).getTime()
-              : (invStartTime + invSlaDays * 24 * 3600 * 1000);
-            if (invDue && now > invDue && !d.investorReviewOverdueNotified) {
-              d.investorReviewOverdueNotified = true;
-              changed = true;
-
-              const invName = d.assignedInvestor?.assignee?.fullName || d.assignedInvestor?.fullName || 'Cán bộ QLDA';
-              const invUid = d.assignedInvestor?.assignee?.uid || d.assignedInvestor?.uid;
-              const notifTitle = `⏰ [Chậm phản hồi] Ban QLDA quá hạn phê duyệt: ${d.title}`;
-              const notifBody = `Cán bộ Ban QLDA (${invName}) đã quá hạn phê duyệt hồ sơ "${d.title}". Thông báo cảnh báo được gửi đến Trưởng Ban QLDA (${leadInv.fullName}), CĐT và cán bộ chậm.`;
-
-              const notif = {
-                id: `notif_overdue_review_inv_${d.id}_${Date.now()}`,
-                type: 'SHOP_DOCUMENT_REVIEW_OVERDUE',
-                title: notifTitle,
-                body: notifBody,
-                targetShopDocId: d.id,
-                actionText: 'Xem hồ sơ & Xử lý gấp',
-                recipientUid: invUid,
-                extraRecipientUids: [invUid, leadInv.uid].filter(Boolean),
-                targetRoles: ['INVESTOR', 'LEAD_INVESTOR', 'ADMIN'],
-                createdAt: new Date().toISOString(),
-                time: 'Vừa xong',
-                isRead: false
-              };
-
-              setNotifications(prev => [notif, ...prev]);
-              saveSystemNotification(notif).catch(console.warn);
-              if (checkNotificationRecipient(notif, currentUser)) {
-                setActivePushToast(notif);
-                showSystemNotification(notifTitle, notifBody);
-              }
-            }
-          }
-        }
-
-        if (changed && !isRecordDeleted(d.id)) {
-          hasUpdates = true;
-          // Chỉ cấp quản lý mới đồng bộ trạng thái quá hạn lên Cloud, tránh các tab / máy khác vô tình ghi đè hoặc hồi sinh
-          const canSyncCloud = currentUser?.role === 'ADMIN' || currentUser?.isSuperAdmin || currentRole === 'ADMIN' || currentUser?.role === 'LEAD_SUPERVISOR' || currentUser?.role === 'LEAD_INVESTOR';
-          if (canSyncCloud) {
-            saveShopDocument(d).catch(console.warn);
-          }
-        }
-        return d;
-      }).filter(d => !isRecordDeleted(d.id));
-
-      if (hasUpdates) {
-        setShopDocuments(updatedDocs);
-        saveStoredShopDocuments(updatedDocs);
-      }
+      evaluateOverdueDocsBatch({
+        docs: shopDocuments,
+        users,
+        currentUser,
+        currentRole,
+        getTvgsOverdue: getShopTvgsOverdueInfo,
+        getInvestorOverdue: getShopInvestorOverdueInfo,
+        getLeadSup: getShopLeadSupervisor,
+        getLeadInv: getShopLeadInvestor,
+        docTypePrefix: 'SHOP_DOCUMENT',
+        targetIdKey: 'targetShopDocId',
+        targetRolesConfig: {
+          assignTvgsExtras: (leadSup) => [leadSup.uid].filter(Boolean),
+          assignTvgsRoles: ['LEAD_SUPERVISOR', 'ADMIN', 'LEAD_INVESTOR'],
+          assignInvExtras: (_, leadInv) => [leadInv.uid].filter(Boolean),
+          assignInvRoles: ['LEAD_INVESTOR', 'ADMIN']
+        },
+        copyConfig: {
+          defaultTvgsName: 'Cán bộ TVGS',
+          assignTvgsTitle: (d) => `🚨 [Chậm phân công] TVGS Trưởng chưa giao việc: ${d.title}`,
+          assignTvgsBody: (d, leadSup) => `Hồ sơ "${d.title}" đã quá hạn 1 ngày (24h) mà Tư vấn giám sát trưởng (${leadSup.fullName}) chưa phân công cán bộ phụ trách.`,
+          assignInvTitle: (d) => `🚨 [Chậm phân công] Trưởng Ban QLDA chưa giao việc: ${d.title}`,
+          assignInvBody: (d, leadInv) => `Hồ sơ "${d.title}" đã quá hạn 1 ngày (24h) mà Trưởng Ban QLDA (${leadInv.fullName}) chưa phân công cán bộ phụ trách.`,
+          reviewTvgsBody: (d, tvgsName, leadSup) => `Cán bộ TVGS (${tvgsName}) đã quá hạn thẩm định hồ sơ "${d.title}". Thông báo cảnh báo được gửi đến TVGS Trưởng (${leadSup.fullName}), CĐT và cán bộ chậm.`,
+          reviewInvBody: (d, invName, leadInv) => `Cán bộ Ban QLDA (${invName}) đã quá hạn phê duyệt hồ sơ "${d.title}". Thông báo cảnh báo được gửi đến Trưởng Ban QLDA (${leadInv.fullName}), CĐT và cán bộ chậm.`
+        },
+        patchFlagsFn: updateShopDocumentFlags,
+        setDocsFn: setShopDocuments,
+        saveStoredFn: saveStoredShopDocuments,
+        setNotifications,
+        setActivePushToast
+      });
     };
 
     checkOverdueShopDocs();
     const interval = setInterval(checkOverdueShopDocs, 60000); // Mỗi 60 giây kiểm tra 1 lần
     return () => clearInterval(interval);
-  }, [shopDocuments, users]);
+  }, [shopDocuments, users, currentUser, currentRole]);
 
   // ============================================================================
   // HỒ SƠ THANH TOÁN (TẠM ỨNG, THANH TOÁN, QUYẾT TOÁN) HANDLERS
@@ -2987,7 +2964,7 @@ export default function App() {
         status: 'PENDING'
       } : doc.assignedInvestor;
 
-      const bothAssigned = Boolean(updatedTvgs?.assignee || updatedTvgs?.uid) && Boolean(updatedInvestor?.assignee || updatedInvestor?.uid);
+      const bothAssigned = isStageAssigned(updatedTvgs) && isStageAssigned(updatedInvestor);
 
       const updatedDoc = {
         ...doc,
@@ -3500,195 +3477,44 @@ export default function App() {
       if (now - lastOverduePaymentCheckRef.current < 45000) return;
       lastOverduePaymentCheckRef.current = now;
 
-      let hasUpdates = false;
-      const updatedDocs = paymentDocuments.map(doc => {
-        let changed = false;
-        let d = { ...doc };
-
-        // Bỏ qua nếu hồ sơ đã bị xóa
-        if (d.isDeleted || d.status === 'DELETED' || isRecordDeleted(d.id)) {
-          return d;
-        }
-
-        // 1. Kiểm tra chậm phân công (> 24h từ lúc tạo)
-        if (isPaymentAssignmentOverdue(d)) {
-          const isTvgsAssigned = Boolean(d.assignedTvgs?.assignee || d.assignedTvgs?.uid);
-          const isInvestorAssigned = Boolean(d.assignedInvestor?.assignee || d.assignedInvestor?.uid);
-          const leadSup = getPaymentLeadSupervisor(users);
-          const leadInv = getPaymentLeadInvestor(users);
-
-          if (!isTvgsAssigned && !d.assignmentTvgsOverdueNotified) {
-            d.assignmentTvgsOverdueNotified = true;
-            changed = true;
-
-            const notifTitle = `⏰ [Chậm phân công] Quá 24h chưa giao TVGS: ${d.title}`;
-            const notifBody = `Hồ sơ thanh toán "${d.title}" đã quá 24h kể từ khi tạo nhưng TVGS Trưởng (${leadSup.fullName}) chưa phân công cán bộ thụ lý.`;
-
-            const notif = {
-              id: `notif_overdue_assign_tvgs_${d.id}_${Date.now()}`,
-              type: 'PAYMENT_DOCUMENT_ASSIGNMENT_OVERDUE',
-              title: notifTitle,
-              body: notifBody,
-              targetPaymentDocId: d.id,
-              actionText: 'Phân công ngay',
-              recipientUid: leadSup.uid,
-              extraRecipientUids: [leadSup.uid, leadInv.uid].filter(Boolean),
-              targetRoles: ['LEAD_SUPERVISOR', 'LEAD_INVESTOR', 'ADMIN'],
-              createdAt: new Date().toISOString(),
-              time: 'Vừa xong',
-              isRead: false
-            };
-
-            setNotifications(prev => [notif, ...prev]);
-            saveSystemNotification(notif).catch(console.warn);
-            if (checkNotificationRecipient(notif, currentUser)) {
-              setActivePushToast(notif);
-              showSystemNotification(notifTitle, notifBody);
-            }
-          }
-
-          if (!isInvestorAssigned && !d.assignmentInvestorOverdueNotified) {
-            d.assignmentInvestorOverdueNotified = true;
-            changed = true;
-
-            const notifTitle = `⏰ [Chậm phân công] Quá 24h chưa giao Ban QLDA: ${d.title}`;
-            const notifBody = `Hồ sơ thanh toán "${d.title}" đã quá 24h kể từ khi tạo nhưng Trưởng Ban QLDA (${leadInv.fullName}) chưa phân công cán bộ thụ lý.`;
-
-            const notif = {
-              id: `notif_overdue_assign_inv_${d.id}_${Date.now()}`,
-              type: 'PAYMENT_DOCUMENT_ASSIGNMENT_OVERDUE',
-              title: notifTitle,
-              body: notifBody,
-              targetPaymentDocId: d.id,
-              actionText: 'Phân công ngay',
-              recipientUid: leadInv.uid,
-              extraRecipientUids: [leadInv.uid, leadSup.uid].filter(Boolean),
-              targetRoles: ['LEAD_INVESTOR', 'LEAD_SUPERVISOR', 'ADMIN'],
-              createdAt: new Date().toISOString(),
-              time: 'Vừa xong',
-              isRead: false
-            };
-
-            setNotifications(prev => [notif, ...prev]);
-            saveSystemNotification(notif).catch(console.warn);
-            if (checkNotificationRecipient(notif, currentUser)) {
-              setActivePushToast(notif);
-              showSystemNotification(notifTitle, notifBody);
-            }
-          }
-        }
-
-        // 2. Kiểm tra chậm phản hồi (Quá hạn SLA)
-        if (d.status !== PAYMENT_STATUS.APPROVED && d.status !== PAYMENT_STATUS.REJECTED) {
-          const leadSup = getPaymentLeadSupervisor(users);
-          const leadInv = getPaymentLeadInvestor(users);
-
-          // Kiểm tra TVGS quá hạn
-          const tvgsAssigned = d.assignedTvgs?.assignee || d.assignedTvgs?.uid;
-          if (tvgsAssigned && d.assignedTvgs?.status === 'PENDING') {
-            const tvgsDue = d.assignedTvgs?.dueDate ? new Date(d.assignedTvgs.dueDate).getTime() : (d.dueDate ? new Date(d.dueDate).getTime() : 0);
-            if (tvgsDue && now > tvgsDue && !d.tvgsReviewOverdueNotified) {
-              d.tvgsReviewOverdueNotified = true;
-              changed = true;
-
-              const tvgsName = d.assignedTvgs?.assignee?.fullName || d.assignedTvgs?.fullName || 'Kỹ sư TVGS';
-              const tvgsUid = d.assignedTvgs?.assignee?.uid || d.assignedTvgs?.uid;
-              const notifTitle = `⏰ [Chậm phản hồi] TVGS quá hạn thẩm định: ${d.title}`;
-              const notifBody = `Cán bộ TVGS (${tvgsName}) đã quá thời hạn phản hồi hồ sơ thanh toán "${d.title}". Cảnh báo gửi đến TVGS Trưởng (${leadSup.fullName}) và cán bộ chậm.`;
-
-              const notif = {
-                id: `notif_overdue_review_tvgs_${d.id}_${Date.now()}`,
-                type: 'PAYMENT_DOCUMENT_REVIEW_OVERDUE',
-                title: notifTitle,
-                body: notifBody,
-                targetPaymentDocId: d.id,
-                actionText: 'Xem hồ sơ & Xử lý gấp',
-                recipientUid: tvgsUid,
-                extraRecipientUids: [tvgsUid, leadSup.uid].filter(Boolean),
-                targetRoles: ['SUPERVISOR', 'LEAD_SUPERVISOR', 'LEAD_INVESTOR', 'ADMIN'],
-                createdAt: new Date().toISOString(),
-                time: 'Vừa xong',
-                isRead: false
-              };
-
-              setNotifications(prev => [notif, ...prev]);
-              saveSystemNotification(notif).catch(console.warn);
-              if (checkNotificationRecipient(notif, currentUser)) {
-                setActivePushToast(notif);
-                showSystemNotification(notifTitle, notifBody);
-              }
-            }
-          }
-
-          // Kiểm tra Ban QLDA quá hạn (CHỈ KIỂM TRA KHI TVGS ĐÃ DUYỆT ĐẠT!)
-          if (d.assignedTvgs?.status === 'ACCEPTED') {
-            const invAssigned = d.assignedInvestor?.assignee || d.assignedInvestor?.uid;
-            if (invAssigned && d.assignedInvestor?.status === 'PENDING') {
-              const tvgsReviewedTime = d.assignedTvgs?.reviewedAt ? new Date(d.assignedTvgs.reviewedAt).getTime() : 0;
-              const invSlaDays = Number(d.assignedInvestor?.slaDays || d.slaDays || 3);
-              const invAssignedTime = d.assignedInvestor?.assignedAt ? new Date(d.assignedInvestor.assignedAt).getTime() : 0;
-              const invStartTime = Math.max(tvgsReviewedTime, invAssignedTime);
-              const invDue = (d.assignedInvestor?.dueDate && new Date(d.assignedInvestor.dueDate).getTime() > invStartTime)
-                ? new Date(d.assignedInvestor.dueDate).getTime()
-                : (invStartTime + invSlaDays * 24 * 3600 * 1000);
-
-              if (invDue && now > invDue && !d.investorReviewOverdueNotified) {
-                d.investorReviewOverdueNotified = true;
-                changed = true;
-
-                const invName = d.assignedInvestor?.assignee?.fullName || d.assignedInvestor?.fullName || 'Cán bộ QLDA';
-                const invUid = d.assignedInvestor?.assignee?.uid || d.assignedInvestor?.uid;
-                const notifTitle = `⏰ [Chậm phản hồi] Ban QLDA quá hạn phê duyệt: ${d.title}`;
-                const notifBody = `Cán bộ Ban QLDA (${invName}) đã quá hạn phê duyệt hồ sơ thanh toán "${d.title}". Thông báo cảnh báo được gửi đến Trưởng Ban QLDA (${leadInv.fullName}), CĐT và cán bộ chậm.`;
-
-                const notif = {
-                  id: `notif_overdue_review_inv_${d.id}_${Date.now()}`,
-                  type: 'PAYMENT_DOCUMENT_REVIEW_OVERDUE',
-                  title: notifTitle,
-                  body: notifBody,
-                  targetPaymentDocId: d.id,
-                  actionText: 'Xem hồ sơ & Xử lý gấp',
-                  recipientUid: invUid,
-                  extraRecipientUids: [invUid, leadInv.uid].filter(Boolean),
-                  targetRoles: ['INVESTOR', 'LEAD_INVESTOR', 'ADMIN'],
-                  createdAt: new Date().toISOString(),
-                  time: 'Vừa xong',
-                  isRead: false
-                };
-
-                setNotifications(prev => [notif, ...prev]);
-                saveSystemNotification(notif).catch(console.warn);
-                if (checkNotificationRecipient(notif, currentUser)) {
-                  setActivePushToast(notif);
-                  showSystemNotification(notifTitle, notifBody);
-                }
-              }
-            }
-          }
-        }
-
-        if (changed && !isRecordDeleted(d.id)) {
-          hasUpdates = true;
-          // Chỉ cấp quản lý mới đồng bộ trạng thái quá hạn lên Cloud, tránh các tab / máy khác vô tình ghi đè hoặc hồi sinh
-          const canSyncCloud = currentUser?.role === 'ADMIN' || currentUser?.isSuperAdmin || currentRole === 'ADMIN' || currentUser?.role === 'LEAD_SUPERVISOR' || currentUser?.role === 'LEAD_INVESTOR';
-          if (canSyncCloud) {
-            savePaymentDocument(d).catch(console.warn);
-          }
-        }
-        return d;
-      }).filter(d => !isRecordDeleted(d.id));
-
-      if (hasUpdates) {
-        setPaymentDocuments(updatedDocs);
-        saveStoredPaymentDocuments(updatedDocs);
-      }
+      evaluateOverdueDocsBatch({
+        docs: paymentDocuments,
+        users,
+        currentUser,
+        currentRole,
+        getTvgsOverdue: getPaymentTvgsOverdueInfo,
+        getInvestorOverdue: getPaymentInvestorOverdueInfo,
+        getLeadSup: getPaymentLeadSupervisor,
+        getLeadInv: getPaymentLeadInvestor,
+        docTypePrefix: 'PAYMENT_DOCUMENT',
+        targetIdKey: 'targetPaymentDocId',
+        targetRolesConfig: {
+          assignTvgsExtras: (leadSup, leadInv) => [leadSup.uid, leadInv.uid].filter(Boolean),
+          assignTvgsRoles: ['LEAD_SUPERVISOR', 'LEAD_INVESTOR', 'ADMIN'],
+          assignInvExtras: (leadSup, leadInv) => [leadInv.uid, leadSup.uid].filter(Boolean),
+          assignInvRoles: ['LEAD_INVESTOR', 'LEAD_SUPERVISOR', 'ADMIN']
+        },
+        copyConfig: {
+          defaultTvgsName: 'Kỹ sư TVGS',
+          assignTvgsTitle: (d) => `⏰ [Chậm phân công] Quá 24h chưa giao TVGS: ${d.title}`,
+          assignTvgsBody: (d, leadSup) => `Hồ sơ thanh toán "${d.title}" đã quá 24h kể từ khi tạo nhưng TVGS Trưởng (${leadSup.fullName}) chưa phân công cán bộ thụ lý.`,
+          assignInvTitle: (d) => `⏰ [Chậm phân công] Quá 24h chưa giao Ban QLDA: ${d.title}`,
+          assignInvBody: (d, leadInv) => `Hồ sơ thanh toán "${d.title}" đã quá 24h kể từ khi tạo nhưng Trưởng Ban QLDA (${leadInv.fullName}) chưa phân công cán bộ thụ lý.`,
+          reviewTvgsBody: (d, tvgsName, leadSup) => `Cán bộ TVGS (${tvgsName}) đã quá thời hạn phản hồi hồ sơ thanh toán "${d.title}". Cảnh báo gửi đến TVGS Trưởng (${leadSup.fullName}) và cán bộ chậm.`,
+          reviewInvBody: (d, invName, leadInv) => `Cán bộ Ban QLDA (${invName}) đã quá hạn phê duyệt hồ sơ thanh toán "${d.title}". Thông báo cảnh báo được gửi đến Trưởng Ban QLDA (${leadInv.fullName}), CĐT và cán bộ chậm.`
+        },
+        patchFlagsFn: updatePaymentDocumentFlags,
+        setDocsFn: setPaymentDocuments,
+        saveStoredFn: saveStoredPaymentDocuments,
+        setNotifications,
+        setActivePushToast
+      });
     };
 
     checkOverduePaymentDocs();
     const interval = setInterval(checkOverduePaymentDocs, 60000);
     return () => clearInterval(interval);
-    return () => clearInterval(interval);
-  }, [paymentDocuments, users]);
+  }, [paymentDocuments, users, currentUser, currentRole]);
 
   // ============================================================================
   // 4d. TỰ ĐỘNG ĐỒNG BỘ CẶP ĐÔI 1-1 (AUTO-HEAL PAIRS) - TỐI ƯU CHỐNG LOOP & LAG
@@ -3905,8 +3731,6 @@ export default function App() {
     setNotifications([]);
     clearAllSystemNotifications(current);
   };
-
-  const currentRole = currentUser?.role || 'CONTRACTOR';
 
   // Push Permission State
   const [pushPermissionGranted, setPushPermissionGranted] = useState(() => {
@@ -8351,7 +8175,7 @@ export default function App() {
       <ShopDocumentDetailModal 
         isOpen={Boolean(selectedShopDoc)}
         onClose={() => setSelectedShopDoc(null)}
-        document={selectedShopDoc}
+        document={selectedShopDoc ? (shopDocuments.find(d => d.id === selectedShopDoc.id) || selectedShopDoc) : null}
         projects={projectsList}
         currentUser={currentUser}
         currentRole={currentRole}
@@ -8380,7 +8204,7 @@ export default function App() {
       <PaymentDocumentDetailModal 
         isOpen={Boolean(selectedPaymentDoc)}
         onClose={() => setSelectedPaymentDoc(null)}
-        document={selectedPaymentDoc}
+        document={selectedPaymentDoc ? (paymentDocuments.find(d => d.id === selectedPaymentDoc.id) || selectedPaymentDoc) : null}
         projects={projectsList}
         currentUser={currentUser}
         currentRole={currentRole}

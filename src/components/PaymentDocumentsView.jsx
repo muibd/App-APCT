@@ -9,7 +9,8 @@ import {
   getEffectivePaymentStatus,
   getPaymentStatusBadgeConfig,
   PAYMENT_STATUS,
-  isPaymentDocumentOverdue
+  isPaymentDocumentOverdue,
+  isStageAssigned
 } from '../data/paymentDocumentConstants';
 import { getDocHierarchyInfo } from './ShopDocumentsView';
 
@@ -59,8 +60,8 @@ export default function PaymentDocumentsView({
     const effStatus = getEffectivePaymentStatus(doc);
 
     // 1. Nếu đang chờ phân công hoặc chậm phân công
-    const isTvgsAssigned = Boolean(doc.assignedTvgs?.assignee || doc.assignedTvgs?.uid);
-    const isInvestorAssigned = Boolean(doc.assignedInvestor?.assignee || doc.assignedInvestor?.uid);
+    const isTvgsAssigned = isStageAssigned(doc.assignedTvgs);
+    const isInvestorAssigned = isStageAssigned(doc.assignedInvestor);
 
     if (effStatus === PAYMENT_STATUS.OVERDUE_ASSIGNMENT) {
       return {
@@ -187,8 +188,8 @@ export default function PaymentDocumentsView({
         // Hồ sơ đang trong quy trình xử lý:
         const isTvgsAccepted = doc.assignedTvgs?.status === 'ACCEPTED';
         const isWaitingAssign = !isTvgsAccepted
-          ? (!doc.assignedTvgs?.assignee && !doc.assignedTvgs?.uid) || doc.assignedTvgs?.status === 'WAITING_ASSIGNMENT'
-          : (!doc.assignedInvestor?.assignee && !doc.assignedInvestor?.uid) || doc.assignedInvestor?.status === 'WAITING_ASSIGNMENT';
+          ? !isStageAssigned(doc.assignedTvgs)
+          : !isStageAssigned(doc.assignedInvestor);
 
         if (isWaitingAssign) {
           waitingAssignment++;
@@ -364,15 +365,15 @@ export default function PaymentDocumentsView({
           if (doc.status === PAYMENT_STATUS.APPROVED || doc.status === PAYMENT_STATUS.REJECTED) return false;
           const isTvgsAccepted = doc.assignedTvgs?.status === 'ACCEPTED';
           const isWaitingAssign = !isTvgsAccepted
-            ? (!doc.assignedTvgs?.assignee && !doc.assignedTvgs?.uid) || doc.assignedTvgs?.status === 'WAITING_ASSIGNMENT'
-            : (!doc.assignedInvestor?.assignee && !doc.assignedInvestor?.uid) || doc.assignedInvestor?.status === 'WAITING_ASSIGNMENT';
+            ? !isStageAssigned(doc.assignedTvgs)
+            : !isStageAssigned(doc.assignedInvestor);
           if (!isWaitingAssign) return false;
         } else if (selectedStatus === PAYMENT_STATUS.SENT) {
           if (doc.status === PAYMENT_STATUS.APPROVED || doc.status === PAYMENT_STATUS.REJECTED) return false;
           const isTvgsAccepted = doc.assignedTvgs?.status === 'ACCEPTED';
           const isWaitingAssign = !isTvgsAccepted
-            ? (!doc.assignedTvgs?.assignee && !doc.assignedTvgs?.uid) || doc.assignedTvgs?.status === 'WAITING_ASSIGNMENT'
-            : (!doc.assignedInvestor?.assignee && !doc.assignedInvestor?.uid) || doc.assignedInvestor?.status === 'WAITING_ASSIGNMENT';
+            ? !isStageAssigned(doc.assignedTvgs)
+            : !isStageAssigned(doc.assignedInvestor);
           if (isWaitingAssign) return false;
         } else if (effStatus !== selectedStatus && doc.status !== selectedStatus) {
           return false;
@@ -860,7 +861,7 @@ export default function PaymentDocumentsView({
                   const { projectName: docProjName, packageName: docPkgName, itemName: docItemName } = getDocHierarchyInfo(doc);
 
                   // 1. THÔNG TIN GIÁM SÁT TRƯỞNG PHÂN CÔNG
-                  const isTvgsAssigned = Boolean(doc.assignedTvgs?.assignee?.uid || doc.assignedTvgs?.uid);
+                  const isTvgsAssigned = isStageAssigned(doc.assignedTvgs);
                   const tvgsAssignee = doc.assignedTvgs?.assignee || (doc.assignedTvgs?.uid ? doc.assignedTvgs : null);
                   const tvgsAssignDeadline = doc.assignmentDeadline
                     ? new Date(doc.assignmentDeadline).getTime()
@@ -882,7 +883,7 @@ export default function PaymentDocumentsView({
                     ? new Date(doc.assignedTvgs.reviewedAt).getTime()
                     : (doc.updatedAt ? new Date(doc.updatedAt).getTime() : Date.now());
                   const investorAssignDeadline = tvgsReviewedTime + 24 * 60 * 60 * 1000;
-                  const isInvestorAssigned = Boolean(doc.assignedInvestor?.assignee?.uid || doc.assignedInvestor?.uid);
+                  const isInvestorAssigned = isStageAssigned(doc.assignedInvestor);
                   const investorAssignee = doc.assignedInvestor?.assignee || (doc.assignedInvestor?.uid ? doc.assignedInvestor : null);
                   const isInvestorAssignOverdue = isTvgsApproved && !isInvestorAssigned && (Date.now() > investorAssignDeadline);
 

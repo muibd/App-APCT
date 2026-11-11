@@ -1170,6 +1170,32 @@ export const saveShopDocument = async (shopDocData) => {
 };
 
 /**
+ * Cập nhật chọn lọc các trường/cờ nhỏ (ví dụ cờ quá hạn) bằng updateDoc,
+ * tránh ghi đè toàn bộ tài liệu bằng dữ liệu cache cũ từ một tab khác.
+ */
+const patchDocumentFields = async (collectionName, docId, fields) => {
+  if (!docId || !fields || typeof fields !== 'object') return false;
+  const cleanFields = sanitizeData(fields);
+  if (!cleanFields || Object.keys(cleanFields).length === 0) return false;
+  if (isRecordDeleted(docId)) return false;
+  if (!isFirebaseConfigured || !db) return false;
+
+  try {
+    await updateDoc(doc(db, collectionName, String(docId)), cleanFields);
+    return true;
+  } catch (error) {
+    console.warn(`[Firestore Patch ${collectionName} Warning]`, error?.message || error);
+    return false;
+  }
+};
+
+export const updateShopDocumentFlags = (docId, flags) =>
+  patchDocumentFields(SHOP_DOCUMENTS_COLLECTION, docId, flags);
+
+export const updatePaymentDocumentFlags = (docId, flags) =>
+  patchDocumentFields(PAYMENT_DOCUMENTS_COLLECTION, docId, flags);
+
+/**
  * Xóa một hồ sơ shop trên Firestore
  */
 export const deleteShopDocument = async (shopDocId) => {

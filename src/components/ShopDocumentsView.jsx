@@ -12,7 +12,8 @@ import {
   isAsBuiltDoc,
   getShopTvgsOverdueInfo,
   getShopInvestorOverdueInfo,
-  isShopDocumentOverdue
+  isShopDocumentOverdue,
+  isStageAssigned
 } from '../data/shopDocumentConstants';
 
 // Hàm trích xuất / suy luận Công trình, Gói thầu, Hạng mục/Công tác của hồ sơ, biên bản, nhật ký
@@ -138,13 +139,13 @@ export default function ShopDocumentsView({
       };
     }
 
-    const isTvgsAssigned = Boolean(doc.assignedTvgs?.assignee || doc.assignedTvgs?.uid);
+    const isTvgsAssigned = isStageAssigned(doc.assignedTvgs);
     const isTvgsApproved = doc.assignedTvgs?.status === 'ACCEPTED';
 
     // 3. Nếu TVGS chưa duyệt đạt:
     if (!isTvgsApproved) {
       // 3.1. TVGS chưa phân công cán bộ (Đang trong hạn 24h)
-      if (!isTvgsAssigned || doc.assignedTvgs?.status === 'WAITING_ASSIGNMENT') {
+      if (!isTvgsAssigned) {
         const deadline = doc.assignmentDeadline
           ? new Date(doc.assignmentDeadline).getTime()
           : (new Date(doc.createdAt || doc.submittedAt || now).getTime() + 24 * 60 * 60 * 1000);
@@ -180,10 +181,10 @@ export default function ShopDocumentsView({
       ? new Date(doc.assignedTvgs.reviewedAt).getTime()
       : (doc.updatedAt ? new Date(doc.updatedAt).getTime() : now);
 
-    const isInvestorAssigned = Boolean(doc.assignedInvestor?.assignee || doc.assignedInvestor?.uid);
+    const isInvestorAssigned = isStageAssigned(doc.assignedInvestor);
 
     // 4.1. Ban QLDA chưa phân công cán bộ (Đang trong hạn 24h tính từ lúc TVGS duyệt)
-    if (!isInvestorAssigned || doc.assignedInvestor?.status === 'WAITING_ASSIGNMENT') {
+    if (!isInvestorAssigned) {
       const invAssignDeadline = tvgsReviewedTime + 24 * 60 * 60 * 1000;
       const diffHours = Math.round((invAssignDeadline - now) / (3600 * 1000));
       return {
@@ -228,9 +229,9 @@ export default function ShopDocumentsView({
         const isTvgsAccepted = doc.assignedTvgs?.status === 'ACCEPTED';
         let isWaitingAssign = false;
         if (!isTvgsAccepted) {
-          isWaitingAssign = (!doc.assignedTvgs?.assignee && !doc.assignedTvgs?.uid) || doc.assignedTvgs?.status === 'WAITING_ASSIGNMENT';
+          isWaitingAssign = !isStageAssigned(doc.assignedTvgs);
         } else if (!isAsBuiltDoc(doc)) {
-          isWaitingAssign = (!doc.assignedInvestor?.assignee && !doc.assignedInvestor?.uid) || doc.assignedInvestor?.status === 'WAITING_ASSIGNMENT';
+          isWaitingAssign = !isStageAssigned(doc.assignedInvestor);
         }
 
         if (isWaitingAssign) {
@@ -408,9 +409,9 @@ export default function ShopDocumentsView({
           const isTvgsAccepted = doc.assignedTvgs?.status === 'ACCEPTED';
           let isWaitingAssign = false;
           if (!isTvgsAccepted) {
-            isWaitingAssign = (!doc.assignedTvgs?.assignee && !doc.assignedTvgs?.uid) || doc.assignedTvgs?.status === 'WAITING_ASSIGNMENT';
+            isWaitingAssign = !isStageAssigned(doc.assignedTvgs);
           } else if (!isAsBuiltDoc(doc)) {
-            isWaitingAssign = (!doc.assignedInvestor?.assignee && !doc.assignedInvestor?.uid) || doc.assignedInvestor?.status === 'WAITING_ASSIGNMENT';
+            isWaitingAssign = !isStageAssigned(doc.assignedInvestor);
           }
           if (!isWaitingAssign) return false;
         } else if (selectedStatus === SHOP_STATUS.SENT) {
@@ -418,9 +419,9 @@ export default function ShopDocumentsView({
           const isTvgsAccepted = doc.assignedTvgs?.status === 'ACCEPTED';
           let isWaitingAssign = false;
           if (!isTvgsAccepted) {
-            isWaitingAssign = (!doc.assignedTvgs?.assignee && !doc.assignedTvgs?.uid) || doc.assignedTvgs?.status === 'WAITING_ASSIGNMENT';
+            isWaitingAssign = !isStageAssigned(doc.assignedTvgs);
           } else if (!isAsBuiltDoc(doc)) {
-            isWaitingAssign = (!doc.assignedInvestor?.assignee && !doc.assignedInvestor?.uid) || doc.assignedInvestor?.status === 'WAITING_ASSIGNMENT';
+            isWaitingAssign = !isStageAssigned(doc.assignedInvestor);
           }
           if (isWaitingAssign) return false;
         } else if (effStatus !== selectedStatus && doc.status !== selectedStatus) {
@@ -904,7 +905,7 @@ export default function ShopDocumentsView({
                   const isAsBuilt = isAsBuiltDoc(doc);
 
                   // 1. THÔNG TIN GIÁM SÁT TRƯỞNG PHÂN CÔNG
-                  const isTvgsAssigned = Boolean(doc.assignedTvgs?.assignee?.uid || doc.assignedTvgs?.uid);
+                  const isTvgsAssigned = isStageAssigned(doc.assignedTvgs);
                   const tvgsAssignee = doc.assignedTvgs?.assignee || (doc.assignedTvgs?.uid ? doc.assignedTvgs : null);
                   const tvgsAssignDeadline = doc.assignmentDeadline
                     ? new Date(doc.assignmentDeadline).getTime()
@@ -926,7 +927,7 @@ export default function ShopDocumentsView({
                     ? new Date(doc.assignedTvgs.reviewedAt).getTime()
                     : (doc.updatedAt ? new Date(doc.updatedAt).getTime() : Date.now());
                   const investorAssignDeadline = tvgsReviewedTime + 24 * 60 * 60 * 1000;
-                  const isInvestorAssigned = Boolean(doc.assignedInvestor?.assignee?.uid || doc.assignedInvestor?.uid);
+                  const isInvestorAssigned = isStageAssigned(doc.assignedInvestor);
                   const investorAssignee = doc.assignedInvestor?.assignee || (doc.assignedInvestor?.uid ? doc.assignedInvestor : null);
                   const isInvestorAssignOverdue = !isAsBuilt && isTvgsApproved && !isInvestorAssigned && (Date.now() > investorAssignDeadline);
 

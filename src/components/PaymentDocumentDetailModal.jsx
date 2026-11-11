@@ -9,7 +9,8 @@ import {
   getPaymentStatusBadgeConfig,
   PAYMENT_STATUS,
   calculateDueDate,
-  getDocumentAttachmentVersions
+  getDocumentAttachmentVersions,
+  isStageAssigned
 } from '../data/paymentDocumentConstants';
 import { openPdfInNewTab } from '../utils/pdfHelper';
 import { compressImageFile } from '../utils/storageHelper';
@@ -154,10 +155,10 @@ export default function PaymentDocumentDetailModal({
 
   // Kiểm tra cán bộ đã được phân công chưa
   const tvgsAssignee = paymentDoc.assignedTvgs?.assignee || (paymentDoc.assignedTvgs?.uid ? paymentDoc.assignedTvgs : null);
-  const isTvgsAssigned = Boolean(tvgsAssignee?.uid);
+  const isTvgsAssigned = isStageAssigned(paymentDoc.assignedTvgs);
 
   const investorAssignee = paymentDoc.assignedInvestor?.assignee || (paymentDoc.assignedInvestor?.uid ? paymentDoc.assignedInvestor : null);
-  const isInvestorAssigned = Boolean(investorAssignee?.uid);
+  const isInvestorAssigned = isStageAssigned(paymentDoc.assignedInvestor);
 
   // Kiểm tra thời hạn 1 ngày (24 giờ kể từ khi nộp hồ sơ) để được phép sửa ngày, đổi người
   const assignmentDeadlineTime = useMemo(() => {
@@ -1252,12 +1253,17 @@ export default function PaymentDocumentDetailModal({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
                     <div style={{ fontSize: '0.78rem', color: '#b45309', background: '#fef3c7', padding: '8px 10px', borderRadius: '6px', border: '1px solid #fde68a' }}>
                       Hồ sơ đang chờ <strong>Tư Vấn Giám Sát Trưởng</strong> phân công cán bộ thụ lý (Hạn 24h).
+                      {tvgsAssignee?.uid && !paymentDoc.assignedTvgs?.assignedAt && (
+                        <div style={{ marginTop: '4px', fontSize: '0.74rem', color: '#b45309' }}>
+                          Lưu ý: Bản ghi trước đó chưa hoàn tất đồng bộ phân công ({tvgsAssignee.fullName || 'TVGS'}). Vui lòng bấm phân công lại bên dưới.
+                        </div>
+                      )}
                     </div>
                     {canAssignTvgs && (
                       <button
                         type="button"
                         onClick={() => {
-                          setTvgsAssigneeUid(currentUser?.uid || '');
+                          setTvgsAssigneeUid(tvgsAssignee?.uid || currentUser?.uid || '');
                           setTvgsSlaDays(paymentDoc.assignedTvgs?.slaDays || 3);
                           setIsAssigningTvgs(true);
                         }}
@@ -1497,12 +1503,17 @@ export default function PaymentDocumentDetailModal({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
                     <div style={{ fontSize: '0.78rem', color: '#b45309', background: '#ffedd5', padding: '8px 10px', borderRadius: '6px', border: '1px solid #fed7aa' }}>
                       Hồ sơ đang chờ <strong>Trưởng Ban QLDA</strong> phân công cán bộ trực tiếp thụ lý (Hạn 24h).
+                      {investorAssignee?.uid && !paymentDoc.assignedInvestor?.assignedAt && (
+                        <div style={{ marginTop: '4px', fontSize: '0.74rem', color: '#b45309' }}>
+                          Lưu ý: Bản ghi trước đó chưa hoàn tất đồng bộ phân công ({investorAssignee.fullName || 'QLDA'}). Vui lòng bấm phân công lại bên dưới.
+                        </div>
+                      )}
                     </div>
                     {canAssignInvestor && (
                       <button
                         type="button"
                         onClick={() => {
-                          setInvestorAssigneeUid(currentUser?.uid || '');
+                          setInvestorAssigneeUid(investorAssignee?.uid || currentUser?.uid || '');
                           setInvestorSlaDays(paymentDoc.assignedInvestor?.slaDays || 3);
                           setIsAssigningInvestor(true);
                         }}
