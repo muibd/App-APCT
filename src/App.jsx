@@ -60,6 +60,13 @@ import {
   getDocumentRevisionNumber 
 } from './data/projectCatalog';
 import {
+  areInspectionRecordsCompatible,
+  findMatchingReportForRequest,
+  findMatchingRequestForReport,
+  getFieldDefaultOfficers,
+  resolveInspectionPartyNames
+} from './utils/inspectionLinkUtils';
+import {
   loadStoredShopDocuments,
   saveStoredShopDocuments,
   loadStoredShopSlaConfigs,
@@ -334,7 +341,7 @@ function sanitizeReportData(r, customUsers) {
 }
 
 // Trình trợ giúp dùng chung để đánh giá & đồng bộ CHỌN LỌC cờ quá hạn (tránh ghi đè toàn bộ hồ sơ từ cache cũ)
-const evaluateOverdueDocsBatch = ({
+export const evaluateOverdueDocsBatch = ({
   docs,
   users,
   currentUser,
@@ -351,7 +358,8 @@ const evaluateOverdueDocsBatch = ({
   setDocsFn,
   saveStoredFn,
   setNotifications,
-  setActivePushToast
+  setActivePushToast,
+  checkRecipientRef
 }) => {
   const canSyncCloud = currentUser?.role === 'ADMIN' || currentUser?.isSuperAdmin || currentRole === 'ADMIN' || currentUser?.role === 'LEAD_SUPERVISOR' || currentUser?.role === 'LEAD_INVESTOR';
   let hasUpdates = false;
@@ -361,7 +369,7 @@ const evaluateOverdueDocsBatch = ({
   const emitOverdueDocNotification = (notif) => {
     setNotifications(prev => [notif, ...prev]);
     saveSystemNotification(notif).catch(console.warn);
-    if (checkNotificationRecipient(notif, currentUser)) {
+    if (checkRecipientRef?.current?.(notif, currentUser)) {
       setActivePushToast(notif);
       showSystemNotification(notif.title, notif.body);
     }
@@ -1068,11 +1076,11 @@ export default function App() {
     // 5. THÔNG BÁO PHIẾU YÊU CẦU & BIÊN BẢN NGHIỆM THU
     if (notif.targetRequestId || notif.targetReportId) {
       const req = (reqList || []).find(r => 
-        (notif.targetRequestId && (r.id === notif.targetRequestId || r.requestNumber === notif.targetRequestId)) ||
+        (notif.targetRequestId && r.id === notif.targetRequestId) ||
         (notif.targetReportId && (r.reportId === notif.targetReportId || r.id === notif.targetReportId))
       );
       const rep = (repList || []).find(r => 
-        (notif.targetReportId && (r.id === notif.targetReportId || r.reportNumber === notif.targetReportId)) ||
+        (notif.targetReportId && r.id === notif.targetReportId) ||
         (notif.targetRequestId && (r.requestId === notif.targetRequestId || r.id === notif.targetRequestId))
       );
 
@@ -1179,6 +1187,8 @@ export default function App() {
 
     return false;
   };
+  const checkNotificationRecipientRef = useRef(checkNotificationRecipient);
+  checkNotificationRecipientRef.current = checkNotificationRecipient;
 
   // 0. Khôi phục dữ liệu từ IndexedDB (tránh 100% mất dữ liệu khi LocalStorage bị đầy quota hoặc F5)
   useEffect(() => {
@@ -2498,7 +2508,10 @@ export default function App() {
   };
 
   // 4. Yêu cầu sửa / Từ chối hồ sơ shop
-  const handleRejectShopDocument = async (docId, { roleType, reason, reviewer }) => {
+  const handleRejectShopDocument = async (
+    docId,
+    { roleType, reason, reviewer, rejectionPhotos = [], rejectionFiles = [] }
+  ) => {
     try {
       const doc = (shopDocuments || []).find(d => d.id === docId) || selectedShopDoc;
       if (!doc) return;
@@ -2512,6 +2525,9 @@ export default function App() {
         });
         return;
       }
+
+      const safeRejectionPhotos = Array.isArray(rejectionPhotos) ? rejectionPhotos : [];
+      const safeRejectionFiles = Array.isArray(rejectionFiles) ? rejectionFiles : [];
 
       const nowIso = new Date().toISOString();
       const updatedAssignedTvgs = roleType === 'SUPERVISOR' ? {
@@ -2534,6 +2550,8 @@ export default function App() {
         assignedInvestor: updatedAssignedInvestor,
         status: SHOP_STATUS.REJECTED,
         rejectionReason: reason,
+        rejectionPhotos: safeRejectionPhotos,
+        rejectionFiles: safeRejectionFiles,
         rejectedBy: {
           uid: reviewer?.uid || currentUser?.uid,
           fullName: reviewer?.fullName || currentUser?.fullName,
@@ -2549,7 +2567,9 @@ export default function App() {
             by: reviewer?.fullName || (roleType === 'SUPERVISOR' ? 'Tư Vấn Giám Sát' : 'Ban QLDA'),
             role: roleType === 'SUPERVISOR' ? 'Tư Vấn Giám Sát' : 'Ban QLDA',
             time: nowIso,
-            note: `Yêu cầu chỉnh sửa: ${reason}`
+            note: `Yêu cầu chỉnh sửa: ${reason}`,
+            ...(safeRejectionPhotos.length > 0 ? { photos: safeRejectionPhotos } : {}),
+            ...(safeRejectionFiles.length > 0 ? { files: safeRejectionFiles } : {})
           }
         ],
         updatedAt: nowIso
@@ -2565,10 +2585,15 @@ export default function App() {
 
       // Phân định thông báo yêu cầu sửa (Gửi trực tiếp đến ĐVTC lập phiếu)
       const isTvgsReject = roleType === 'SUPERVISOR';
+      const attachSummaryParts = [];
+      if (safeRejectionPhotos.length > 0) attachSummaryParts.push(`${safeRejectionPhotos.length} ảnh lỗi`);
+      if (safeRejectionFiles.length > 0) attachSummaryParts.push(`${safeRejectionFiles.length} tệp lỗi`);
+      const attachSummaryText = attachSummaryParts.length > 0 ? ` (Đính kèm ${attachSummaryParts.join(', ')})` : '';
+
       const notifTitle = isTvgsReject 
         ? `⚠️ TVGS yêu cầu chỉnh sửa hồ sơ: ${updatedDoc.title}`
         : `⚠️ Ban QLDA yêu cầu chỉnh sửa hồ sơ: ${updatedDoc.title}`;
-      const notifBody = `${reviewer?.fullName || 'Cán bộ'} (${isTvgsReject ? 'TVGS' : 'Ban QLDA'}) yêu cầu chỉnh sửa hồ sơ "${updatedDoc.title}". Lý do: ${reason}`;
+      const notifBody = `${reviewer?.fullName || 'Cán bộ'} (${isTvgsReject ? 'TVGS' : 'Ban QLDA'}) yêu cầu chỉnh sửa hồ sơ "${updatedDoc.title}". Lý do: ${reason}${attachSummaryText}`;
 
       const notif = {
         id: `notif_${Date.now()}`,
@@ -2609,7 +2634,7 @@ export default function App() {
       showAlert({
         type: 'info',
         title: 'Đã Gửi Yêu Cầu Chỉnh Sửa',
-        message: `Đã gửi yêu cầu chỉnh sửa hồ sơ "${updatedDoc.title}" đến Nhà thầu.\nLý do: ${reason}`
+        message: `Đã gửi yêu cầu chỉnh sửa hồ sơ "${updatedDoc.title}" đến Nhà thầu.\nLý do: ${reason}${attachSummaryText ? `\n${attachSummaryText.trim()}` : ''}`
       });
     } catch (err) {
       console.error('Lỗi từ chối hồ sơ shop:', err);
@@ -2680,6 +2705,8 @@ export default function App() {
         assignedInvestor: updatedInvestor,
         status: SHOP_STATUS.SENT, // Quay lại trạng thái ĐANG THẨM ĐỊNH
         rejectionReason: '',
+        rejectionPhotos: [],
+        rejectionFiles: [],
         history: [
           ...(doc.history || []),
           {
@@ -2822,7 +2849,8 @@ export default function App() {
         setDocsFn: setShopDocuments,
         saveStoredFn: saveStoredShopDocuments,
         setNotifications,
-        setActivePushToast
+        setActivePushToast,
+        checkRecipientRef: checkNotificationRecipientRef
       });
     };
 
@@ -3507,7 +3535,8 @@ export default function App() {
         setDocsFn: setPaymentDocuments,
         saveStoredFn: saveStoredPaymentDocuments,
         setNotifications,
-        setActivePushToast
+        setActivePushToast,
+        checkRecipientRef: checkNotificationRecipientRef
       });
     };
 
@@ -3532,11 +3561,7 @@ export default function App() {
     // A. Nếu có Biên bản nào mà chưa có Phiếu yêu cầu trong requests -> Phục hồi Phiếu yêu cầu
     const currentRequests = [...requests];
     reports.forEach(rep => {
-      const hasReq = currentRequests.some(r => 
-        (r.id && rep.requestId && r.id === rep.requestId) || 
-        (r.reportId && r.reportId === rep.id) ||
-        (r.projectCategoryCode && rep.projectCategoryCode && r.projectCategoryCode.replace(/\/(IR|WA|MI)\//, '') === rep.projectCategoryCode.replace(/\/(IR|WA|MI)\//, ''))
-      );
+      const hasReq = Boolean(findMatchingRequestForReport(rep, currentRequests));
       if (!hasReq && rep.id) {
         const isMaterial = rep.inspectionType === 'MATERIAL';
         const healedReq = {
@@ -3579,11 +3604,7 @@ export default function App() {
     // B. Nếu có Phiếu yêu cầu nào mà chưa có Biên bản trong reports -> Phục hồi Biên bản
     const currentReports = [...reports];
     requests.forEach(req => {
-      const hasRep = currentReports.some(r => 
-        (r.id && req.reportId && r.id === req.reportId) || 
-        (r.requestId && r.requestId === req.id) ||
-        (r.projectCategoryCode && req.projectCategoryCode && r.projectCategoryCode.replace(/\/(IR|WA|MI)\//, '') === req.projectCategoryCode.replace(/\/(IR|WA|MI)\//, ''))
-      );
+      const hasRep = Boolean(findMatchingReportForRequest(req, currentReports));
       if (!hasRep && req.id) {
         const isMaterial = req.inspectionType === 'MATERIAL';
         const newReportId = req.reportId || `rep_${req.id}`;
@@ -3598,6 +3619,11 @@ export default function App() {
 
         const tvgsRecipient = req.assignedRecipients?.find(r => r.role === 'SUPERVISOR' || r.role === 'LEAD_SUPERVISOR');
         const cdtRecipient = req.assignedRecipients?.find(r => r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR');
+        const { investorName: defaultInvName, supervisorName: defaultSupName } = resolveInspectionPartyNames({
+          request: req,
+          users
+        });
+        const { deputyInv, leadInv, leadSup } = getFieldDefaultOfficers(users);
 
         const healedRep = {
           id: newReportId,
@@ -3630,17 +3656,21 @@ export default function App() {
           },
           attendees: {
             investor: {
-              company: cdtRecipient?.company || 'Công ty TNHH An Phú Cần Thơ',
-              person: cdtRecipient?.fullName || '',
-              position: cdtRecipient?.position || 'Cán bộ ban QLDA',
-              email: cdtRecipient?.email || '',
-              uid: cdtRecipient?.uid || '',
+              company: cdtRecipient?.company || deputyInv.company || 'Công ty TNHH An Phú Cần Thơ',
+              person: cdtRecipient?.fullName || defaultInvName,
+              position: cdtRecipient?.position || deputyInv.position || 'Phó Ban QLDA',
+              leadPerson: leadInv.fullName,
+              leadPosition: leadInv.position,
+              email: cdtRecipient?.email || deputyInv.email || '',
+              uid: cdtRecipient?.uid || deputyInv.uid || '',
               signed: req.status === 'COMPLETED'
             },
             supervisor: {
               company: tvgsRecipient?.company || 'Công ty CP Tư vấn Xây dựng và Thương mại GELICON',
-              person: tvgsRecipient?.fullName || '',
+              person: tvgsRecipient?.fullName || defaultSupName,
               position: tvgsRecipient?.position || 'Cán bộ tư vấn giám sát',
+              leadPerson: leadSup.fullName,
+              leadPosition: leadSup.position,
               email: tvgsRecipient?.email || '',
               uid: tvgsRecipient?.uid || '',
               signed: req.status === 'COMPLETED' || req.status === 'WAITING_INVESTOR'
@@ -4608,6 +4638,11 @@ export default function App() {
     // Lấy thông tin cán bộ TVGS và CĐT từ danh sách tiếp nhận
     const tvgsRecipient = newRequest.assignedRecipients?.find(r => r.role === 'SUPERVISOR' || r.role === 'LEAD_SUPERVISOR');
     const cdtRecipient = newRequest.assignedRecipients?.find(r => r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR');
+    const { investorName: defaultInvName, supervisorName: defaultSupName } = resolveInspectionPartyNames({
+      request: newRequest,
+      users
+    });
+    const { deputyInv, leadInv, leadSup } = getFieldDefaultOfficers(users);
 
     const appliedStandards = (newRequest.standardsApplied && newRequest.standardsApplied.length > 0)
       ? newRequest.standardsApplied
@@ -4647,17 +4682,21 @@ export default function App() {
       },
       attendees: {
         investor: {
-          company: cdtRecipient?.company || 'Công ty TNHH An Phú Cần Thơ',
-          person: cdtRecipient?.fullName || '',
-          position: cdtRecipient?.position || 'Cán bộ ban QLDA',
-          email: cdtRecipient?.email || '',
-          uid: cdtRecipient?.uid || '',
+          company: cdtRecipient?.company || deputyInv.company || 'Công ty TNHH An Phú Cần Thơ',
+          person: cdtRecipient?.fullName || defaultInvName,
+          position: cdtRecipient?.position || deputyInv.position || 'Phó Ban QLDA',
+          leadPerson: leadInv.fullName,
+          leadPosition: leadInv.position,
+          email: cdtRecipient?.email || deputyInv.email || '',
+          uid: cdtRecipient?.uid || deputyInv.uid || '',
           signed: false
         },
         supervisor: {
           company: tvgsRecipient?.company || 'Công ty CP Tư vấn Xây dựng và Thương mại GELICON',
-          person: tvgsRecipient?.fullName || '',
+          person: tvgsRecipient?.fullName || defaultSupName,
           position: tvgsRecipient?.position || 'Cán bộ tư vấn giám sát',
+          leadPerson: leadSup.fullName,
+          leadPosition: leadSup.position,
           email: tvgsRecipient?.email || '',
           uid: tvgsRecipient?.uid || '',
           signed: false
@@ -4719,13 +4758,13 @@ export default function App() {
     // Cập nhật ngay lập tức vào state nội bộ và cache an toàn (Optimistic UI Update + IndexedDB Backup)
     // Giúp danh sách cập nhật tức thì 100% không bao giờ bị trễ, mất hay tràn bộ nhớ
     setRequests(prev => {
-      const updated = [finalRequest, ...prev.filter(r => r.id !== finalRequest.id && r.requestNumber !== finalRequest.requestNumber)];
+      const updated = [finalRequest, ...prev.filter(r => r.id !== finalRequest.id)];
       safeSaveLocalStorage(REQUESTS_STORAGE_KEY, updated);
       return updated;
     });
 
     setReports(prev => {
-      const updated = [newReport, ...prev.filter(r => r.id !== newReport.id && r.reportNumber !== newReport.reportNumber)];
+      const updated = [newReport, ...prev.filter(r => r.id !== newReport.id && r.requestId !== finalRequest.id)];
       safeSaveLocalStorage(REPORTS_STORAGE_KEY, updated);
       return updated;
     });
@@ -4764,30 +4803,19 @@ export default function App() {
   // Khởi tạo biên bản nghiệm thu mới hoặc mở biên bản hiện có
   const handleOpenOrCreateReport = async (reportIdOrReqId, isCreateNew = false, defaultTab = 'INVITATION', directReq = null) => {
     // 1. Xác định targetReq và rep một cách chính xác tuyệt đối:
-    let targetReq = directReq || requests.find(r => r.id === reportIdOrReqId || r.reportId === reportIdOrReqId);
-    let rep = null;
+    let targetReq = directReq || requests.find(r => r.id === reportIdOrReqId) || requests.find(r => r.reportId === reportIdOrReqId) || null;
+    let rep = targetReq ? findMatchingReportForRequest(targetReq, reports) : null;
 
-    if (targetReq?.reportId) {
-      rep = reports.find(r => r.id === targetReq.reportId);
-    }
-    if (!rep && targetReq?.id) {
-      rep = reports.find(r => r.requestId === targetReq.id);
-    }
     if (!rep && !targetReq && reportIdOrReqId) {
-      rep = reports.find(r => r.id === reportIdOrReqId || r.requestId === reportIdOrReqId);
+      rep = reports.find(r => r.id === reportIdOrReqId) || reports.find(r => r.requestId === reportIdOrReqId) || null;
       if (rep) {
-        targetReq = requests.find(r => r.id === rep.requestId || r.reportId === rep.id);
+        targetReq = findMatchingRequestForReport(rep, requests);
       }
     }
 
-    // NGUYÊN TẮC: TUYỆT ĐỐI KHÔNG ghép theo requestNumber (tránh nhầm lẫn 01.01 của các phiếu khác cùng ngày)!
-    // Kiểm tra tính nhất quán: Nếu rep và targetReq có nội dung công việc khác nhau, KHÔNG DÙNG rep đó!
-    if (rep && targetReq) {
-      const repTask = (rep.inspectionObject || '').trim().toLowerCase();
-      const reqTask = (targetReq.taskContent || '').trim().toLowerCase();
-      if (repTask && reqTask && repTask !== reqTask && !repTask.includes(reqTask.slice(0, 15)) && !reqTask.includes(repTask.slice(0, 15))) {
-        rep = null;
-      }
+    // NGUYÊN TẮC: TUYỆT ĐỐI KHÔNG ghép theo requestNumber hoặc mismatched taskContent!
+    if (rep && targetReq && !areInspectionRecordsCompatible(targetReq, rep)) {
+      rep = null;
     }
 
     // Nếu đã tìm thấy report hiện có -> Luôn luôn mở report đó, TUYỆT ĐỐI không khởi tạo đè lên làm mất dữ liệu!
@@ -4800,8 +4828,12 @@ export default function App() {
       if (targetReq?.assignedRecipients && targetReq.assignedRecipients.length > 0) {
         const assignedSup = targetReq.assignedRecipients.find(r => r.role === 'SUPERVISOR' || r.role === 'LEAD_SUPERVISOR');
         const assignedInv = targetReq.assignedRecipients.find(r => r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR');
-        const leadInv = users.find(u => u.role === 'LEAD_INVESTOR') || { fullName: 'Ngô Quý Linh', position: 'Trưởng Ban QLDA', company: 'Công ty TNHH An Phú Cần Thơ' };
-        const leadSup = users.find(u => u.role === 'LEAD_SUPERVISOR') || { fullName: 'Đinh Xuân Thám', position: 'Tư vấn giám sát trưởng', company: 'Công ty CP TVXD và TM GELICON' };
+        const { leadInv, deputyInv, leadSup, deputySup } = getFieldDefaultOfficers(users);
+        const { investorName: resolvedInvName, supervisorName: resolvedSupName, isMep: isMepReport } = resolveInspectionPartyNames({
+          report: rep,
+          request: targetReq,
+          users
+        });
         const effectiveContCompany = resolveCleanContractorCompany(
           targetReq.contractorCompany || rep.attendees?.contractor?.company,
           targetReq.createdByName || rep.attendees?.contractor?.person,
@@ -4846,11 +4878,11 @@ export default function App() {
             ...rep.attendees,
             supervisor: {
               ...rep.attendees?.supervisor,
-              uid: assignedSup?.uid || rep.attendees?.supervisor?.uid,
+              uid: assignedSup?.uid || rep.attendees?.supervisor?.uid || (isMepReport ? deputySup.uid : ''),
               person: rep.attendees?.supervisor?.signed 
                 ? rep.attendees.supervisor.person 
-                : (assignedSup?.fullName || rep.attendees?.supervisor?.person || leadSup.fullName),
-              position: assignedSup?.position || rep.attendees?.supervisor?.position || leadSup.position,
+                : resolvedSupName,
+              position: assignedSup?.position || rep.attendees?.supervisor?.position || (isMepReport ? deputySup.position : 'Cán bộ tư vấn giám sát'),
               company: assignedSup?.company || rep.attendees?.supervisor?.company || leadSup.company,
               leadPerson: rep.attendees?.supervisor?.leadPerson || leadSup.fullName,
               leadPosition: rep.attendees?.supervisor?.leadPosition || leadSup.position,
@@ -4858,12 +4890,12 @@ export default function App() {
             },
             investor: {
               ...rep.attendees?.investor,
-              uid: assignedInv?.uid || rep.attendees?.investor?.uid,
+              uid: assignedInv?.uid || rep.attendees?.investor?.uid || deputyInv.uid,
               person: rep.attendees?.investor?.signed 
                 ? rep.attendees.investor.person 
-                : (assignedInv?.fullName || rep.attendees?.investor?.person || leadInv.fullName),
-              position: assignedInv?.position || rep.attendees?.investor?.position || leadInv.position,
-              company: assignedInv?.company || rep.attendees?.investor?.company || leadInv.company,
+                : resolvedInvName,
+              position: assignedInv?.position || rep.attendees?.investor?.position || deputyInv.position || 'Phó Ban QLDA',
+              company: assignedInv?.company || rep.attendees?.investor?.company || deputyInv.company || leadInv.company,
               leadPerson: rep.attendees?.investor?.leadPerson || leadInv.fullName,
               leadPosition: rep.attendees?.investor?.leadPosition || leadInv.position,
               signed: Boolean(rep.attendees?.investor?.signed || rep.signatures?.investor || targetReq?.signatures?.investor || isCompleted)
@@ -5000,8 +5032,11 @@ export default function App() {
       attendees: (() => {
         const assignedSup = targetReq.assignedRecipients?.find(r => r.role === 'SUPERVISOR' || r.role === 'LEAD_SUPERVISOR');
         const assignedInv = targetReq.assignedRecipients?.find(r => r.role === 'INVESTOR' || r.role === 'LEAD_INVESTOR');
-        const leadInv = users.find(u => u.role === 'LEAD_INVESTOR') || { fullName: 'Ngô Quý Linh', position: 'Trưởng Ban QLDA', company: 'Công ty TNHH An Phú Cần Thơ' };
-        const leadSup = users.find(u => u.role === 'LEAD_SUPERVISOR') || { fullName: 'Đinh Xuân Thám', position: 'Tư vấn giám sát trưởng', company: 'Công ty CP TVXD và TM GELICON' };
+        const { leadInv, deputyInv, leadSup, deputySup } = getFieldDefaultOfficers(users);
+        const { investorName: resolvedInvName, supervisorName: resolvedSupName, isMep: isMepReq } = resolveInspectionPartyNames({
+          request: targetReq,
+          users
+        });
         const effectiveContComp = resolveCleanContractorCompany(targetReq.contractorCompany, targetReq.createdByName, `${targetReq.taskContent || ''} ${targetReq.itemName || ''}`);
         const leadContractor = getContractorChief(effectiveContComp, users, {
           itemName: targetReq.itemName,
@@ -5016,21 +5051,21 @@ export default function App() {
         const isWaitingInv = targetReq.status === 'WAITING_INVESTOR';
         return {
           investor: { 
-            uid: assignedInv?.uid || leadInv.uid,
-            company: assignedInv?.company || leadInv.company || 'Công ty TNHH An Phú Cần Thơ', 
-            person: assignedInv?.fullName || leadInv.fullName, 
-            position: assignedInv?.position || leadInv.position, 
-            email: assignedInv?.email || leadInv.email,
+            uid: assignedInv?.uid || deputyInv.uid,
+            company: assignedInv?.company || deputyInv.company || leadInv.company || 'Công ty TNHH An Phú Cần Thơ', 
+            person: resolvedInvName, 
+            position: assignedInv?.position || deputyInv.position || 'Phó Ban QLDA', 
+            email: assignedInv?.email || deputyInv.email,
             leadPerson: leadInv.fullName,
             leadPosition: leadInv.position,
             signed: targetReq.status === 'COMPLETED' 
           },
           supervisor: { 
-            uid: assignedSup?.uid || leadSup.uid,
+            uid: assignedSup?.uid || (isMepReq ? deputySup.uid : leadSup.uid),
             company: assignedSup?.company || leadSup.company || 'Công ty CP TVXD và TM GELICON', 
-            person: assignedSup?.fullName || leadSup.fullName, 
-            position: assignedSup?.position || leadSup.position, 
-            email: assignedSup?.email || leadSup.email,
+            person: resolvedSupName, 
+            position: assignedSup?.position || (isMepReq ? deputySup.position : 'Cán bộ tư vấn giám sát'), 
+            email: assignedSup?.email || (isMepReq ? deputySup.email : leadSup.email),
             leadPerson: leadSup.fullName,
             leadPosition: leadSup.position,
             signed: targetReq.status === 'COMPLETED' || isWaitingInv 
@@ -5087,7 +5122,7 @@ export default function App() {
     };
 
     setReports(prev => {
-      const matchFn = r => r.id === newReport.id || (newReport.requestId && r.requestId === newReport.requestId);
+      const matchFn = r => r.id === newReport.id || (newReport.requestId && r.requestId === newReport.requestId && areInspectionRecordsCompatible(targetReq, r));
       const filtered = prev.filter(r => !matchFn(r));
       const next = [newReport, ...filtered];
       safeSaveLocalStorage(REPORTS_STORAGE_KEY, next);
@@ -5208,14 +5243,7 @@ export default function App() {
     }
 
     // 2. Cập nhật Biên bản nghiệm thu tương ứng (nếu đã tạo)
-    const targetReport = reports.find(r => 
-      (updatedReq.reportId && r.id === updatedReq.reportId) ||
-      (r.requestId && r.requestId === updatedReq.id) ||
-      (r.reportNumber && updatedReq.requestNumber && (
-        r.reportNumber.replace('BBNT-APG', 'PYC').replace('BBNT-VL', 'PYC') === updatedReq.requestNumber ||
-        r.reportNumber.replace('BBNT', 'PYC') === updatedReq.requestNumber
-      ))
-    );
+    const targetReport = findMatchingReportForRequest(updatedReq, reports);
 
     let updatedReport = null;
     if (targetReport) {
@@ -5386,14 +5414,7 @@ export default function App() {
     }
 
     // 2. Cập nhật biên bản tương ứng (nếu có)
-    const targetReport = reports.find(r => 
-      (updatedReq.reportId && r.id === updatedReq.reportId) ||
-      (r.requestId && r.requestId === updatedReq.id) ||
-      (r.reportNumber && updatedReq.requestNumber && (
-        r.reportNumber.replace('BBNT-APG', 'PYC').replace('BBNT-VL', 'PYC') === updatedReq.requestNumber ||
-        r.reportNumber.replace('BBNT', 'PYC') === updatedReq.requestNumber
-      ))
-    );
+    const targetReport = findMatchingReportForRequest(updatedReq, reports);
 
     let updatedReport = null;
     if (targetReport) {
@@ -5534,14 +5555,7 @@ export default function App() {
     }
 
     // 2. Cập nhật biên bản tương ứng (nếu có)
-    const targetReport = reports.find(r => 
-      (updatedReq.reportId && r.id === updatedReq.reportId) ||
-      (r.requestId && r.requestId === updatedReq.id) ||
-      (r.reportNumber && updatedReq.requestNumber && (
-        r.reportNumber.replace('BBNT-APG', 'PYC').replace('BBNT-VL', 'PYC') === updatedReq.requestNumber ||
-        r.reportNumber.replace('BBNT', 'PYC') === updatedReq.requestNumber
-      ))
-    );
+    const targetReport = findMatchingReportForRequest(updatedReq, reports);
 
     let updatedReport = null;
     if (targetReport) {
@@ -5653,14 +5667,9 @@ export default function App() {
       onConfirm: async () => {
         try {
           // 1. Tìm biên bản liên quan (nếu có)
-          const targetReport = reports.find(r => 
-            (targetReq?.reportId && r.id === targetReq.reportId) ||
-            (r.requestId && r.requestId === requestId) ||
-            (r.reportNumber && targetReq?.requestNumber && (
-              r.reportNumber.replace('BBNT-APG', 'PYC').replace('BBNT-VL', 'PYC') === targetReq.requestNumber ||
-              r.reportNumber.replace('BBNT', 'PYC') === targetReq.requestNumber
-            ))
-          );
+          const targetReport = targetReq
+            ? findMatchingReportForRequest(targetReq, reports)
+            : reports.find(r => r.requestId === requestId);
 
           // 2. Xóa khỏi Cloud Firestore
           await deleteInspectionRequest(requestId, targetReport?.id);
@@ -5764,12 +5773,7 @@ export default function App() {
     };
 
     // 2. Tìm và chuẩn bị đồng bộ request tương ứng (ĐỒNG BỘ TRƯỚC, KHÔNG ĐỂ NULL TRONG CALLBACK)
-    const targetReq = requests.find(r => 
-      (targetReport.requestId && r.id === targetReport.requestId) ||
-      (r.reportId && r.reportId === targetReport.id) ||
-      r.id === reportId ||
-      r.reportId === reportId
-    );
+    const targetReq = findMatchingRequestForReport(targetReport, requests);
 
     let updatedReq = null;
     if (targetReq) {
@@ -5788,7 +5792,7 @@ export default function App() {
     setReports(prev => {
       const matchFn = r => (
         r.id === updatedReport.id || 
-        (updatedReport.requestId && r.requestId === updatedReport.requestId)
+        (updatedReport.requestId && r.requestId === updatedReport.requestId && areInspectionRecordsCompatible(updatedReport, r))
       );
       const filtered = prev.filter(r => !matchFn(r));
       const nextReports = [updatedReport, ...filtered];
@@ -5897,12 +5901,7 @@ export default function App() {
       updatedAt: now
     };
 
-    const targetReq = requests.find(r => 
-      (targetReport.requestId && r.id === targetReport.requestId) ||
-      (r.reportId && r.reportId === targetReport.id) ||
-      r.id === reportId ||
-      r.reportId === reportId
-    );
+    const targetReq = findMatchingRequestForReport(targetReport, requests);
 
     let updatedReq = null;
     if (targetReq) {
@@ -5916,7 +5915,11 @@ export default function App() {
     }
 
     setReports(prev => {
-      const matchFn = r => r.id === targetReport.id || (updatedReport.requestId && r.requestId === updatedReport.requestId);
+      const matchFn = r => (
+        r.id === updatedReport.id ||
+        r.id === targetReport.id ||
+        (updatedReport.requestId && r.requestId === updatedReport.requestId && areInspectionRecordsCompatible(updatedReport, r))
+      );
       const filtered = prev.filter(r => !matchFn(r));
       const nextReports = [updatedReport, ...filtered];
       safeSaveLocalStorage(REPORTS_STORAGE_KEY, nextReports);
@@ -6098,7 +6101,7 @@ export default function App() {
     };
 
     setReports(prev => {
-      const matchFn = r => r.id === finalReport.id || (finalReport.requestId && r.requestId === finalReport.requestId);
+      const matchFn = r => r.id === finalReport.id || (finalReport.requestId && r.requestId === finalReport.requestId && areInspectionRecordsCompatible(finalReport, r));
       const filtered = prev.filter(r => !matchFn(r));
       const nextReports = [finalReport, ...filtered];
       safeSaveLocalStorage(REPORTS_STORAGE_KEY, nextReports);
@@ -6111,10 +6114,7 @@ export default function App() {
 
     let updatedReq = null;
     const newContCompany = finalReport.attendees?.contractor?.company || finalReport.contractorCompany;
-    const targetReq = requests.find(r => 
-      (finalReport.requestId && r.id === finalReport.requestId) ||
-      (r.reportId && r.reportId === finalReport.id)
-    );
+    const targetReq = findMatchingRequestForReport(finalReport, requests);
     if (targetReq) {
       updatedReq = {
         ...targetReq,
@@ -6221,7 +6221,12 @@ export default function App() {
 
   // Xử lý khi ĐVTC báo cáo đã sửa lỗi xong và gửi lại yêu cầu nghiệm thu
   const handleResubmitReport = async (reportId, rectificationData, fullReport) => {
-    const targetReport = fullReport || reports.find(r => r.id === reportId || r.requestId === reportId || (selectedReport && r.id === selectedReport.id)) || selectedReport;
+    const existingReport =
+      reports.find(r => r.id === reportId) ||
+      (selectedReport?.id === reportId ? selectedReport : null) ||
+      reports.find(r => r.requestId === reportId) ||
+      selectedReport;
+    const targetReport = fullReport || existingReport;
     if (!targetReport) return;
 
     // Xác định ai là người cần kiểm tra lại theo luồng:
@@ -6276,17 +6281,15 @@ export default function App() {
       updatedAt: new Date().toISOString()
     };
 
-    const targetReq = requests.find(r => 
-      (updatedReport.requestId && r.id === updatedReport.requestId) ||
-      (r.reportId && (r.reportId === updatedReport.id || r.reportId === reportId)) ||
-      (updatedReport.reportNumber && r.requestNumber === updatedReport.reportNumber.replace('BBNT', 'PYC')) ||
-      (updatedReport.requestNumber && r.requestNumber === updatedReport.requestNumber) ||
-      r.id === reportId ||
-      r.id === updatedReport.id
-    );
+    const targetReq = findMatchingRequestForReport(updatedReport, requests);
 
-    if (targetReq && !updatedReport.requestId) {
-      updatedReport.requestId = targetReq.id;
+    if (targetReq) {
+      if (!updatedReport.requestId) {
+        updatedReport.requestId = targetReq.id;
+      }
+      if (targetReq.requestNumber && !updatedReport.requestNumber) {
+        updatedReport.requestNumber = targetReq.requestNumber;
+      }
     }
 
     let updatedReq = null;
@@ -6314,9 +6317,7 @@ export default function App() {
     setReports(prev => {
       const matchFn = r => (
         r.id === updatedReport.id || 
-        (updatedReport.requestId && r.requestId === updatedReport.requestId) ||
-        (targetReq && r.requestId === targetReq.id) ||
-        (targetReq?.reportId && r.id === targetReq.reportId)
+        (updatedReport.requestId && r.requestId === updatedReport.requestId && areInspectionRecordsCompatible(updatedReport, r))
       );
       const filtered = prev.filter(r => !matchFn(r));
       const nextReports = [updatedReport, ...filtered];
@@ -6331,12 +6332,7 @@ export default function App() {
     // 3. Cập nhật request vào React State, IndexedDB & LocalStorage
     if (updatedReq) {
       setRequests(prev => {
-        const matchReqFn = r => (
-          r.id === updatedReq.id ||
-          (updatedReport.requestId && r.id === updatedReport.requestId) ||
-          (r.reportId && (r.reportId === updatedReport.id || r.reportId === reportId))
-        );
-        const filtered = prev.filter(r => !matchReqFn(r));
+        const filtered = prev.filter(r => r.id !== updatedReq.id);
         const nextRequests = [updatedReq, ...filtered];
         safeSaveLocalStorage(REQUESTS_STORAGE_KEY, nextRequests);
         return nextRequests;
@@ -6359,8 +6355,8 @@ export default function App() {
       title: notifTitle,
       body: notifBody,
       actionText: 'Xem ảnh sửa & Kiểm tra lại',
-      targetReportId: targetReport.id,
-      targetRequestId: updatedReq?.id || targetReport.requestId,
+      targetReportId: updatedReport.id,
+      targetRequestId: updatedReq?.id || updatedReport.requestId,
       assignedRecipients: updatedReq?.assignedRecipients || targetReport.assignedRecipients || [],
       createdByUid: updatedReq?.createdByUid || targetReport.createdByUid,
       createdByName: updatedReq?.createdByName || targetReport.createdByName,
@@ -6396,18 +6392,21 @@ export default function App() {
 
   const handleOpenReport = (report, options = {}, directReq = null) => {
     if (!report) return;
-    let rep = reports.find(r => 
-      r.id === report.id || 
-      (report.requestId && r.requestId === report.requestId)
-    ) || report;
+    let rep =
+      reports.find(r => r.id === report.id) ||
+      (report.requestId
+        ? reports.find(r => r.requestId === report.requestId && areInspectionRecordsCompatible(report, r))
+        : null) ||
+      report;
 
-    // Tìm request liên quan để đồng bộ
-    let targetReq = directReq || requests.find(r => 
-      r.id === rep.requestId || 
-      r.reportId === rep.id || 
-      r.id === report.requestId || 
-      r.reportId === report.id
-    );
+    // Kiểm tra tính nhất quán TRƯỚC KHI đồng bộ hay sửa đổi dữ liệu:
+    // Nếu directReq không khớp nội dung/loại với rep -> mở hoặc tạo đúng report cho directReq!
+    if (directReq && rep && !areInspectionRecordsCompatible(directReq, rep)) {
+      return handleOpenOrCreateReport(directReq.id, false, options.initialTab || 'INVITATION', directReq);
+    }
+
+    // Tìm request liên quan tương thích để đồng bộ
+    let targetReq = directReq || findMatchingRequestForReport(rep, requests);
 
     const isCompleted = rep.status === 'COMPLETED' || 
       (Boolean(rep.attendees?.supervisor?.signed) && Boolean(rep.attendees?.investor?.signed));
@@ -6455,7 +6454,7 @@ export default function App() {
         setReports(prev => {
           const matchFn = r => (
             r.id === rep.id || 
-            (rep.requestId && r.requestId === rep.requestId)
+            (rep.requestId && r.requestId === rep.requestId && areInspectionRecordsCompatible(rep, r))
           );
           const filtered = prev.filter(r => !matchFn(r));
           const next = [rep, ...filtered];
@@ -6465,19 +6464,6 @@ export default function App() {
       }
     }
 
-    // Kiểm tra tính nhất quán: Nếu rep không khớp nội dung công việc với targetReq/directReq -> mở hoặc tạo đúng report
-    if (targetReq && rep) {
-      const repTask = (rep.inspectionObject || '').trim().toLowerCase();
-      const reqTask = (targetReq.taskContent || '').trim().toLowerCase();
-      if (repTask && reqTask && repTask !== reqTask && !repTask.includes(reqTask.slice(0, 15)) && !reqTask.includes(repTask.slice(0, 15))) {
-        return handleOpenOrCreateReport(targetReq.id, false, options.initialTab || 'INVITATION', targetReq);
-      }
-    }
-
-    if (!targetReq) {
-      targetReq = requests.find(r => r.id === rep.requestId || r.reportId === rep.id);
-    }
-
     const effectiveContCompany = resolveCleanContractorCompany(
       targetReq?.contractorCompany || rep.attendees?.contractor?.company,
       targetReq?.createdByName || rep.attendees?.contractor?.person,
@@ -6485,6 +6471,12 @@ export default function App() {
     );
 
     const isWaitingInv = !isCompleted && (targetReq?.status === 'WAITING_INVESTOR' || rep.status === 'WAITING_INVESTOR');
+
+    const { investorName: resolvedInvName, supervisorName: resolvedSupName } = resolveInspectionPartyNames({
+      report: rep,
+      request: targetReq,
+      users
+    });
 
     const repWithRecipients = {
       ...rep,
@@ -6506,10 +6498,12 @@ export default function App() {
         ...rep.attendees,
         supervisor: {
           ...rep.attendees?.supervisor,
+          person: rep.attendees?.supervisor?.signed ? rep.attendees.supervisor.person : resolvedSupName,
           signed: Boolean(rep.attendees?.supervisor?.signed || rep.signatures?.supervisor || targetReq?.signatures?.supervisor || isCompleted || isWaitingInv)
         },
         investor: {
           ...rep.attendees?.investor,
+          person: rep.attendees?.investor?.signed ? rep.attendees.investor.person : resolvedInvName,
           signed: Boolean(rep.attendees?.investor?.signed || rep.signatures?.investor || targetReq?.signatures?.investor || isCompleted)
         },
         contractor: {
@@ -6551,12 +6545,13 @@ export default function App() {
     setInitialOpenRectify(false);
 
     // 1. Biên bản nghiệm thu liên quan
-    const rep = reports.find(r => 
-      (notif.targetReportId && (r.id === notif.targetReportId || r.reportId === notif.targetReportId)) || 
-      (notif.targetRequestId && r.requestId === notif.targetRequestId)
-    );
+    const reqByNotif = notif.targetRequestId ? requests.find(r => r.id === notif.targetRequestId) : null;
+    const rep =
+      (notif.targetReportId ? reports.find(r => r.id === notif.targetReportId) : null) ||
+      (reqByNotif ? findMatchingReportForRequest(reqByNotif, reports) : null) ||
+      (notif.targetRequestId ? reports.find(r => r.requestId === notif.targetRequestId) : null);
     if (rep) {
-      handleOpenReport(rep);
+      handleOpenReport(rep, {}, reqByNotif);
       return;
     }
     if (notif.targetReportId) {
@@ -6622,20 +6617,14 @@ export default function App() {
 
   const accessibleRequests = useMemo(() => {
     return requests.filter(req => {
-      const matchingRep = reports.find(r => 
-        (r.requestId && r.requestId === req.id) || 
-        (r.id && r.id === req.reportId)
-      );
+      const matchingRep = findMatchingReportForRequest(req, reports);
       return canAccessInspection(req, matchingRep, currentUser, users);
     });
   }, [requests, reports, currentUser, users]);
 
   const accessibleReports = useMemo(() => {
     return reports.filter(rep => {
-      const matchingReq = requests.find(r => 
-        (r.id && r.id === rep.requestId) || 
-        (r.reportId && r.reportId === rep.id)
-      );
+      const matchingReq = findMatchingRequestForReport(rep, requests);
       return canAccessInspection(matchingReq, rep, currentUser, users);
     });
   }, [reports, requests, currentUser, users]);
@@ -7026,6 +7015,8 @@ export default function App() {
           ) : activeTab === 'REPORTS' ? (
             <ReportsListView 
               reports={accessibleReports}
+              requests={accessibleRequests}
+              users={users}
               projects={projectsList}
               currentRole={currentRole}
               currentUser={currentUser}
@@ -7547,16 +7538,7 @@ export default function App() {
                   </div>
                 ) : (
                   filteredRequests.map(req => {
-                    const matchingRep = reports.find(r => {
-                      const isMatch = (req.reportId && r.id === req.reportId) || (req.id && r.requestId === req.id);
-                      if (!isMatch) return false;
-                      const repTask = (r.inspectionObject || '').trim().toLowerCase();
-                      const reqTask = (req.taskContent || '').trim().toLowerCase();
-                      if (repTask && reqTask && repTask !== reqTask && !repTask.includes(reqTask.slice(0, 15)) && !reqTask.includes(repTask.slice(0, 15))) {
-                        return false;
-                      }
-                      return true;
-                    });
+                    const matchingRep = findMatchingReportForRequest(req, reports);
 
                     const isSupervisorSigned = Boolean(
                       matchingRep?.signatures?.supervisor === true ||
@@ -8084,8 +8066,9 @@ export default function App() {
         projects={projectsList}
         docTypes={docTypesList}
         onOpenReport={(reportId, isCreate) => {
+          const directReqContext = selectedRequest;
           setSelectedRequest(null);
-          handleOpenOrCreateReport(reportId, isCreate);
+          handleOpenOrCreateReport(reportId, isCreate, 'INVITATION', directReqContext);
         }}
         onReassign={(req, type) => {
           handleOpenReassignModal(req, type);
@@ -8096,6 +8079,7 @@ export default function App() {
       />
 
       <InspectionReportModal 
+        key={selectedReport?.id || 'closed'}
         isOpen={Boolean(selectedReport)}
         onClose={() => {
           setSelectedReport(null);

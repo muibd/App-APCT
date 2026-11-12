@@ -24,6 +24,10 @@ import {
   MOCK_USERS 
 } from '../data/mockData';
 import { uploadBase64ToStorage } from './storageService';
+import {
+  sanitizeOversizedShopFiles,
+  sanitizeOversizedShopPhotos
+} from '../utils/shopAttachmentUtils';
 
 const REQUESTS_COLLECTION = 'inspection_requests';
 const REPORTS_COLLECTION = 'inspection_reports';
@@ -1113,51 +1117,31 @@ export const saveShopDocument = async (shopDocData) => {
 
     // Tối ưu payload Firestore: nếu dataUrl của file PDF quá lớn (> 700KB), lược bỏ dataUrl trên Cloud để không vượt giới hạn 1MB của Firestore
     // (Bản gốc đầy đủ 100% luôn được lưu an toàn trong IndexedDB và LocalStorage trên máy)
-    let firestorePayload = cleanData;
-    if (cleanData.pdfFile && typeof cleanData.pdfFile.dataUrl === 'string' && cleanData.pdfFile.dataUrl.length > 700000) {
-      firestorePayload = {
-        ...cleanData,
-        pdfFile: {
-          name: cleanData.pdfFile.name,
-          size: cleanData.pdfFile.size,
-          isStoredLocally: true
-        }
-      };
+    let firestorePayload = { ...cleanData };
+    if (cleanData.pdfFile) {
+      firestorePayload.pdfFile = sanitizeOversizedShopFiles([cleanData.pdfFile])[0];
     }
     if (Array.isArray(cleanData.pdfFiles)) {
-      firestorePayload = {
-        ...firestorePayload,
-        pdfFiles: cleanData.pdfFiles.map(f => {
-          if (f && typeof f.dataUrl === 'string' && f.dataUrl.length > 700000) {
-            return {
-              id: f.id,
-              name: f.name,
-              size: f.size,
-              isStoredLocally: true
-            };
-          }
-          return f;
-        })
-      };
+      firestorePayload.pdfFiles = sanitizeOversizedShopFiles(cleanData.pdfFiles);
     }
     if (Array.isArray(cleanData.attachmentVersions)) {
-      firestorePayload = {
-        ...firestorePayload,
-        attachmentVersions: cleanData.attachmentVersions.map(v => ({
-          ...v,
-          files: Array.isArray(v.files) ? v.files.map(f => {
-            if (f && typeof f.dataUrl === 'string' && f.dataUrl.length > 700000) {
-              return {
-                id: f.id,
-                name: f.name,
-                size: f.size,
-                isStoredLocally: true
-              };
-            }
-            return f;
-          }) : []
-        }))
-      };
+      firestorePayload.attachmentVersions = cleanData.attachmentVersions.map(v => ({
+        ...v,
+        files: Array.isArray(v.files) ? sanitizeOversizedShopFiles(v.files) : []
+      }));
+    }
+    if (Array.isArray(cleanData.rejectionFiles)) {
+      firestorePayload.rejectionFiles = sanitizeOversizedShopFiles(cleanData.rejectionFiles);
+    }
+    if (Array.isArray(cleanData.rejectionPhotos)) {
+      firestorePayload.rejectionPhotos = sanitizeOversizedShopPhotos(cleanData.rejectionPhotos);
+    }
+    if (Array.isArray(cleanData.history)) {
+      firestorePayload.history = cleanData.history.map(h => ({
+        ...h,
+        ...(Array.isArray(h?.files) ? { files: sanitizeOversizedShopFiles(h.files) } : {}),
+        ...(Array.isArray(h?.photos) ? { photos: sanitizeOversizedShopPhotos(h.photos) } : {})
+      }));
     }
 
     await setDoc(docRef, firestorePayload, { merge: true });
@@ -1334,51 +1318,31 @@ export const savePaymentDocument = async (paymentDocData) => {
   try {
     const docRef = doc(db, PAYMENT_DOCUMENTS_COLLECTION, cleanData.id);
 
-    let firestorePayload = cleanData;
-    if (cleanData.pdfFile && typeof cleanData.pdfFile.dataUrl === 'string' && cleanData.pdfFile.dataUrl.length > 700000) {
-      firestorePayload = {
-        ...cleanData,
-        pdfFile: {
-          name: cleanData.pdfFile.name,
-          size: cleanData.pdfFile.size,
-          isStoredLocally: true
-        }
-      };
+    let firestorePayload = { ...cleanData };
+    if (cleanData.pdfFile) {
+      firestorePayload.pdfFile = sanitizeOversizedShopFiles([cleanData.pdfFile])[0];
     }
     if (Array.isArray(cleanData.pdfFiles)) {
-      firestorePayload = {
-        ...firestorePayload,
-        pdfFiles: cleanData.pdfFiles.map(f => {
-          if (f && typeof f.dataUrl === 'string' && f.dataUrl.length > 700000) {
-            return {
-              id: f.id,
-              name: f.name,
-              size: f.size,
-              isStoredLocally: true
-            };
-          }
-          return f;
-        })
-      };
+      firestorePayload.pdfFiles = sanitizeOversizedShopFiles(cleanData.pdfFiles);
     }
     if (Array.isArray(cleanData.attachmentVersions)) {
-      firestorePayload = {
-        ...firestorePayload,
-        attachmentVersions: cleanData.attachmentVersions.map(v => ({
-          ...v,
-          files: Array.isArray(v.files) ? v.files.map(f => {
-            if (f && typeof f.dataUrl === 'string' && f.dataUrl.length > 700000) {
-              return {
-                id: f.id,
-                name: f.name,
-                size: f.size,
-                isStoredLocally: true
-              };
-            }
-            return f;
-          }) : []
-        }))
-      };
+      firestorePayload.attachmentVersions = cleanData.attachmentVersions.map(v => ({
+        ...v,
+        files: Array.isArray(v.files) ? sanitizeOversizedShopFiles(v.files) : []
+      }));
+    }
+    if (Array.isArray(cleanData.rejectionFiles)) {
+      firestorePayload.rejectionFiles = sanitizeOversizedShopFiles(cleanData.rejectionFiles);
+    }
+    if (Array.isArray(cleanData.rejectionPhotos)) {
+      firestorePayload.rejectionPhotos = sanitizeOversizedShopPhotos(cleanData.rejectionPhotos);
+    }
+    if (Array.isArray(cleanData.history)) {
+      firestorePayload.history = cleanData.history.map(h => ({
+        ...h,
+        ...(Array.isArray(h?.files) ? { files: sanitizeOversizedShopFiles(h.files) } : {}),
+        ...(Array.isArray(h?.photos) ? { photos: sanitizeOversizedShopPhotos(h.photos) } : {})
+      }));
     }
 
     // BẢO VỆ TRẠNG THÁI DUYỆT ĐẠT: Không cho phép ghi đè trạng thái ACCEPTED thành PENDING

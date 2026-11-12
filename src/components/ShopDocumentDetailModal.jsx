@@ -17,13 +17,26 @@ import {
 } from '../data/shopDocumentConstants';
 import { openPdfInNewTab } from '../utils/pdfHelper';
 import { compressImageFile } from '../utils/storageHelper';
-import { uploadPdfDocument } from '../services/storageService';
+import { uploadPdfDocument, uploadBase64ToStorage } from '../services/storageService';
+import {
+  SHOP_FILE_ACCEPT,
+  isPdfAttachment,
+  isArchiveAttachment,
+  prepareShopAttachmentFiles,
+  prepareShopPhotos,
+  uploadShopFilesToCloud,
+  uploadShopPhotosToCloud
+} from '../utils/shopAttachmentUtils';
 import { getDocHierarchyInfo } from './ShopDocumentsView';
 import ImagePreviewModal from './ImagePreviewModal';
 import { isSupervisorLeadOrDeputy, isInvestorLeadOrDeputy } from '../data/mockData';
 
-export default function ShopDocumentDetailModal({
-  isOpen,
+export default function ShopDocumentDetailModal(props) {
+  if (!props.isOpen || !props.document) return null;
+  return <ShopDocumentDetailModalContent key={props.document.id} {...props} />;
+}
+
+function ShopDocumentDetailModalContent({
   onClose,
   document: shopDoc,
   projects = [],
@@ -37,14 +50,18 @@ export default function ShopDocumentDetailModal({
   onDelete,
   showAlert
 }) {
-  if (!isOpen || !shopDoc) return null;
-
   const docHierarchy = useMemo(() => getDocHierarchyInfo(shopDoc), [shopDoc]);
 
   // Review states
   const [reviewNote, setReviewNote] = useState('');
   const [isRejecting, setIsRejecting] = useState(false); // false | 'SUPERVISOR' | 'INVESTOR'
   const [rejectReason, setRejectReason] = useState('');
+  const [rejectPhotos, setRejectPhotos] = useState([]);
+  const [rejectFiles, setRejectFiles] = useState([]);
+  const [isSubmittingRejection, setIsSubmittingRejection] = useState(false);
+  const rejectPhotoInputRef = useRef(null);
+  const rejectCameraInputRef = useRef(null);
+  const rejectFileInputRef = useRef(null);
   const [activePhoto, setActivePhoto] = useState(null);
 
   // Assignment states (dành cho 2 anh Trưởng)
@@ -146,6 +163,203 @@ export default function ShopDocumentDetailModal({
       console.error('Lỗi mở PDF:', err);
       if (showAlert) showAlert({ type: 'error', title: 'Lỗi Mở Tệp', message: 'Không thể mở tệp PDF: ' + (err.message || err) });
     }
+  };
+
+  const renderRejectionAttachments = (photos, files, { compact = false, title = null } = {}) => {
+    const validPhotos = Array.isArray(photos) ? photos.filter(Boolean) : [];
+    const validFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+    if (validPhotos.length === 0 && validFiles.length === 0) return null;
+
+    return (
+      <div
+        style={{
+          marginTop: compact ? '6px' : '2px',
+          background: '#fff5f5',
+          border: '1px solid #fecaca',
+          borderRadius: '8px',
+          padding: compact ? '8px' : '10px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px'
+        }}
+      >
+        {title && (
+          <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#991b1b' }}>
+            {title}
+          </div>
+        )}
+
+        {validPhotos.length > 0 && (
+          <div>
+            <div style={{ fontSize: '0.74rem', fontWeight: 600, color: '#991b1b', marginBottom: '5px' }}>
+              Ảnh lỗi ({validPhotos.length}):
+            </div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: compact ? 'repeat(auto-fill, minmax(76px, 1fr))' : 'repeat(auto-fill, minmax(110px, 1fr))',
+                gap: '6px'
+              }}
+            >
+              {validPhotos.map((p, idx) => (
+                <div
+                  key={p.id || idx}
+                  onClick={() => p.url && setActivePhoto(p)}
+                  title={p.url ? 'Bấm để phóng to xem ảnh lỗi' : 'Ảnh lưu trên thiết bị người gửi'}
+                  style={{
+                    borderRadius: '6px',
+                    overflow: 'hidden',
+                    border: '1px solid #fca5a5',
+                    background: '#ffffff',
+                    cursor: p.url ? 'pointer' : 'default',
+                    display: 'flex',
+                    flexDirection: 'column'
+                  }}
+                >
+                  {p.url ? (
+                    <img
+                      src={p.url}
+                      alt={p.caption || `Ảnh lỗi ${idx + 1}`}
+                      style={{
+                        width: '100%',
+                        height: compact ? '62px' : '82px',
+                        objectFit: 'cover',
+                        display: 'block'
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        height: compact ? '62px' : '82px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '4px',
+                        fontSize: '0.68rem',
+                        color: '#991b1b',
+                        textAlign: 'center',
+                        background: '#fef2f2'
+                      }}
+                    >
+                      Lưu cục bộ trên máy gửi
+                    </div>
+                  )}
+                  {p.caption && (
+                    <div
+                      style={{
+                        fontSize: '0.68rem',
+                        color: '#7f1d1d',
+                        padding: '3px 5px',
+                        background: '#ffffff',
+                        borderTop: '1px solid #fee2e2',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }}
+                    >
+                      {p.caption}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {validFiles.length > 0 && (
+          <div>
+            <div style={{ fontSize: '0.74rem', fontWeight: 600, color: '#991b1b', marginBottom: '5px' }}>
+              Tệp lỗi đính kèm ({validFiles.length}):
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              {validFiles.map((f, idx) => (
+                <div
+                  key={f.id || idx}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '8px',
+                    flexWrap: 'wrap',
+                    background: '#ffffff',
+                    border: '1px solid #fecaca',
+                    borderRadius: '6px',
+                    padding: compact ? '5px 8px' : '7px 10px'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '160px', flex: 1 }}>
+                    {isArchiveAttachment(f.name) ? (
+                      <FileArchive size={compact ? 18 : 20} color="#d97706" style={{ flexShrink: 0 }} />
+                    ) : (
+                      <FileText size={compact ? 18 : 20} color="#dc2626" style={{ flexShrink: 0 }} />
+                    )}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: compact ? '0.74rem' : '0.8rem', fontWeight: 600, color: '#0f172a', overflowWrap: 'anywhere' }}>
+                        {f.name || `Tệp lỗi ${idx + 1}`}
+                      </div>
+                      {f.size && (
+                        <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
+                          {f.size}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {f.dataUrl ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                      {isPdfAttachment(f.name, f.dataUrl) && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenPdf(f.dataUrl, f.name)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '4px 9px',
+                            background: '#fff1f2',
+                            border: '1px solid #fda4af',
+                            borderRadius: '5px',
+                            color: '#be123c',
+                            cursor: 'pointer',
+                            fontSize: '0.72rem',
+                            fontWeight: 600
+                          }}
+                        >
+                          <Eye size={13} /> Xem
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadFile(f.dataUrl, f.name)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '4px 9px',
+                          background: '#dc2626',
+                          border: 'none',
+                          borderRadius: '5px',
+                          color: '#ffffff',
+                          cursor: 'pointer',
+                          fontSize: '0.72rem',
+                          fontWeight: 600
+                        }}
+                      >
+                        <Download size={13} /> Tải về
+                      </button>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: '0.7rem', color: '#991b1b', fontStyle: 'italic' }}>
+                      {f.isStoredLocally ? 'Lưu cục bộ trên thiết bị gửi' : 'Chưa có dữ liệu tải về'}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   const effectiveStatus = getEffectiveShopStatus(shopDoc);
@@ -375,8 +589,35 @@ export default function ShopDocumentDetailModal({
     }
   };
 
+  const appendPhotosFromEvent = async (e, setPhotoList, { highRes = false, defaultCaption = 'Ảnh hiện trường / bản vẽ' } = {}) => {
+    const newPhotos = await prepareShopPhotos(
+      e.target.files,
+      (file) => (highRes ? compressImageFile(file, 1280, 1280, 0.75) : compressImageFile(file)),
+      defaultCaption
+    );
+    if (newPhotos.length > 0) {
+      setPhotoList(prev => [...prev, ...newPhotos]);
+    }
+    e.target.value = '';
+  };
+
+  const appendFilesFromEvent = async (e, setFileList) => {
+    const { accepted, rejected } = await prepareShopAttachmentFiles(e.target.files);
+    if (rejected.length > 0 && showAlert) {
+      showAlert({
+        type: 'warning',
+        title: 'Định dạng tệp',
+        message: `Tệp "${rejected[0].name}" không hợp lệ! Vui lòng chọn tệp PDF, ZIP, RAR, 7Z, Word hoặc Excel (ảnh lỗi vui lòng tải ở mục Ảnh lỗi).`
+      });
+    }
+    if (accepted.length > 0) {
+      setFileList(prev => [...prev, ...accepted]);
+    }
+    e.target.value = '';
+  };
+
   // 4. Xử lý yêu cầu sửa / từ chối
-  const handleConfirmRejection = (roleType) => {
+  const handleConfirmRejection = async (roleType) => {
     if (roleType === 'INVESTOR' && !isTvgsApproved) {
       if (showAlert) showAlert({
         type: 'warning',
@@ -389,37 +630,49 @@ export default function ShopDocumentDetailModal({
       if (showAlert) showAlert({ type: 'warning', title: 'Thiếu lý do', message: 'Vui lòng nhập lý do yêu cầu chỉnh sửa!' });
       return;
     }
-    if (onReject) {
-      onReject(shopDoc.id, {
-        roleType,
-        reason: rejectReason.trim(),
-        reviewer: currentUser
-      });
+
+    setIsSubmittingRejection(true);
+    try {
+      const [finalRejectionPhotos, finalRejectionFiles] = await Promise.all([
+        uploadShopPhotosToCloud(
+          rejectPhotos,
+          { projectId: shopDoc.projectCode || shopDoc.projectId || '2203' },
+          uploadBase64ToStorage
+        ),
+        uploadShopFilesToCloud(
+          rejectFiles,
+          `${shopDoc.docCode || 'HSS'}_loi`,
+          uploadPdfDocument
+        )
+      ]);
+
+      if (onReject) {
+        await onReject(shopDoc.id, {
+          roleType,
+          reason: rejectReason.trim(),
+          reviewer: currentUser,
+          rejectionPhotos: finalRejectionPhotos,
+          rejectionFiles: finalRejectionFiles
+        });
+      }
+      setIsRejecting(false);
+      setRejectReason('');
+      setRejectPhotos([]);
+      setRejectFiles([]);
       onClose();
+    } catch (err) {
+      console.error('Lỗi gửi yêu cầu sửa hồ sơ shop:', err);
+      if (showAlert) showAlert({ type: 'error', title: 'Lỗi', message: err.message || err });
+    } finally {
+      setIsSubmittingRejection(false);
     }
   };
 
+  const handleRejectPhotoUpload = (e) => appendPhotosFromEvent(e, setRejectPhotos, { highRes: true, defaultCaption: 'Ảnh lỗi cần chỉnh sửa' });
+  const handleRejectFileUpload = (e) => appendFilesFromEvent(e, setRejectFiles);
+
   // 5. Xử lý sửa & nộp lại trực tiếp cho người từ chối (Bypasses 2 leaders)
-  const handlePhotoUpload = async (e) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-    for (const file of files) {
-      const compressedUrl = await compressImageFile(file);
-      if (!compressedUrl) continue;
-      const now = new Date();
-      const timeStr = `${now.toLocaleTimeString('vi-VN')} ngày ${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
-      setEditPhotos(prev => [
-        ...prev,
-        {
-          id: `photo_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-          url: compressedUrl,
-          caption: file.name ? file.name.replace(/\.[^/.]+$/, '') : 'Ảnh hiện trường / bản vẽ',
-          time: timeStr
-        }
-      ]);
-    }
-    e.target.value = '';
-  };
+  const handlePhotoUpload = (e) => appendPhotosFromEvent(e, setEditPhotos);
 
   const handleDeletePhoto = (photoId) => {
     setEditPhotos(prev => prev.filter(p => p.id !== photoId));
@@ -429,70 +682,7 @@ export default function ShopDocumentDetailModal({
     setEditPhotos(prev => prev.map(p => p.id === photoId ? { ...p, caption } : p));
   };
 
-  const handlePdfUpload = (e) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-
-    for (const file of files) {
-      const fileNameLower = file.name.toLowerCase();
-      const isAllowed =
-        file.type === 'application/pdf' ||
-        fileNameLower.endsWith('.pdf') ||
-        fileNameLower.endsWith('.zip') ||
-        fileNameLower.endsWith('.rar') ||
-        fileNameLower.endsWith('.7z') ||
-        fileNameLower.endsWith('.tar') ||
-        fileNameLower.endsWith('.gz') ||
-        fileNameLower.endsWith('.doc') ||
-        fileNameLower.endsWith('.docx') ||
-        fileNameLower.endsWith('.xls') ||
-        fileNameLower.endsWith('.xlsx');
-
-      if (!isAllowed) {
-        if (showAlert) showAlert({
-          type: 'warning',
-          title: 'Định dạng tệp',
-          message: `Tệp "${file.name}" không hợp lệ! Vui lòng chọn tệp PDF hoặc tệp nén (ZIP, RAR, 7Z).`
-        });
-        continue;
-      }
-
-      const sizeMB = file.size / (1024 * 1024);
-      const formattedSize = sizeMB >= 1 ? `${sizeMB.toFixed(2)} MB` : `${(file.size / 1024).toFixed(1)} KB`;
-
-      // Nếu file lớn hơn 8MB, tránh đọc base64 gây tràn bộ nhớ trình duyệt, lưu rawFile để upload thẳng lên Cloud Storage
-      if (file.size > 8 * 1024 * 1024) {
-        setNewVersionPdfFiles(prev => [
-          ...prev,
-          {
-            id: `file_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-            name: file.name,
-            size: formattedSize,
-            dataUrl: null,
-            rawFile: file
-          }
-        ]);
-        continue;
-      }
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        let dataUrl = reader.result;
-        setNewVersionPdfFiles(prev => [
-          ...prev,
-          {
-            id: `file_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-            name: file.name,
-            size: formattedSize,
-            dataUrl,
-            rawFile: file
-          }
-        ]);
-      };
-      reader.readAsDataURL(file);
-    }
-    e.target.value = '';
-  };
+  const handlePdfUpload = (e) => appendFilesFromEvent(e, setNewVersionPdfFiles);
 
   const handleDeletePdf = (pdfId) => {
     setNewVersionPdfFiles(prev => prev.filter(p => p.id !== pdfId));
@@ -506,31 +696,11 @@ export default function ShopDocumentDetailModal({
 
     setIsSubmittingResubmit(true);
     try {
-      const finalNewPdfFiles = [];
-      for (const pdf of newVersionPdfFiles) {
-        if (pdf.rawFile) {
-          try {
-            const cloudUrl = await uploadPdfDocument(pdf.rawFile, `${shopDoc.docCode || 'HSS'}_v${nextVersionNumber}`);
-            if (cloudUrl) {
-              finalNewPdfFiles.push({
-                id: pdf.id,
-                name: pdf.name,
-                size: pdf.size,
-                dataUrl: cloudUrl
-              });
-              continue;
-            }
-          } catch (uploadErr) {
-            console.warn('[Resubmit] Lỗi upload PDF cloud, dùng dataUrl cục bộ:', uploadErr);
-          }
-        }
-        finalNewPdfFiles.push({
-          id: pdf.id,
-          name: pdf.name,
-          size: pdf.size,
-          dataUrl: pdf.dataUrl
-        });
-      }
+      const finalNewPdfFiles = await uploadShopFilesToCloud(
+        newVersionPdfFiles,
+        `${shopDoc.docCode || 'HSS'}_v${nextVersionNumber}`,
+        uploadPdfDocument
+      );
 
       // Xây dựng phiên bản mới (v2, v3...) nếu có tệp mới được tải lên
       let updatedVersions = allAttachmentVersions;
@@ -662,6 +832,9 @@ export default function ShopDocumentDetailModal({
               <div style={{ fontSize: '0.84rem', color: '#991b1b', background: '#fee2e2', padding: '8px 12px', borderRadius: '6px', border: '1px solid #fca5a5' }}>
                 <strong>Lý do:</strong> {shopDoc.rejectionReason || shopDoc.rejectedBy?.reason || 'Chưa cung cấp lý do chi tiết'}
               </div>
+              {renderRejectionAttachments(shopDoc.rejectionPhotos, shopDoc.rejectionFiles, {
+                title: 'Ảnh lỗi & Tệp lỗi đính kèm:'
+              })}
               {canEditDoc && (
                 <div style={{ fontSize: '0.8rem', color: '#1e40af', background: '#eff6ff', padding: '8px 12px', borderRadius: '6px', border: '1px solid #bfdbfe', lineHeight: 1.5 }}>
                   ✍️ <strong>Chế độ chỉnh sửa hồ sơ:</strong> Bạn có thể sửa trực tiếp <em>Nội dung / Ghi chú kỹ thuật</em>, <em>Tệp PDF</em> và <em>Ảnh bản vẽ & hiện trường</em> ở các phần bên dưới, sau đó bấm nút <strong>Lưu & Gửi lại trực tiếp</strong> để gửi thẳng cho {shopDoc.rejectedBy?.fullName || 'người yêu cầu sửa'} thẩm định lại.
@@ -720,7 +893,7 @@ export default function ShopDocumentDetailModal({
               <input
                 ref={editPdfInputRef}
                 type="file"
-                accept=".pdf,.zip,.rar,.7z,.tar,.gz,.doc,.docx,.xls,.xlsx,application/pdf,application/zip,application/x-zip-compressed,application/x-rar-compressed,application/octet-stream"
+                accept={SHOP_FILE_ACCEPT}
                 multiple
                 style={{ display: 'none' }}
                 onChange={handlePdfUpload}
@@ -1479,6 +1652,9 @@ export default function ShopDocumentDetailModal({
                         <strong>Ý kiến TVGS:</strong> {shopDoc.assignedTvgs.note}
                       </div>
                     )}
+                    {shopDoc.assignedTvgs?.status === 'REJECTED' &&
+                      shopDoc.rejectedBy?.role === 'SUPERVISOR' &&
+                      renderRejectionAttachments(shopDoc.rejectionPhotos, shopDoc.rejectionFiles, { compact: true })}
 
                     {/* THAO TÁC DUYỆT DÀNH CHO CÁN BỘ TVGS ĐƯỢC CHỌN HOẶC TRƯỞNG */}
                     {canTvgsReview && !isRejecting && (
@@ -1831,6 +2007,9 @@ export default function ShopDocumentDetailModal({
                           <strong>Ý kiến Ban QLDA:</strong> {shopDoc.assignedInvestor.note}
                         </div>
                       )}
+                      {shopDoc.assignedInvestor?.status === 'REJECTED' &&
+                        shopDoc.rejectedBy?.role === 'INVESTOR' &&
+                        renderRejectionAttachments(shopDoc.rejectionPhotos, shopDoc.rejectionFiles, { compact: true })}
 
                       {/* THÔNG BÁO CHỜ TVGS DUYỆT TRƯỚC */}
                       {!isTvgsApproved && shopDoc.assignedInvestor?.status === 'PENDING' && shopDoc.status !== SHOP_STATUS.REJECTED && (
@@ -1904,6 +2083,31 @@ export default function ShopDocumentDetailModal({
             {/* FORM NHẬP LÝ DO TỪ CHỐI / CẦN SỬA */}
             {isRejecting && (
               <div style={{ marginTop: '16px', background: '#fef2f2', border: '1.5px solid #fca5a5', padding: '14px', borderRadius: '8px' }}>
+                <input
+                  ref={rejectCameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  style={{ display: 'none' }}
+                  onChange={handleRejectPhotoUpload}
+                />
+                <input
+                  ref={rejectPhotoInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  style={{ display: 'none' }}
+                  onChange={handleRejectPhotoUpload}
+                />
+                <input
+                  ref={rejectFileInputRef}
+                  type="file"
+                  accept={SHOP_FILE_ACCEPT}
+                  multiple
+                  style={{ display: 'none' }}
+                  onChange={handleRejectFileUpload}
+                />
+
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: '#991b1b', fontWeight: 700, fontSize: '0.86rem' }}>
                   <XCircle size={16} />
                   <span>Yêu cầu Đơn vị thi công chỉnh sửa hồ sơ ({isRejecting === 'SUPERVISOR' ? 'Tư Vấn Giám Sát' : 'Ban QLDA'})</span>
@@ -1912,6 +2116,7 @@ export default function ShopDocumentDetailModal({
                   rows={3}
                   placeholder="Ghi rõ các nội dung sai lệch, bản vẽ thiếu chi tiết, hoặc các điểm cần chỉnh sửa lại..."
                   value={rejectReason}
+                  disabled={isSubmittingRejection}
                   onChange={(e) => setRejectReason(e.target.value)}
                   style={{
                     width: '100%',
@@ -1920,23 +2125,282 @@ export default function ShopDocumentDetailModal({
                     border: '1px solid #f87171',
                     fontSize: '0.84rem',
                     boxSizing: 'border-box',
-                    marginBottom: '10px'
+                    marginBottom: '10px',
+                    background: '#ffffff'
                   }}
                 />
+
+                {/* ĐÍNH KÈM ẢNH LỖI */}
+                <div style={{ background: '#ffffff', border: '1px solid #fecaca', borderRadius: '6px', padding: '10px', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px', marginBottom: rejectPhotos.length > 0 ? '8px' : '0' }}>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#991b1b' }}>
+                      Ảnh lỗi đính kèm ({rejectPhotos.length}):
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        disabled={isSubmittingRejection}
+                        onClick={() => rejectCameraInputRef.current?.click()}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '5px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          background: '#ffffff',
+                          color: '#0f172a',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          cursor: isSubmittingRejection ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        <Camera size={14} color="#dc2626" /> Chụp ảnh lỗi
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isSubmittingRejection}
+                        onClick={() => rejectPhotoInputRef.current?.click()}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '5px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #fca5a5',
+                          background: '#fff1f2',
+                          color: '#be123c',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          cursor: isSubmittingRejection ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        <ImagePlus size={14} /> Chọn ảnh lỗi
+                      </button>
+                    </div>
+                  </div>
+
+                  {rejectPhotos.length > 0 && (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '8px' }}>
+                      {rejectPhotos.map((p, idx) => (
+                        <div
+                          key={p.id || idx}
+                          style={{
+                            borderRadius: '6px',
+                            border: '1px solid #fecaca',
+                            background: '#fff5f5',
+                            padding: '5px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '4px'
+                          }}
+                        >
+                          <div
+                            onClick={() => setActivePhoto(p)}
+                            title="Bấm để phóng to xem ảnh lỗi"
+                            style={{
+                              height: '80px',
+                              borderRadius: '5px',
+                              overflow: 'hidden',
+                              position: 'relative',
+                              cursor: 'pointer',
+                              background: '#f1f5f9'
+                            }}
+                          >
+                            <img src={p.url} alt={p.caption || 'Ảnh lỗi'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <button
+                              type="button"
+                              disabled={isSubmittingRejection}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setRejectPhotos(prev => prev.filter(item => item.id !== p.id));
+                              }}
+                              title="Xóa ảnh lỗi"
+                              style={{
+                                position: 'absolute',
+                                top: '3px',
+                                right: '3px',
+                                background: 'rgba(220, 38, 38, 0.92)',
+                                color: '#ffffff',
+                                border: 'none',
+                                borderRadius: '50%',
+                                width: '20px',
+                                height: '20px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            value={p.caption || ''}
+                            disabled={isSubmittingRejection}
+                            placeholder={`Mô tả ảnh lỗi ${idx + 1}...`}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setRejectPhotos(prev => prev.map(item => item.id === p.id ? { ...item, caption: val } : item));
+                            }}
+                            style={{
+                              width: '100%',
+                              padding: '3px 6px',
+                              fontSize: '0.7rem',
+                              border: '1px solid #fca5a5',
+                              borderRadius: '4px',
+                              boxSizing: 'border-box',
+                              color: '#334155',
+                              background: '#ffffff'
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* ĐÍNH KÈM FILE LỖI */}
+                <div style={{ background: '#ffffff', border: '1px solid #fecaca', borderRadius: '6px', padding: '10px', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px', marginBottom: rejectFiles.length > 0 ? '8px' : '0' }}>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#991b1b' }}>
+                      Tệp lỗi đính kèm ({rejectFiles.length}):
+                    </span>
+                    <button
+                      type="button"
+                      disabled={isSubmittingRejection}
+                      onClick={() => rejectFileInputRef.current?.click()}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        padding: '5px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid #fca5a5',
+                        background: '#fff1f2',
+                        color: '#be123c',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        cursor: isSubmittingRejection ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      <UploadCloud size={14} /> Chọn file lỗi (PDF, ZIP, RAR, Word, Excel)
+                    </button>
+                  </div>
+
+                  {rejectFiles.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {rejectFiles.map((f, idx) => (
+                        <div
+                          key={f.id || idx}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '8px',
+                            padding: '6px 10px',
+                            background: '#fff5f5',
+                            border: '1px solid #fecaca',
+                            borderRadius: '6px'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '160px', flex: 1 }}>
+                            {isArchiveAttachment(f.name) ? (
+                              <FileArchive size={18} color="#d97706" style={{ flexShrink: 0 }} />
+                            ) : (
+                              <FileText size={18} color="#dc2626" style={{ flexShrink: 0 }} />
+                            )}
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#0f172a', overflowWrap: 'anywhere' }}>
+                                {f.name}
+                              </div>
+                              <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
+                                {f.size}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {f.dataUrl && isPdfAttachment(f.name, f.dataUrl) && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPdf(f.dataUrl, f.name)}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '4px 8px',
+                                  background: '#ffffff',
+                                  border: '1px solid #fda4af',
+                                  borderRadius: '5px',
+                                  color: '#be123c',
+                                  cursor: 'pointer',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 600
+                                }}
+                              >
+                                <Eye size={12} /> Xem
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              disabled={isSubmittingRejection}
+                              onClick={() => setRejectFiles(prev => prev.filter(item => item.id !== f.id))}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '4px 8px',
+                                background: '#ffffff',
+                                border: '1px solid #fecaca',
+                                borderRadius: '5px',
+                                color: '#dc2626',
+                                cursor: isSubmittingRejection ? 'not-allowed' : 'pointer',
+                                fontSize: '0.72rem',
+                                fontWeight: 600
+                              }}
+                            >
+                              <Trash2 size={12} /> Xóa
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
                   <button
                     type="button"
-                    onClick={() => { setIsRejecting(false); setRejectReason(''); }}
-                    style={{ padding: '6px 12px', border: '1px solid #cbd5e1', background: '#fff', borderRadius: '6px', fontSize: '0.78rem', cursor: 'pointer' }}
+                    disabled={isSubmittingRejection}
+                    onClick={() => {
+                      setIsRejecting(false);
+                      setRejectReason('');
+                      setRejectPhotos([]);
+                      setRejectFiles([]);
+                    }}
+                    style={{ padding: '6px 12px', border: '1px solid #cbd5e1', background: '#fff', borderRadius: '6px', fontSize: '0.78rem', cursor: isSubmittingRejection ? 'not-allowed' : 'pointer' }}
                   >
                     Hủy
                   </button>
                   <button
                     type="button"
+                    disabled={isSubmittingRejection}
                     onClick={() => handleConfirmRejection(isRejecting)}
-                    style={{ padding: '6px 14px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer' }}
+                    style={{
+                      padding: '6px 14px',
+                      background: isSubmittingRejection ? '#f87171' : '#dc2626',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      cursor: isSubmittingRejection ? 'not-allowed' : 'pointer'
+                    }}
                   >
-                    Gửi Yêu Cầu Sửa
+                    {isSubmittingRejection ? 'Đang tải tệp & gửi...' : 'Gửi Yêu Cầu Sửa'}
                   </button>
                 </div>
               </div>
@@ -1952,10 +2416,23 @@ export default function ShopDocumentDetailModal({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {shopDoc.history.map((h, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', fontSize: '0.78rem', color: '#475569' }}>
-                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#0284c7', marginTop: '4px' }} />
-                    <div style={{ flex: 1 }}>
-                      <strong>{h.by}</strong> ({h.role}): {h.note}
-                      <span style={{ marginLeft: '6px', color: '#94a3b8' }}>• {formatDateStr(h.time)}</span>
+                    <div
+                      style={{
+                        width: '8px',
+                        height: '8px',
+                        borderRadius: '50%',
+                        background: h.action === 'REJECTED' ? '#dc2626' : '#0284c7',
+                        marginTop: '4px',
+                        flexShrink: 0
+                      }}
+                    />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div>
+                        <strong>{h.by}</strong> ({h.role}): {h.note}
+                        <span style={{ marginLeft: '6px', color: '#94a3b8' }}>• {formatDateStr(h.time)}</span>
+                      </div>
+                      {h.action === 'REJECTED' && (Array.isArray(h.photos) || Array.isArray(h.files)) &&
+                        renderRejectionAttachments(h.photos, h.files, { compact: true })}
                     </div>
                   </div>
                 ))}

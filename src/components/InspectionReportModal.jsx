@@ -11,6 +11,7 @@ import { triggerSafeConfetti } from '../utils/confettiHelper';
 import { compressImageFile, compressImageToBlob, dataUrlToBlob } from '../utils/storageHelper';
 import { uploadEvidenceImage, uploadBase64ToStorage } from '../services/storageService';
 import { generateDocumentCode, getDocumentRevisionNumber } from '../data/projectCatalog';
+import { findMatchingRequestForReport } from '../utils/inspectionLinkUtils';
 import ImagePreviewModal from './ImagePreviewModal';
 
 
@@ -62,10 +63,10 @@ export default function InspectionReportModal({
   const [reportState, setReportState] = useState(report || {});
 
   // Lấy yêu cầu nghiệm thu tương ứng (nếu có) để truy xuất danh sách cán bộ được chọn & trạng thái
-  const relatedRequest = request || (requests || []).find(r => 
-    (report?.requestId && r.id === report.requestId) || 
-    (report?.id && (r.reportId === report.id || r.id === report.id)) ||
-    (report?.inspectionObject && r.taskContent && report.inspectionObject.trim() === r.taskContent.trim())
+  const relatedRequest = findMatchingRequestForReport(
+    report?.id ? report : reportState,
+    requests,
+    request
   );
 
   const initialSupervisorSigned = Boolean(
@@ -302,10 +303,10 @@ export default function InspectionReportModal({
     return txt.includes('...h...') || txt.includes('....tháng') || txt.includes('...tháng') || txt.includes('202...') || txt.trim() === '';
   };
 
-  const matchedInitialReq = (requests || []).find(r => 
-    (reportState?.requestId && r.id === reportState.requestId) || 
-    (reportState?.id && (r.reportId === reportState.id || r.id === reportState.id)) ||
-    (reportState?.requestNumber && r.requestNumber === reportState.requestNumber)
+  const matchedInitialReq = findMatchingRequestForReport(
+    reportState?.id ? reportState : report,
+    requests,
+    request
   );
 
   const initialTimes = getAutoInspectionTimes(matchedInitialReq, reportState || report);
@@ -886,11 +887,7 @@ export default function InspectionReportModal({
     setReportState(report);
 
     // Đồng bộ lại chữ ký theo dữ liệu report hiện hành
-    const currentRelReq = request || (requests || []).find(r => 
-      (report.requestId && r.id === report.requestId) || 
-      (report.id && (r.reportId === report.id || r.id === report.id)) ||
-      (report.inspectionObject && r.taskContent && report.inspectionObject.trim() === r.taskContent.trim())
-    );
+    const currentRelReq = findMatchingRequestForReport(report, requests, request);
 
     const supSigned = Boolean(
       report.attendees?.supervisor?.signed ||

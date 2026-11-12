@@ -7,10 +7,13 @@ import {
   RotateCcw, Wrench
 } from 'lucide-react';
 import { getDocumentRevisionNumber } from '../data/projectCatalog';
+import { findMatchingRequestForReport, resolveInspectionPartyNames } from '../utils/inspectionLinkUtils';
 import { getDocHierarchyInfo } from './ShopDocumentsView';
 
 export default function ReportsListView({ 
   reports = [], 
+  requests = [],
+  users = [],
   projects = [],
   currentRole, 
   currentUser, 
@@ -527,6 +530,12 @@ export default function ReportsListView({
             const contractorSigned = report.attendees?.contractor?.signed !== false;
 
             const signedCount = [investorSigned, supervisorSigned, contractorSigned].filter(Boolean).length;
+            const relatedReq = findMatchingRequestForReport(report, requests);
+            const { investorName, supervisorName } = resolveInspectionPartyNames({
+              report,
+              request: relatedReq,
+              users
+            });
 
             return (
               <div 
@@ -879,7 +888,7 @@ export default function ReportsListView({
                           <span style={{ fontSize: '0.85rem' }}>🏢</span>
                           <div>
                             <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1e293b' }}>
-                              Chủ Đầu Tư: {report.attendees?.investor?.person || 'Ngô Quý Linh'}
+                              Chủ Đầu Tư: {investorName}
                             </div>
                             <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Ban QLDA An Phú Cần Thơ</div>
                           </div>
@@ -903,7 +912,7 @@ export default function ReportsListView({
                           <span style={{ fontSize: '0.85rem' }}>👁️</span>
                           <div>
                             <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1e293b' }}>
-                              Tư Vấn Giám Sát: {report.attendees?.supervisor?.person || 'Đinh Xuân Thám'}
+                              Tư Vấn Giám Sát: {supervisorName}
                             </div>
                             <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>GELICON</div>
                           </div>
